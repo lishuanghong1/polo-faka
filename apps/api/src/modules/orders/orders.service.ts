@@ -1,0 +1,404 @@
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { nanoid } from 'nanoid';
+import Redis from 'ioredis';
+import dayjs from 'dayjs';
+import { PrismaService } from '../../prisma/prisma.service';
+import { REDIS_CLIENT } from '../../redis/redis.module';
+import { CreateOrderDto, PayMethodDto } from './dto';
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    private prisma: PrismaService,
+    @Inject(REDIS_CLIENT) private redis: Redis,
+  ) {}
+
+  /** 计算实际单价（考虑批量阶梯价） */
+  private calcUnitPrice(skuPrice: number, qty: number, bulk: any[] | null) {
+    if (!Array.isArray(bulk) || bulk.length === 0) return skuPrice;
+    let match: { min: number; max: number; price: number } | null = null;
+    for (const b of bulk) {
+      if (qty >= b.min && qty <= b.max) {
+        match = b;
+        break;
+      }
+    }
+    return match ? Number(match.price) : skuPrice;
+  }
+
+  async create(dto: CreateOrderDto, userId?: number, ip?: string) {
+    const sku = await this.prisma.sku.findUnique({
+      where: { id: dto.skuId },
+      include: { product: true },
+    });
+    if (!sku || sku.productId !== dto.productId) {
+      throw new NotFoundException('商品规格不存在');
+    }
+    if (!sku.visible || sku.product.status !== 'ON_SALE') {
+      throw new BadRequestException('商品已下架');
+    }
+
+    const unitPrice = this.calcUnitPrice(
+      Number(sku.price),
+      dto.quantity,
+      sku.product.bulkPricing as any,
+    );
+    const total = +(unitPrice * dto.quantity).toFixed(2);
+
+    const orderNo = this.makeOrderNo();
+    const expireAt = dayjs().add(15, 'minute').toDate();
+
+    let payAmount = total;
+
+    // 余额支付：扣余额并直接置为 PAID
+    if (dto.payMethod === PayMethodDto.BALANCE) {
+      if (!userId) throw new BadRequestException('余额支付需要登录');
+      const u = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!u || Number(u.balance) < total) throw new BadRequestException('余额不足');
+    }
+
+    const order = await this.prisma.order.create({
+      data: {
+        orderNo,
+        userId: userId ?? null,
+        productId: dto.productId,
+        skuId: dto.skuId,
+        productTitle: sku.product.title,
+        skuName: sku.name,
+        unitPrice,
+        quantity: dto.quantity,
+        totalAmount: total,
+        payAmount,
+        payMethod: dto.payMethod as any,
+        status: 'PENDING',
+        contact: dto.contact,
+        remark: dto.remark,
+        ip,
+        expireAt,
+      },
+    });
+
+    // 余额支付：立即结算
+    if (dto.payMethod === PayMethodDto.BALANCE && userId) {
+      await this.payWithBalance(order.orderNo, userId);
+    }
+
+    return this.detail(order.orderNo);
+  }
+
+  /** Mock 支付：仅供本地开发用，把订单置为已支付并触发出库 */
+  async mockPay(orderNo: string) {
+    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+    await this.markPaidAndDeliver(orderNo);
+    return this.detail(orderNo);
+  }
+
+  /** 余额支付（即时结算） */
+  async payWithBalance(orderNo: string, userId: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { orderNo } });
+      if (!order || order.userId !== userId) throw new NotFoundException('订单不存在');
+      if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      if (!user || Number(user.balance) < Number(order.payAmount)) {
+        throw new BadRequestException('余额不足');
+      }
+      const newBalance = +(Number(user.balance) - Number(order.payAmount)).toFixed(2);
+      await tx.user.update({
+        where: { id: userId },
+        data: { balance: newBalance },
+      });
+      await tx.balanceLog.create({
+        data: {
+          userId,
+          amount: new Prisma.Decimal(-Number(order.payAmount)),
+          balance: newBalance,
+          type: 'CONSUME',
+          note: `订单 ${orderNo}`,
+          refOrder: orderNo,
+        },
+      });
+      await tx.order.update({
+        where: { orderNo },
+        data: { status: 'PAID', paidAt: new Date() },
+      });
+    }).then(() => this.markPaidAndDeliver(orderNo));
+  }
+
+  /** 标记已支付并自动分配卡密 */
+  async markPaidAndDeliver(orderNo: string) {
+    const lockKey = `lock:order:${orderNo}`;
+    const got = await this.redis
+      .set(lockKey, '1', 'EX', 30, 'NX')
+      .catch(() => 'OK'); // Redis 异常时降级为不加锁
+    if (got !== 'OK' && got !== null && got !== undefined) {
+      // 已被占用，直接返回
+    }
+
+    try {
+      const order = await this.prisma.order.findUnique({ where: { orderNo } });
+      if (!order) return;
+      if (order.status === 'DELIVERED' || order.status === 'REFUNDED') return;
+
+      // 如果还是 PENDING，先置 PAID
+      if (order.status === 'PENDING') {
+        await this.prisma.order.update({
+          where: { orderNo },
+          data: { status: 'PAID', paidAt: new Date() },
+        });
+      }
+
+      // 取出 quantity 张可用卡密（用事务 + 行锁逻辑）
+      const need = order.quantity;
+      const picked = await this.prisma.$transaction(async (tx) => {
+        const list = await tx.cardKey.findMany({
+          where: { skuId: order.skuId, status: 'AVAILABLE' },
+          take: need,
+          orderBy: { id: 'asc' },
+        });
+        if (list.length < need) return [];
+        const ids = list.map((c) => c.id);
+        await tx.cardKey.updateMany({
+          where: { id: { in: ids } },
+          data: {
+            status: 'SOLD',
+            soldAt: new Date(),
+            orderNo,
+          },
+        });
+        return list;
+      });
+
+      if (picked.length === 0) {
+        // 库存不足 -> 标记为已支付但未发货（人工处理）
+        return;
+      }
+
+      await this.prisma.$transaction([
+        this.prisma.order.update({
+          where: { orderNo },
+          data: { status: 'DELIVERED', deliveredAt: new Date() },
+        }),
+        this.prisma.sku.update({
+          where: { id: order.skuId },
+          data: { sales: { increment: order.quantity } },
+        }),
+        this.prisma.product.update({
+          where: { id: order.productId },
+          data: { sales: { increment: order.quantity } },
+        }),
+      ]);
+    } finally {
+      try {
+        await this.redis.del(lockKey);
+      } catch {}
+    }
+  }
+
+  async detail(orderNo: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: {
+        cardKeys: {
+          select: {
+            id: true,
+            content: true,
+            soldAt: true,
+          },
+        },
+      },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    return order;
+  }
+
+  async listMine(userId: number, page = 1, pageSize = 20) {
+    if (!userId || typeof userId !== 'number') {
+      throw new BadRequestException('未登录');
+    }
+    const where = { userId };
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.order.count({ where }),
+      this.prisma.order.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { cardKeys: { select: { content: true } } },
+      }),
+    ]);
+    return { total, page, pageSize, items };
+  }
+
+  /** 公开订单查询（订单号 + 可选 contact 校验） */
+  async query(orderNo: string, contact?: string) {
+    const order = await this.detail(orderNo);
+    // 如果订单创建时记录了 contact，查询必须提供且匹配（防订单号被猜中）
+    if (order.contact) {
+      if (!contact || contact.trim() !== order.contact) {
+        throw new NotFoundException('订单不存在');
+      }
+    }
+    return order;
+  }
+
+  /** 管理员：标记订单为已支付，并尝试发货 */
+  async adminMarkPaid(orderNo: string) {
+    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('订单状态不允许标记为已支付');
+    }
+    await this.markPaidAndDeliver(orderNo);
+    return this.detail(orderNo);
+  }
+
+  /** 管理员：手动补发卡密（用于库存不足导致 PAID 卡住的订单） */
+  async adminRedeliver(orderNo: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: { cardKeys: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status === 'DELIVERED' && order.cardKeys.length >= order.quantity) {
+      throw new BadRequestException('订单已发货');
+    }
+    if (!['PAID', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException('订单状态不支持发货');
+    }
+    await this.markPaidAndDeliver(orderNo);
+    return this.detail(orderNo);
+  }
+
+  /** 管理员：手动指定卡密内容发货 */
+  async adminManualDeliver(orderNo: string, contents: string[]) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: { cardKeys: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    const need = order.quantity - order.cardKeys.length;
+    if (need <= 0) throw new BadRequestException('订单已配齐卡密');
+    if (contents.length < need) {
+      throw new BadRequestException(`还需要 ${need} 条卡密，仅提供了 ${contents.length} 条`);
+    }
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < need; i++) {
+        await tx.cardKey.create({
+          data: {
+            productId: order.productId,
+            skuId: order.skuId,
+            content: contents[i],
+            status: 'SOLD',
+            soldAt: new Date(),
+            orderNo,
+            remark: '管理员手动发货',
+          },
+        });
+      }
+      await tx.order.update({
+        where: { orderNo },
+        data: {
+          status: 'DELIVERED',
+          deliveredAt: new Date(),
+        },
+      });
+    });
+    return this.detail(orderNo);
+  }
+
+  /** 管理员：退款（恢复卡密为 AVAILABLE / 余额回退） */
+  async adminRefund(orderNo: string, reason?: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: { cardKeys: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (!['PAID', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException('只有已支付/已发货订单可退款');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 卡密回退：手动发货的（remark="管理员手动发货"）直接标 REFUNDED，否则回到 AVAILABLE 池
+      for (const c of order.cardKeys) {
+        if (c.remark === '管理员手动发货') {
+          await tx.cardKey.update({
+            where: { id: c.id },
+            data: { status: 'REFUNDED', orderNo: null },
+          });
+        } else {
+          await tx.cardKey.update({
+            where: { id: c.id },
+            data: { status: 'AVAILABLE', soldAt: null, orderNo: null },
+          });
+        }
+      }
+      await tx.order.update({
+        where: { orderNo },
+        data: {
+          status: 'REFUNDED',
+          remark: reason ? `[退款] ${reason}` : '[退款]',
+        },
+      });
+      // 销量回滚
+      await tx.sku.update({
+        where: { id: order.skuId },
+        data: { sales: { decrement: order.quantity } },
+      });
+      await tx.product.update({
+        where: { id: order.productId },
+        data: { sales: { decrement: order.quantity } },
+      });
+      // 余额支付：退还余额
+      if (order.payMethod === 'BALANCE' && order.userId) {
+        const user = await tx.user.findUnique({ where: { id: order.userId } });
+        if (user) {
+          const newBalance = +(Number(user.balance) + Number(order.payAmount)).toFixed(2);
+          await tx.user.update({
+            where: { id: order.userId },
+            data: { balance: newBalance },
+          });
+          await tx.balanceLog.create({
+            data: {
+              userId: order.userId,
+              amount: new Prisma.Decimal(Number(order.payAmount)),
+              balance: newBalance,
+              type: 'REFUND',
+              note: `退款 ${orderNo}`,
+              refOrder: orderNo,
+            },
+          });
+        }
+      }
+    });
+    return this.detail(orderNo);
+  }
+
+  /** 管理员：取消未支付订单 */
+  async adminCancel(orderNo: string) {
+    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('只有待支付订单可取消');
+    }
+    await this.prisma.order.update({
+      where: { orderNo },
+      data: { status: 'CANCELLED' },
+    });
+    return this.detail(orderNo);
+  }
+
+  private makeOrderNo() {
+    // 时间戳便于人眼定位，但安全凭证靠后面 16 位 URL-safe 随机串
+    return `P${dayjs().format('YYYYMMDDHHmmss')}${nanoid(16)}`;
+  }
+}

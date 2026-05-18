@@ -1,0 +1,130 @@
+# =========================================================
+# Polo Faka · 生产环境编排
+# 用法：
+#   cp .env.prod.example .env.prod   # 改密码/域名
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# =========================================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: polo-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: polo_faka
+      MYSQL_USER: polo
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=caching_sha2_password
+      - --max-allowed-packet=32M
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks:
+      - polo
+
+  redis:
+    image: redis:7-alpine
+    container_name: polo-redis
+    restart: always
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - polo
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: polo-api
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      API_PREFIX: /api
+      DATABASE_URL: mysql://polo:${MYSQL_PASSWORD}@mysql:3306/polo_faka
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      POOL_ENCRYPTION_KEY: ${POOL_ENCRYPTION_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ENABLE_MOCK_PAY: "false"
+      TRUST_PROXY: "true"
+      ADMIN_IP_ALLOWLIST: ${ADMIN_IP_ALLOWLIST}
+      # 支付宝（可选）
+      ALIPAY_ENABLED: ${ALIPAY_ENABLED:-false}
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY}
+      ALIPAY_NOTIFY_BASE_URL: ${ALIPAY_NOTIFY_BASE_URL}
+      ALIPAY_SANDBOX: ${ALIPAY_SANDBOX:-false}
+      ALIPAY_SIGN_TYPE: ${ALIPAY_SIGN_TYPE:-RSA2}
+      TZ: Asia/Shanghai
+    expose:
+      - "4000"
+    networks:
+      - polo
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: polo-web
+    restart: always
+    depends_on:
+      - api
+    expose:
+      - "80"
+    networks:
+      - polo
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: polo-caddy
+    restart: always
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - polo
+
+volumes:
+  mysql_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  polo:
+    driver: bridge

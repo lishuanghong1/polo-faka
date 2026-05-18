@@ -1,0 +1,55 @@
+# =========================================================
+# Polo Faka · Caddy 反向代理（自动 HTTPS）
+# - 80 自动 301 到 443
+# - 自动申请 + 续期 Let's Encrypt 证书
+# - HTTP/3 + gzip/zstd 压缩
+# =========================================================
+
+{
+    # 全局选项
+    email admin@{$DOMAIN}
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
+{$DOMAIN} {
+    encode gzip zstd
+
+    # 安全相关头
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        # CSP 留空，前端 SPA 自己控
+        -Server
+    }
+
+    # 访问日志
+    log {
+        output file /data/access.log {
+            roll_size 50mb
+            roll_keep 10
+            roll_keep_for 720h
+        }
+        format json
+        level INFO
+    }
+
+    # API 走后端
+    @api path /api/*
+    handle @api {
+        reverse_proxy api:4000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # 静态资源 / SPA fallback 走前端容器
+    handle {
+        reverse_proxy web:80
+    }
+}

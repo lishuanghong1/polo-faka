@@ -1,0 +1,35 @@
+{
+  "name": "@polo/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Polo Faka Web - Vue 3 frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .ts,.vue --fix"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.9",
+    "element-plus": "^2.9.1",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-i18n": "^11.0.1",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "sass-embedded": "^1.83.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "unplugin-auto-import": "^0.18.6",
+    "unplugin-vue-components": "^0.27.5",
+    "vite": "^6.0.5",
+    "vue-tsc": "^2.1.10"
+  }
+}

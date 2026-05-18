@@ -1,0 +1,119 @@
+import http from './http';
+
+export const api = {
+  // 站点
+  publicSettings: () => http.get('/site-settings/public'),
+  announcements: () => http.get('/announcements/active'),
+
+  // 分类 / 商品
+  categories: () => http.get('/categories'),
+  products: (params?: { categoryId?: number; keyword?: string; page?: number; pageSize?: number }) =>
+    http.get('/products', { params }),
+  product: (id: number) => http.get(`/products/${id}`),
+
+  // 订单
+  createOrder: (body: any) => http.post('/orders', body),
+  orderQuery: (orderNo: string) => http.get(`/orders/query/${orderNo}`),
+  mockPay: (orderNo: string) => http.post(`/orders/${orderNo}/mock-pay`),
+  myOrders: (params: any) => http.get('/orders/mine', { params }),
+
+  // 认证
+  register: (body: any) => http.post('/website-auth/register', body),
+  login: (body: any) => http.post('/website-auth/login', body),
+  profile: () => http.get('/website-auth/profile'),
+
+  // 用户
+  balanceLogs: (params: any) => http.get('/users/my/balance-logs', { params }),
+
+  // 反馈
+  feedback: (body: any) => http.post('/feedbacks/submit', body),
+
+  // 池
+  poolQuery: (orderNo: string) => http.get(`/pool/grants/${orderNo}`),
+  poolBind: (orderNo: string, token: string) => http.post(`/pool/grants/${orderNo}/bind-token`, { token }),
+  activate: (body: { token: string; captcha?: string }) => http.post('/pool/activate', body),
+
+  // Admin
+  admin: {
+    dashboard: () => http.get('/admin/dashboard'),
+    recent: () => http.get('/admin/orders/recent'),
+    orders: (params: any) => http.get('/admin/orders', { params }),
+    orderDetail: (orderNo: string) => http.get(`/admin/orders/${orderNo}`),
+    orderMarkPaid: (orderNo: string) => http.post(`/admin/orders/${orderNo}/mark-paid`),
+    orderRedeliver: (orderNo: string) => http.post(`/admin/orders/${orderNo}/redeliver`),
+    orderManualDeliver: (orderNo: string, contents: string[]) =>
+      http.post(`/admin/orders/${orderNo}/manual-deliver`, { contents }),
+    orderRefund: (orderNo: string, reason?: string) =>
+      http.post(`/admin/orders/${orderNo}/refund`, { reason }),
+    orderCancel: (orderNo: string) => http.post(`/admin/orders/${orderNo}/cancel`),
+    revenueTrend: (days = 14) => http.get(`/admin/trend/revenue`, { params: { days } }),
+    stockAlerts: (threshold = 5) => http.get(`/admin/stock/alerts`, { params: { threshold } }),
+
+    productsCreate: (body: any) => http.post('/products', body),
+    productsUpdate: (id: number, body: any) => http.put(`/products/${id}`, body),
+    productsRemove: (id: number) => http.delete(`/products/${id}`),
+    productsSetStatus: (id: number, status: string) =>
+      http.put(`/products/${id}/status`, { status }),
+
+    catsCreate: (body: any) => http.post('/categories', body),
+    catsUpdate: (id: number, body: any) => http.put(`/categories/${id}`, body),
+    catsRemove: (id: number) => http.delete(`/categories/${id}`),
+
+    keysList: (params: any) => http.get('/card-keys', { params }),
+    keysBulk: (body: any) => http.post('/card-keys/bulk-import', body),
+    keysBulkRemove: (ids: number[]) => http.post('/card-keys/bulk-remove', { ids }),
+    keysPurge: (skuId: number, status: string) =>
+      http.post('/card-keys/purge', { skuId, status }),
+    keysOverview: () => http.get('/card-keys/overview'),
+    keysRemove: (id: number) => http.delete(`/card-keys/${id}`),
+
+    users: (params: any) => http.get('/users', { params }),
+    userAdjust: (id: number, body: any) => http.put(`/users/${id}/adjust-balance`, body),
+
+    annsList: () => http.get('/announcements'),
+    annsCreate: (body: any) => http.post('/announcements', body),
+    annsUpdate: (id: number, body: any) => http.put(`/announcements/${id}`, body),
+    annsRemove: (id: number) => http.delete(`/announcements/${id}`),
+
+    poolAccounts: (params: any) => http.get('/pool/accounts', { params }),
+    poolReveal: (id: number) => http.get<{ id: number; label: string; token: string }>(`/pool/accounts/${id}/reveal`),
+    poolCreate: (body: any) => http.post('/pool/accounts', body),
+    poolUpdate: (id: number, body: any) => http.put(`/pool/accounts/${id}`, body),
+    poolRemove: (id: number) => http.delete(`/pool/accounts/${id}`),
+    poolRefresh: () => http.post('/pool/accounts/refresh-all'),
+
+    settings: () => http.get('/site-settings/all'),
+    settingsSet: (body: any) => http.post('/site-settings', body),
+
+    auditList: (params: any) => http.get('/admin/audit', { params }),
+    auditActions: () => http.get<string[]>('/admin/audit/actions'),
+
+    // 兑换码
+    redeemGenerate: (body: any) => http.post('/admin/redeem-codes/generate', body),
+    redeemList: (params: any) => http.get('/admin/redeem-codes', { params }),
+    redeemOverview: () => http.get<{ ACTIVE: number; DISABLED: number; EXHAUSTED: number; EXPIRED: number; total: number }>('/admin/redeem-codes/overview'),
+    redeemBatches: () => http.get<Array<{ batchTag: string; count: number; createdAt: string }>>('/admin/redeem-codes/batches'),
+    redeemGetBatch: (tag: string) => http.get<{ batchTag: string; count: number; items: any[] }>(`/admin/redeem-codes/batch/${tag}`),
+    redeemSetStatus: (id: number, status: 'ACTIVE' | 'DISABLED') =>
+      http.put(`/admin/redeem-codes/${id}/status`, { status }),
+    redeemBatchStatus: (ids: number[], status: 'ACTIVE' | 'DISABLED') =>
+      http.post('/admin/redeem-codes/batch-status', { ids, status }),
+    redeemRemove: (id: number) => http.delete(`/admin/redeem-codes/${id}`),
+    redeemBatchRemove: (ids: number[]) => http.post('/admin/redeem-codes/batch-remove', { ids }),
+  },
+
+  redeem: {
+    info: (code: string) => http.get(`/redeem/${encodeURIComponent(code)}`),
+    use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
+  },
+
+  pay: {
+    alipayEnabled: () => http.get<{ enabled: boolean }>('/pay/alipay/enabled'),
+    alipayCreate: (orderNo: string, channel: 'PC' | 'WAP' = 'PC') =>
+      http.get<{ orderNo: string; payUrl: string }>(`/pay/alipay/create/${orderNo}`, {
+        params: { channel },
+      }),
+  },
+};
+
+export default api;

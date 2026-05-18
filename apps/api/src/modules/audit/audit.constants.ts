@@ -1,0 +1,62 @@
+/** 审计动作常量。新加 action 时必须同步更新此处 */
+export const AuditActions = {
+  // 认证
+  LOGIN_OK: 'LOGIN_OK',
+  LOGIN_FAIL: 'LOGIN_FAIL',
+  REGISTER: 'REGISTER',
+
+  // 号池
+  POOL_TOKEN_REVEAL: 'POOL_TOKEN_REVEAL',
+  POOL_ACCOUNT_CREATE: 'POOL_ACCOUNT_CREATE',
+  POOL_ACCOUNT_UPDATE: 'POOL_ACCOUNT_UPDATE',
+  POOL_ACCOUNT_DELETE: 'POOL_ACCOUNT_DELETE',
+
+  // 订单
+  ORDER_MARK_PAID: 'ORDER_MARK_PAID',
+  ORDER_REDELIVER: 'ORDER_REDELIVER',
+  ORDER_MANUAL_DELIVER: 'ORDER_MANUAL_DELIVER',
+  ORDER_REFUND: 'ORDER_REFUND',
+  ORDER_CANCEL: 'ORDER_CANCEL',
+
+  // 卡密
+  CARD_KEY_DELETE: 'CARD_KEY_DELETE',
+  CARD_KEY_BULK_REMOVE: 'CARD_KEY_BULK_REMOVE',
+  CARD_KEY_PURGE: 'CARD_KEY_PURGE',
+  CARD_KEY_BULK_IMPORT: 'CARD_KEY_BULK_IMPORT',
+
+  // 用户 / 资金
+  USER_UPDATE: 'USER_UPDATE',
+  BALANCE_ADJUST: 'BALANCE_ADJUST',
+
+  // 站点设置
+  SETTINGS_UPDATE: 'SETTINGS_UPDATE',
+
+  // 商品
+  PRODUCT_DELETE: 'PRODUCT_DELETE',
+} as const;
+
+export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];
+
+/** 给前端展示用的中文映射 */
+export const AuditActionLabels: Record<string, string> = {
+  LOGIN_OK: '登录成功',
+  LOGIN_FAIL: '登录失败',
+  REGISTER: '注册',
+  POOL_TOKEN_REVEAL: '查看号池 Token',
+  POOL_ACCOUNT_CREATE: '新建号池账号',
+  POOL_ACCOUNT_UPDATE: '编辑号池账号',
+  POOL_ACCOUNT_DELETE: '删除号池账号',
+  ORDER_MARK_PAID: '订单标记已支付',
+  ORDER_REDELIVER: '订单补发',
+  ORDER_MANUAL_DELIVER: '手动发货',
+  ORDER_REFUND: '订单退款',
+  ORDER_CANCEL: '订单取消',
+  CARD_KEY_DELETE: '删除卡密',
+  CARD_KEY_BULK_REMOVE: '批量删除卡密',
+  CARD_KEY_PURGE: '清理卡密',
+  CARD_KEY_BULK_IMPORT: '导入卡密',
+  USER_UPDATE: '修改用户',
+  BALANCE_ADJUST: '调整余额',
+  SETTINGS_UPDATE: '修改站点设置',
+  PRODUCT_DELETE: '删除商品',
+};

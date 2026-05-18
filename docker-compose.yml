@@ -1,0 +1,42 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: polo-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: polo_root_pwd
+      MYSQL_DATABASE: polo_faka
+      MYSQL_USER: polo
+      MYSQL_PASSWORD: polo_pwd
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=caching_sha2_password
+    ports:
+      - "33060:3306"
+    volumes:
+      - polo_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-ppolo_root_pwd"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: polo-redis
+    restart: unless-stopped
+    ports:
+      - "63790:6379"
+    volumes:
+      - polo_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  polo_mysql_data:
+  polo_redis_data:

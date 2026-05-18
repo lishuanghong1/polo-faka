@@ -1,0 +1,52 @@
+# 体积控制 + 防止把宿主 node_modules（含 OS-specific 二进制）COPY 进容器
+**/node_modules
+**/.pnpm-store
+**/dist
+**/.next
+**/.turbo
+**/.vite
+**/.cache
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+.github
+
+# 本地环境
+.env
+.env.local
+.env.*.local
+apps/api/.env
+apps/web/.env
+
+# 日志/临时
+*.log
+*.tmp
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# 测试
+coverage
+**/__tests__
+**/*.test.*
+**/*.spec.*
+
+# 部署/容器自身
+docker-compose.yml
+docker-compose.prod.yml
+DEPLOY.md
+.dockerignore
+README*.md
+deploy/
+terminals/
+
+# Cursor 本地缓存
+.cursor

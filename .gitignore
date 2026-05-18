@@ -1,0 +1,25 @@
+node_modules
+dist
+build
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.prod
+.env.production
+.env.*.local
+*.log
+.cache
+.turbo
+.vite
+coverage
+.idea
+.vscode
+*.tsbuildinfo
+.pnpm-store
+# 终端文件
+terminals/
+# 本地数据
+backups/
+*.bak.sql
+*.bak.sql.gz
