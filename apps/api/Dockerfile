@@ -10,8 +10,10 @@ FROM node:20-alpine
 WORKDIR /repo
 
 # build & runtime 依赖
-RUN apk add --no-cache python3 make g++ libc6-compat openssl tini \
- && corepack enable && corepack prepare pnpm@10 --activate
+RUN sed -i 's#https://dl-cdn.alpinelinux.org/alpine#https://mirrors.cloud.tencent.com/alpine#g' /etc/apk/repositories \
+ && apk add --no-cache python3 make g++ libc6-compat openssl tini \
+ && corepack enable && corepack prepare pnpm@10 --activate \
+ && pnpm config set registry https://registry.npmmirror.com
 
 # 先装 dev 依赖（用于编译）
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

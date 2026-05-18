@@ -7,7 +7,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /repo
 
-RUN corepack enable && corepack prepare pnpm@10 --activate
+RUN corepack enable && corepack prepare pnpm@10 --activate \
+ && pnpm config set registry https://registry.npmmirror.com
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json apps/web/package.json
