@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
+import { formatCardKeyContent, formatCardKeysForCopy } from '@/utils/card-key';
 
 const router = useRouter();
 const route = useRoute();
@@ -50,7 +51,7 @@ async function doRedeem() {
 
 function copyAll() {
   if (!result.value) return;
-  const text = (result.value.cardKeys || []).map((c: any) => c.content).join('\n');
+  const text = formatCardKeysForCopy(result.value.cardKeys || []);
   navigator.clipboard.writeText(text);
   ElMessage.success('已复制全部卡密');
 }
@@ -108,9 +109,9 @@ const statusLabels: Record<string, string> = {
           <div
             v-for="c in result.cardKeys"
             :key="c.id"
-            class="font-mono text-sm bg-ink-50 border border-ink-200 rounded-lg p-3 break-all"
+            class="font-mono text-sm bg-ink-50 border border-ink-200 rounded-lg p-3 break-all whitespace-pre-wrap"
           >
-            {{ c.content }}
+            {{ formatCardKeyContent(c.content) }}
           </div>
         </div>
       </div>

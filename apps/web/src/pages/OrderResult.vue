@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
+import { formatCardKeyContent, formatCardKeysForCopy } from '@/utils/card-key';
 
 const route = useRoute();
 const order = ref<any>(null);
@@ -28,7 +29,7 @@ function copy(text: string) {
 }
 
 function copyAll() {
-  const all = order.value.cardKeys.map((c: any) => c.content).join('\n');
+  const all = formatCardKeysForCopy(order.value.cardKeys || []);
   copy(all);
 }
 
@@ -94,10 +95,10 @@ function statusColor(s: string) {
             <li
               v-for="(c, i) in order.cardKeys"
               :key="i"
-              class="p-3 bg-gray-50 rounded-lg flex items-center justify-between gap-3"
+              class="p-3 bg-gray-50 rounded-lg flex items-start justify-between gap-3"
             >
-              <code class="text-sm text-gray-700 break-all">{{ c.content }}</code>
-              <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copy(c.content)">复制</button>
+              <code class="text-sm text-gray-700 break-all whitespace-pre-wrap">{{ formatCardKeyContent(c.content) }}</code>
+              <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copy(formatCardKeyContent(c.content))">复制</button>
             </li>
           </ul>
         </div>
