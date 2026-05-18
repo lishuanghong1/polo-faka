@@ -6,7 +6,7 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', name: 'home', redirect: { name: 'redeem' } },
+      { path: '', name: 'home', component: () => import('@/pages/Home.vue') },
       {
         path: 'product/:id',
         name: 'product',
@@ -66,7 +66,7 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
   if (to.meta.admin && user.profile?.role !== 'ADMIN') {
-    return { name: 'redeem' };
+    return { name: 'home' };
   }
   return true;
 });

@@ -18,7 +18,7 @@ function toggleLocale() {
 
 function logout() {
   user.logout();
-  router.push({ name: 'redeem' });
+  router.push({ name: 'home' });
 }
 </script>
 
@@ -27,7 +27,7 @@ function logout() {
     <!-- Topbar -->
     <header class="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-gray-100">
       <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <router-link to="/redeem" class="flex items-center gap-2">
+        <router-link to="/" class="flex items-center gap-2">
           <img
             v-if="site.settings.site_logo"
             :src="site.settings.site_logo"
@@ -46,28 +46,45 @@ function logout() {
         </router-link>
 
         <nav class="hidden md:flex items-center gap-6 text-sm text-gray-600">
+          <router-link to="/" class="hover:text-brand-600">{{ t('common.home') }}</router-link>
+          <router-link to="/query" class="hover:text-brand-600">{{ t('common.query') }}</router-link>
           <router-link to="/redeem" class="hover:text-brand-600">兑换码</router-link>
+          <router-link to="/tools/activate" class="hover:text-brand-600">{{ t('nav.activate') }}</router-link>
         </nav>
 
         <div class="flex items-center gap-3">
           <button class="text-xs text-gray-500 hover:text-brand-600" @click="toggleLocale">
             {{ locale === 'zh' ? 'EN' : '中' }}
           </button>
-          <template v-if="user.isLoggedIn && user.profile?.role === 'ADMIN'">
+          <template v-if="user.isLoggedIn">
             <el-dropdown>
               <span class="flex items-center gap-2 cursor-pointer text-sm">
                 <div class="w-7 h-7 rounded-full brand-gradient flex items-center justify-center text-white text-xs font-semibold">
-                  A
+                  {{ user.profile?.nickname?.[0] || user.profile?.username?.[0] || 'U' }}
                 </div>
-                <span class="hidden sm:inline">管理员</span>
+                <span class="hidden sm:inline">{{ user.profile?.nickname || user.profile?.username }}</span>
               </span>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item @click="router.push('/admin')">{{ t('common.admin') }}</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/me')">{{ t('common.me') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="user.profile?.role === 'ADMIN'" @click="router.push('/admin')">
+                    {{ t('common.admin') }}
+                  </el-dropdown-item>
                   <el-dropdown-item divided @click="logout">{{ t('common.logout') }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+          </template>
+          <template v-else>
+            <router-link to="/login" class="text-sm text-gray-700 hover:text-brand-600">
+              {{ t('common.login') }}
+            </router-link>
+            <router-link
+              to="/register"
+              class="text-sm px-3 py-1.5 rounded-lg brand-gradient text-white"
+            >
+              {{ t('common.register') }}
+            </router-link>
           </template>
         </div>
       </div>
