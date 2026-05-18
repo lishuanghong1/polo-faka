@@ -38,4 +38,7 @@ echo "[boot] seeding default admin…"
 node scripts/post-deploy.cjs || echo "[boot] seed failed (continuing)"
 
 echo "[boot] starting API…"
-exec node dist/main.js
+if [ -f dist/main.js ]; then
+  exec node dist/main.js
+fi
+exec node dist/src/main.js
