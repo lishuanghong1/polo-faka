@@ -19,6 +19,7 @@ import { PoolModule } from './modules/pool/pool.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { PayModule } from './modules/pay/pay.module';
 import { AlipayModule } from './modules/alipay/alipay.module';
+import { EmailCodeModule } from './modules/email-code/email-code.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RedeemModule } from './modules/redeem/redeem.module';
 
@@ -45,6 +46,7 @@ import { RedeemModule } from './modules/redeem/redeem.module';
     PoolModule,
     PayModule,
     AlipayModule,
+    EmailCodeModule,
     RedeemModule,
     AdminModule,
   ],

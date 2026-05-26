@@ -114,6 +114,32 @@ export const api = {
         params: { channel },
       }),
   },
+
+  emailCode: {
+    enabled: () => http.get<{ enabled: boolean }>('/email-code/enabled'),
+    fetch: (body: {
+      email: string;
+      time_range?: number;
+      clear_cache?: boolean;
+      mark_read?: boolean;
+      mail_id?: string;
+    }) =>
+      http.post<{
+        code: string;
+        found?: boolean;
+        verification_code?: string | null;
+        status?: string;
+        mail_id?: string;
+        mail_time?: number;
+        from_cache?: boolean;
+        email?: string;
+        channel?: string;
+        type_key?: string;
+        type_name?: string;
+        expire_at?: string;
+        order_no?: string;
+      }>('/email-code/fetch', body, { silent: true } as any),
+  },
 };
 
 export default api;

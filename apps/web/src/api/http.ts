@@ -19,10 +19,11 @@ instance.interceptors.response.use(
     const body = res.data;
     if (body && typeof body === 'object' && 'success' in body) {
       if (body.success === false) {
-        ElMessage.error(body.error || '请求失败');
+        if (!(res.config as any)?.silent) {
+          ElMessage.error(body.error || '请求失败');
+        }
         return Promise.reject(new Error(body.error || 'request failed'));
       }
-      // 把 res.data 替换为业务 data，外层 wrapper 直接取它
       res.data = body.data;
       return res;
     }
@@ -30,7 +31,8 @@ instance.interceptors.response.use(
   },
   (err) => {
     const msg = err?.response?.data?.error || err.message;
-    if (err?.response?.status !== 401) {
+    const silent = (err?.config as any)?.silent;
+    if (err?.response?.status !== 401 && !silent) {
       ElMessage.error(msg);
     }
     return Promise.reject(err);

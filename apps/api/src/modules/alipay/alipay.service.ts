@@ -56,19 +56,30 @@ export class AlipayService {
       map[r.key] = v;
     }
 
-    const enabled =
-      (process.env.ALIPAY_ENABLED ?? map.alipay_enabled ?? '') === 'true';
+    // env 优先，但「空字符串/未定义」一律视为未配置，让位给数据库（后台 UI 配置）
+    const pick = (envVal: string | undefined, dbVal: string | undefined): string => {
+      const e = (envVal ?? '').trim();
+      if (e) return e;
+      return (dbVal ?? '').trim();
+    };
+
+    const enabledRaw = pick(process.env.ALIPAY_ENABLED, map.alipay_enabled);
+    const enabled = enabledRaw === 'true' || enabledRaw === '1';
     if (!enabled) return null;
 
-    const appId = (process.env.ALIPAY_APP_ID ?? map.alipay_app_id ?? '').trim();
-    const privateKey = (process.env.ALIPAY_PRIVATE_KEY ?? map.alipay_private_key ?? '').trim();
-    const alipayPublicKey = (process.env.ALIPAY_PUBLIC_KEY ?? map.alipay_public_key ?? '').trim();
-    const sandbox =
-      (process.env.ALIPAY_SANDBOX ?? map.alipay_sandbox ?? 'true') === 'true';
+    const appId = pick(process.env.ALIPAY_APP_ID, map.alipay_app_id);
+    const privateKey = pick(process.env.ALIPAY_PRIVATE_KEY, map.alipay_private_key);
+    const alipayPublicKey = pick(process.env.ALIPAY_PUBLIC_KEY, map.alipay_public_key);
+    const sandboxRaw = pick(process.env.ALIPAY_SANDBOX, map.alipay_sandbox) || 'true';
+    const sandbox = sandboxRaw === 'true' || sandboxRaw === '1';
     const signType =
-      ((process.env.ALIPAY_SIGN_TYPE ?? map.alipay_sign_type ?? 'RSA2') as 'RSA2' | 'RSA') || 'RSA2';
-    const notifyBase = (process.env.ALIPAY_NOTIFY_BASE ?? map.alipay_notify_base ?? '').trim();
-    const sellerId = (process.env.ALIPAY_SELLER_ID ?? map.alipay_seller_id ?? '').trim() || undefined;
+      ((pick(process.env.ALIPAY_SIGN_TYPE, map.alipay_sign_type) || 'RSA2') as 'RSA2' | 'RSA');
+    // 同时兼容 ALIPAY_NOTIFY_BASE_URL（部署用）和 ALIPAY_NOTIFY_BASE（旧）
+    const notifyBase = (
+      pick(process.env.ALIPAY_NOTIFY_BASE_URL, undefined) ||
+      pick(process.env.ALIPAY_NOTIFY_BASE, map.alipay_notify_base)
+    ).replace(/\/+$/, ''); // 去掉尾部斜杠
+    const sellerId = pick(process.env.ALIPAY_SELLER_ID, map.alipay_seller_id) || undefined;
 
     if (!appId || !privateKey || !alipayPublicKey) {
       this.logger.warn('Alipay enabled but missing required fields');

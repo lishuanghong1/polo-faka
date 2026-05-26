@@ -1,96 +1,272 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
-import ProductCard from '@/components/ProductCard.vue';
 
 const site = useSiteStore();
-const cats = ref<any[]>([]);
-const activeCat = ref<number | undefined>(undefined);
-const products = ref<any[]>([]);
-const loading = ref(false);
 
-async function loadCats() {
-  cats.value = await api.categories();
+const email = ref('');
+const polling = ref(false);
+const elapsedSec = ref(0);
+const lastStatus = ref<string>('');
+const code = ref<string | null>(null);
+const detail = ref<any>(null);
+const errorCode = ref<string>('');
+const errorMsg = ref<string>('');
+const upstreamMsg = ref<string>('');
+const enabled = ref(true);
+
+const MAX_RETRIES = 40; // 40 * 3s = 120s
+const INTERVAL_MS = 3000;
+
+let cancelled = false;
+let timer: number | undefined;
+let elapsedTimer: number | undefined;
+
+const banner = computed(() => ({
+  title: site.settings.site_name || 'Polo 接码',
+  tagline: site.settings.site_tagline || '在线接收账号验证码 · 安全 · 即时',
+}));
+
+const isValidEmail = computed(() =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()),
+);
+
+onMounted(async () => {
+  try {
+    const r = await api.emailCode.enabled();
+    enabled.value = !!r.enabled;
+  } catch {
+    enabled.value = false;
+  }
+});
+
+onBeforeUnmount(() => {
+  cancelled = true;
+  if (timer) window.clearTimeout(timer);
+  if (elapsedTimer) window.clearInterval(elapsedTimer);
+});
+
+function reset() {
+  code.value = null;
+  detail.value = null;
+  errorCode.value = '';
+  errorMsg.value = '';
+  upstreamMsg.value = '';
+  lastStatus.value = '';
+  elapsedSec.value = 0;
 }
 
-async function loadProducts() {
-  loading.value = true;
-  try {
-    const r = await api.products({ categoryId: activeCat.value, pageSize: 60 });
-    products.value = r.items;
-  } finally {
-    loading.value = false;
+async function start() {
+  if (!isValidEmail.value) {
+    ElMessage.warning('请输入正确的邮箱地址');
+    return;
+  }
+  reset();
+  cancelled = false;
+  polling.value = true;
+  elapsedSec.value = 0;
+  elapsedTimer = window.setInterval(() => {
+    elapsedSec.value += 1;
+  }, 1000);
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    if (cancelled) break;
+    try {
+      const r = await api.emailCode.fetch({
+        email: email.value.trim(),
+        clear_cache: i === 0,
+        time_range: 300,
+      });
+      lastStatus.value = r.status || '';
+      if (r.found && r.verification_code) {
+        code.value = r.verification_code;
+        detail.value = r;
+        stopPolling();
+        return;
+      }
+    } catch (e: any) {
+      const resp = e?.response?.data;
+      const bizCode = resp?.error?.code || resp?.code || resp?.error || '';
+      const bizMsg = resp?.error?.message || resp?.message || e?.message || '请求失败';
+      const upstream = resp?.error?.upstream_message || resp?.upstream_message;
+      // 业务错（EMAIL_*）或鉴权错（AUTH_*）→ 中断轮询
+      if (typeof bizCode === 'string' && (bizCode.startsWith('EMAIL_') || bizCode.startsWith('AUTH_') || bizCode === 'FORBIDDEN_SCOPE')) {
+        errorCode.value = bizCode;
+        errorMsg.value = bizMsg;
+        upstreamMsg.value = upstream || '';
+        stopPolling();
+        return;
+      }
+      // 其它错误：网络抖动则继续 retry，但保留状态文本
+      lastStatus.value = bizMsg;
+    }
+    await new Promise((res) => {
+      timer = window.setTimeout(res, INTERVAL_MS);
+    });
+  }
+  if (!cancelled && !code.value) {
+    errorMsg.value = '超时未收到验证码，请确认验证码已发送并重试';
+  }
+  stopPolling();
+}
+
+function stop() {
+  cancelled = true;
+  stopPolling();
+}
+
+function stopPolling() {
+  polling.value = false;
+  if (timer) {
+    window.clearTimeout(timer);
+    timer = undefined;
+  }
+  if (elapsedTimer) {
+    window.clearInterval(elapsedTimer);
+    elapsedTimer = undefined;
   }
 }
 
-watch(activeCat, () => loadProducts());
+async function copyCode() {
+  if (!code.value) return;
+  try {
+    await navigator.clipboard.writeText(code.value);
+    ElMessage.success('验证码已复制');
+  } catch {
+    ElMessage.error('复制失败，请手动选中复制');
+  }
+}
 
-onMounted(async () => {
-  await loadCats();
-  await loadProducts();
-});
-
-const banner = computed(() => ({
-  title: site.settings.site_name || 'Polo AI 小铺',
-  tagline: site.settings.site_tagline || '源头好货 · Cursor / GPT / Codex / WindSurf 账号服务',
-}));
+function formatTime(ts?: number) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000);
+  return d.toLocaleString();
+}
 </script>
 
 <template>
-  <!-- Hero -->
-  <section class="border-b border-ink-100 bg-white">
-    <div class="max-w-7xl mx-auto px-4 py-10 md:py-12 flex items-end justify-between gap-6 flex-wrap">
-      <div>
+  <section class="min-h-[calc(100vh-4rem-5rem)] flex items-center justify-center px-4 py-10">
+    <div class="w-full max-w-xl">
+      <!-- Hero -->
+      <div class="text-center mb-8">
         <div class="inline-flex items-center gap-2 text-xs text-ink-500 mb-3">
           <span class="w-1.5 h-1.5 rounded-full bg-brand-600"></span>
-          源头好货 · 自动发货
+          在线接码 · 实时获取
         </div>
-        <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-ink-900">
+        <h1 class="text-3xl md:text-4xl font-semibold tracking-tight text-ink-900">
           {{ banner.title }}
         </h1>
-        <p class="mt-2 text-sm text-ink-500 max-w-2xl">{{ banner.tagline }}</p>
+        <p class="mt-3 text-sm text-ink-500">{{ banner.tagline }}</p>
       </div>
-      <div class="flex flex-wrap gap-2 text-xs text-ink-600">
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">⚡ 自动发货</span>
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">🛡️ 售后质保</span>
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">💬 在线客服</span>
+
+      <!-- Card -->
+      <div class="card p-6 md:p-8 bg-white shadow-sm border border-ink-100 rounded-2xl">
+        <div v-if="!enabled" class="text-center py-6 text-amber-700 bg-amber-50/60 border border-amber-200 rounded-lg">
+          接码接口未启用，请联系管理员在后台配置。
+        </div>
+
+        <template v-else>
+          <label class="block text-sm font-medium text-ink-700 mb-2">账号邮箱</label>
+          <div class="flex gap-2">
+            <input
+              v-model="email"
+              type="email"
+              placeholder="your-account@outlook.com"
+              autocomplete="email"
+              :disabled="polling"
+              class="flex-1 px-3.5 py-2.5 rounded-lg border border-ink-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition"
+              @keydown.enter="!polling && start()"
+            />
+            <button
+              v-if="!polling"
+              class="px-5 py-2.5 rounded-lg brand-gradient text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="!isValidEmail"
+              @click="start"
+            >
+              获取验证码
+            </button>
+            <button
+              v-else
+              class="px-5 py-2.5 rounded-lg border border-ink-200 text-ink-700 text-sm hover:bg-ink-50 transition"
+              @click="stop"
+            >
+              停止
+            </button>
+          </div>
+
+          <!-- Polling state -->
+          <div v-if="polling" class="mt-5 p-4 bg-brand-50/40 border border-brand-100 rounded-lg flex items-center gap-3">
+            <div class="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+            <div class="flex-1 text-sm text-ink-700">
+              <div>正在轮询邮箱 <code class="font-mono text-ink-900">{{ email }}</code> 的最新邮件…</div>
+              <div class="text-xs text-ink-500 mt-0.5">
+                已等待 {{ elapsedSec }}s
+                <template v-if="lastStatus"> · {{ lastStatus }}</template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Success -->
+          <div v-if="code && !polling" class="mt-5">
+            <div class="p-4 bg-emerald-50/60 border border-emerald-200 rounded-lg">
+              <div class="text-xs text-emerald-700 mb-1">验证码已收到</div>
+              <div class="flex items-center justify-between gap-3">
+                <div class="text-3xl font-mono font-bold tracking-[0.3em] text-emerald-900">
+                  {{ code }}
+                </div>
+                <button
+                  class="px-3 py-1.5 text-xs rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                  @click="copyCode"
+                >
+                  复制
+                </button>
+              </div>
+            </div>
+            <div v-if="detail" class="mt-3 text-xs text-ink-500 space-y-0.5">
+              <div v-if="detail.type_name">商品类型：{{ detail.type_name }}</div>
+              <div v-if="detail.mail_time">收件时间：{{ formatTime(detail.mail_time) }}</div>
+              <div v-if="detail.expire_at">账号有效期至：{{ detail.expire_at }}</div>
+            </div>
+            <button
+              class="mt-4 w-full px-4 py-2 rounded-lg border border-ink-200 text-sm text-ink-700 hover:bg-ink-50 transition"
+              @click="reset"
+            >
+              再来一次
+            </button>
+          </div>
+
+          <!-- Error -->
+          <div v-if="errorMsg && !polling && !code" class="mt-5 p-4 bg-rose-50/60 border border-rose-200 rounded-lg">
+            <div class="text-xs text-rose-700 mb-1">
+              获取失败<template v-if="errorCode"> · {{ errorCode }}</template>
+            </div>
+            <div class="text-sm text-rose-900">{{ errorMsg }}</div>
+            <div v-if="upstreamMsg && upstreamMsg !== errorMsg" class="text-xs text-rose-700 mt-2 font-mono break-all bg-white/60 rounded px-2 py-1">
+              上游返回：{{ upstreamMsg }}
+            </div>
+            <div v-if="errorCode === 'EMAIL_NOT_OWNED'" class="text-xs text-rose-700 mt-2">
+              该邮箱不属于本平台代理。请确认邮箱拼写无误，或确认该号是在本平台购买的。
+            </div>
+            <div v-else-if="errorCode === 'EMAIL_CODE_NOT_ENABLED'" class="text-xs text-rose-700 mt-2">
+              该商品类型暂未开放接码功能。请联系客服处理。
+            </div>
+            <div v-else-if="errorCode === 'EMAIL_INACTIVE'" class="text-xs text-rose-700 mt-2">
+              账号已不可用（可能已退款 / 换绑 / 禁用）。
+            </div>
+            <div v-else-if="errorCode === 'EMAIL_EXPIRED'" class="text-xs text-rose-700 mt-2">
+              账号已到期，无法继续接收验证码。
+            </div>
+          </div>
+        </template>
       </div>
-    </div>
-  </section>
 
-  <!-- Categories -->
-  <section class="max-w-7xl mx-auto px-4 mt-6">
-    <div class="flex items-center gap-2 overflow-x-auto pb-2 -mx-1 px-1">
-      <button
-        class="px-4 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors"
-        :class="activeCat === undefined
-          ? 'bg-ink-900 text-white'
-          : 'bg-white text-ink-600 border border-ink-200 hover:border-ink-400'"
-        @click="activeCat = undefined"
-      >
-        全部
-      </button>
-      <button
-        v-for="c in cats.filter(c => c.slug !== 'all')"
-        :key="c.id"
-        class="px-4 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors"
-        :class="activeCat === c.id
-          ? 'bg-ink-900 text-white'
-          : 'bg-white text-ink-600 border border-ink-200 hover:border-ink-400'"
-        @click="activeCat = c.id"
-      >
-        {{ c.name }}
-      </button>
-    </div>
-  </section>
-
-  <!-- Products grid -->
-  <section class="max-w-7xl mx-auto px-4 mt-4 pb-12">
-    <div v-if="loading" class="text-center py-20 text-gray-400">加载中...</div>
-    <div v-else-if="!products.length" class="text-center py-20 text-gray-400">暂无商品</div>
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      <ProductCard v-for="p in products" :key="p.id" :product="p" />
+      <!-- Tips -->
+      <div class="mt-5 text-xs text-ink-500 leading-relaxed text-center">
+        操作说明：先在目标网站触发发送验证码 → 这里输入对应账号邮箱 → 点击「获取验证码」<br />
+        每 3 秒自动轮询，最长等待 2 分钟。
+      </div>
     </div>
   </section>
 </template>

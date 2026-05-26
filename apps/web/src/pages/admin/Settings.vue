@@ -42,7 +42,15 @@ const alipayFields: Field[] = [
   { key: 'alipay_notify_base', label: '公网回调 Base URL（必填）', placeholder: 'https://your-domain.com', isPublic: false, type: 'text', hint: '支付宝异步通知 / 同步返回会拼接到这里。本地调试需用 cpolar / ngrok 暴露公网' },
 ];
 
-const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key']);
+const emailCodeFields: Field[] = [
+  { key: 'email_code_enabled', label: '启用接码接口', isPublic: false, type: 'switch', hint: '关闭后前台首页提示「接口未启用」' },
+  { key: 'email_code_api_base', label: '三方 API Base URL', placeholder: 'https://apiforge.cursorforgeai.top', isPublic: false, type: 'text', mono: true, hint: '留空时使用默认。不带尾部斜杠。本站会在此基础上拼 /openapi/v1/email-code' },
+  { key: 'email_code_agent_key', label: 'Agent Key (ak_)', placeholder: 'ak_xxxxxxxxxxxxxxx（42 字符公开标识）', isPublic: false, type: 'text', mono: true, hint: 'X-Agent-Key 请求头使用' },
+  { key: 'email_code_agent_secret', label: 'Agent Secret (sk_)', placeholder: 'sk_xxxxxxxxxxxxxxx（66 字符，仅本站后端用于 HMAC-SHA256 签名）', isPublic: false, type: 'textarea', mono: true },
+  { key: 'email_code_timeout_ms', label: '请求超时（毫秒）', placeholder: '15000', isPublic: false, type: 'text', hint: '建议 10000-30000；过小容易超时' },
+];
+
+const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret']);
 const SECRET_PLACEHOLDER = '__keep__';
 
 const values = ref<Record<string, string>>({});
@@ -52,7 +60,7 @@ const hasValueMap = ref<Record<string, boolean>>({});
 const secretEdited = ref<Record<string, boolean>>({});
 const loading = ref(false);
 const saving = ref(false);
-const activeTab = ref<'site' | 'alipay'>('site');
+const activeTab = ref<'site' | 'alipay' | 'email_code'>('site');
 
 async function load() {
   loading.value = true;
@@ -72,6 +80,8 @@ async function load() {
     if (values.value.alipay_enabled === undefined) values.value.alipay_enabled = 'false';
     if (values.value.alipay_sandbox === undefined) values.value.alipay_sandbox = 'true';
     if (!values.value.alipay_sign_type) values.value.alipay_sign_type = 'RSA2';
+    if (values.value.email_code_enabled === undefined) values.value.email_code_enabled = 'false';
+    if (!values.value.email_code_timeout_ms) values.value.email_code_timeout_ms = '15000';
   } finally {
     loading.value = false;
   }
@@ -81,7 +91,7 @@ async function save() {
   saving.value = true;
   try {
     const payload: Record<string, { value: string; isPublic?: boolean }> = {};
-    for (const f of [...siteFields, ...alipayFields]) {
+    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields]) {
       if (SECRET_KEYS.has(f.key)) {
         if (!secretEdited.value[f.key]) {
           // 没改过 → 发占位符，让后端跳过
@@ -94,7 +104,7 @@ async function save() {
       }
     }
     await api.admin.settingsSet(payload);
-    ElMessage.success('已保存。支付宝相关改动 5 秒内生效。');
+    ElMessage.success('已保存。支付宝 / 接码接口相关改动会立即生效。');
     await load();
   } finally {
     saving.value = false;
@@ -136,6 +146,11 @@ onMounted(load);
           activeTab === 'alipay' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'alipay'"
       >支付宝</button>
+      <button
+        :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
+          activeTab === 'email_code' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
+        @click="activeTab = 'email_code'"
+      >接码接口</button>
     </div>
 
     <!-- 站点信息 -->
@@ -242,6 +257,75 @@ onMounted(load);
           <p>· 异步通知地址：<code class="font-mono text-ink-700">{回调 Base URL}/api/pay/alipay/notify</code></p>
           <p>· 同步返回地址：<code class="font-mono text-ink-700">{回调 Base URL}/api/pay/alipay/return</code></p>
           <p>· 这两个 URL 不需要在支付宝开放平台后台再单独配置，SDK 会带上。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 接码接口 -->
+    <div v-show="activeTab === 'email_code'" class="space-y-4">
+      <div class="card p-4 bg-sky-50/40 border-sky-200 text-sky-900 text-xs flex gap-3">
+        <span class="text-base">ℹ</span>
+        <div class="space-y-1.5 leading-relaxed">
+          <p>对接 <b>Cursorforge 代理 OpenAPI v1</b>（<code class="font-mono">/openapi/v1/email-code</code>）。鉴权方式：<b>HMAC-SHA256 签名</b>（X-Agent-Key + X-Agent-Timestamp + X-Agent-Nonce + X-Agent-Signature）。</p>
+          <p><b>凭证</b>：在 cursorforgeai 代理后台 → 开发者中心 创建，会得到一对 <code class="font-mono">ak_xxx</code>（agent_key）和 <code class="font-mono">sk_xxx</code>（agent_secret，仅创建时显示一次）。</p>
+          <p><b>scope</b>：调用 key 必须包含 <code class="font-mono">email:code</code>（或 <code class="font-mono">email:*</code> / <code class="font-mono">*</code>）。</p>
+          <p><b>⚠ IP 白名单（必须配置！）</b>：v1.0.2 起 cursorforgeai 强制每个 key 必须配置 IP 白名单。请把 <b>本服务器固定出口 IP</b> 加到 cursorforgeai 代理后台 → 开发者中心 → 编辑该 key 里的「允许 IP」字段，否则会返回 <code class="font-mono">AUTH_IP_WHITELIST_REQUIRED</code>。</p>
+          <p><b>NTP</b>：服务器时间偏差需在 ±5 分钟内，否则签名会被判过期。</p>
+          <p><b>安全</b>：agent_secret 会被 AES-GCM 加密入库，保存后不再回显，永远不发给浏览器。HMAC 签名在本站后端进行。</p>
+        </div>
+      </div>
+
+      <div class="card p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div
+            v-for="f in emailCodeFields"
+            :key="f.key"
+            :class="f.type === 'textarea' ? 'md:col-span-2' : ''"
+          >
+            <label class="block text-sm font-medium text-ink-800 mb-1">{{ f.label }}</label>
+            <p class="text-[11px] text-ink-400 mb-1.5 font-mono">key: {{ f.key }}</p>
+
+            <label v-if="f.type === 'switch'" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox"
+                :checked="values[f.key] === 'true'"
+                @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
+              />
+              <span class="ml-2 text-sm text-ink-700">
+                {{ values[f.key] === 'true' ? '开启' : '关闭' }}
+              </span>
+            </label>
+
+            <div v-else-if="f.type === 'textarea'">
+              <textarea
+                v-model="values[f.key]"
+                rows="3"
+                :placeholder="SECRET_KEYS.has(f.key) && hasValueMap[f.key] && !secretEdited[f.key] ? '已设置（留空保持不变；输入新值覆盖）' : f.placeholder"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm font-mono break-all"
+                @input="SECRET_KEYS.has(f.key) && markSecretEdit(f.key)"
+              />
+              <p v-if="SECRET_KEYS.has(f.key) && hasValueMap[f.key]" class="text-[11px] text-brand-700 mt-1">
+                ✓ 已设置且加密保存于数据库
+              </p>
+              <p v-else-if="SECRET_KEYS.has(f.key)" class="text-[11px] text-ink-400 mt-1">
+                ✗ 尚未设置
+              </p>
+            </div>
+
+            <input
+              v-else
+              v-model="values[f.key]"
+              :placeholder="f.placeholder"
+              :class="['w-full px-3 py-2 border border-ink-200 rounded-lg text-sm', f.mono ? 'font-mono text-xs' : '']"
+            />
+
+            <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-ink-100 text-xs text-ink-500 space-y-1.5">
+          <p>· 前台路径：<code class="font-mono text-ink-700">POST /api/email-code/fetch</code>（本站后端代理，<b>不</b>暴露三方 API Key 到浏览器）</p>
+          <p>· 单 IP 限流：每 10 秒最多 5 次（兼容客户端 3s 轮询）</p>
+          <p>· 错误码：EMAIL_NOT_OWNED / EMAIL_CODE_NOT_ENABLED / EMAIL_INACTIVE / EMAIL_EXPIRED 会原样透传</p>
         </div>
       </div>
     </div>

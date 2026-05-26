@@ -1,16 +1,18 @@
 import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AlipayService } from '../alipay/alipay.service';
+import { EmailCodeService } from '../email-code/email-code.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 
 /**
  * 这些 key 的 value 入库前会被 AES-GCM 加密；
  * getAll() 不返回原文（只用占位符 + hasValue 标志）。
- * 业务消费方（如 AlipayService）使用 readSecret() 拿明文。
+ * 业务消费方使用 readSecret() 拿明文。
  */
 const SECRET_KEYS = new Set<string>([
   'alipay_private_key',
   'alipay_public_key',
+  'email_code_agent_secret',
 ]);
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */
@@ -21,6 +23,7 @@ export class SiteSettingsService {
   constructor(
     private prisma: PrismaService,
     @Optional() @Inject(forwardRef(() => AlipayService)) private alipay?: AlipayService,
+    @Optional() @Inject(forwardRef(() => EmailCodeService)) private emailCode?: EmailCodeService,
   ) {}
 
   async getPublic() {
@@ -107,9 +110,12 @@ export class SiteSettingsService {
       );
     }
     if (ops.length) await this.prisma.$transaction(ops);
-    // 涉及支付宝配置 → 让 SDK 重建
-    if (Object.keys(map).some((k) => k.startsWith('alipay_'))) {
+    const keys = Object.keys(map);
+    if (keys.some((k) => k.startsWith('alipay_'))) {
       this.alipay?.invalidate();
+    }
+    if (keys.some((k) => k.startsWith('email_code_'))) {
+      this.emailCode?.invalidate();
     }
     return { updated: ops.length };
   }
