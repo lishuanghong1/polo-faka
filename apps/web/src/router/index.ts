@@ -35,9 +35,19 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/ForgeRedeem.vue'),
       },
       {
+        path: 'forge-product/:typeKey',
+        name: 'forge-product',
+        component: () => import('@/pages/ForgeProductDetail.vue'),
+      },
+      {
         path: 'forge-order/:orderNo',
         name: 'forge-order',
         component: () => import('@/pages/ForgeOrder.vue'),
+      },
+      {
+        path: 'email-code',
+        name: 'email-code-page',
+        component: () => import('@/pages/EmailCodePage.vue'),
       },
     ],
   },

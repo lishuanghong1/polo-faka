@@ -461,40 +461,66 @@ model ForgeRedeemCode {
 }
 
 enum ForgeOrderStatus {
-  PENDING
-  DELIVERED
-  FAILED
+  PENDING       // 已下单，等待付款（ALIPAY 路径）
+  PAID          // 已付款，准备调三方发货
+  DELIVERED     // 已发货（accounts 入库）
+  FAILED        // 失败（库存 / 上游错误 等）
+  CANCELLED     // 用户/系统取消
+  EXPIRED       // 超时未支付
 }
 
-/// Cursorforge 三方订单（兑换码触发下单，account_json 加密保存）
-model ForgeOrder {
-  id                Int              @id @default(autoincrement())
-  orderNo           String           @unique @db.VarChar(64) // 我方订单号 & 三方 external_order_id
-  redeemCodeId      Int
-  typeKey           String           @db.VarChar(64)
-  typeName          String           @db.VarChar(128)
-  quantity          Int              @default(1)
-  displayPrice      Decimal          @db.Decimal(12, 2) // 单价（售价）
-  totalAmount       Decimal          @db.Decimal(12, 2) // displayPrice × quantity
-  customerRef       String           @db.VarChar(128)   // sha256(redeem_code + salt)
-  status            ForgeOrderStatus @default(PENDING)
-  upstreamOrderNo   String?          @db.VarChar(64)    // 三方 order_no
-  upstreamRequestId String?          @db.VarChar(64)
-  upstreamAmount    Decimal?         @db.Decimal(12, 2) // 三方扣我方的成本
-  /// 三方返回 accounts 数组（加密 JSON），含 email + access_token
-  upstreamData      String?          @db.Text
-  deliveredAt       DateTime?
-  failReason        String?          @db.VarChar(500)
-  ip                String?          @db.VarChar(64)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+enum ForgePaymentMethod {
+  REDEEM        // 兑换码支付
+  ALIPAY        // 支付宝
+}
 
-  redeemCode ForgeRedeemCode @relation(fields: [redeemCodeId], references: [id])
-  product    ForgeProduct?   @relation(fields: [typeKey], references: [typeKey])
+/// Cursorforge 三方订单（兑换码 / 支付宝 触发下单，accounts 加密保存）
+model ForgeOrder {
+  id                Int                @id @default(autoincrement())
+  orderNo           String             @unique @db.VarChar(64) // 我方订单号 & 三方 external_order_id
+  userId            Int?               // 可空（访客下单）
+  /// 仅 REDEEM 路径填，ALIPAY 路径为 null
+  redeemCodeId      Int?
+  paymentMethod     ForgePaymentMethod @default(REDEEM)
+
+  typeKey           String             @db.VarChar(64)
+  typeName          String             @db.VarChar(128)
+  quantity          Int                @default(1)
+  displayPrice      Decimal            @db.Decimal(12, 2) // 单价（售价）
+  totalAmount       Decimal            @db.Decimal(12, 2) // displayPrice × quantity
+
+  /// 客户联系方式（QQ / 邮箱 / 手机），便于售后查单
+  contact           String?            @db.VarChar(128)
+  /// sha256(orderNo + salt)；三方要求脱敏标识
+  customerRef       String             @db.VarChar(128)
+
+  status            ForgeOrderStatus   @default(PENDING)
+
+  /// 支付宝交易号（仅 ALIPAY 路径）
+  thirdTradeNo      String?            @db.VarChar(64)
+  paidAt            DateTime?
+  /// 待支付订单超时时间（仅 ALIPAY 路径，超时变 EXPIRED）
+  expireAt          DateTime?
+
+  upstreamOrderNo   String?            @db.VarChar(64)
+  upstreamRequestId String?            @db.VarChar(64)
+  upstreamAmount    Decimal?           @db.Decimal(12, 2)
+  /// 三方返回 accounts 数组（加密 JSON）
+  upstreamData      String?            @db.Text
+  deliveredAt       DateTime?
+  failReason        String?            @db.VarChar(500)
+  ip                String?            @db.VarChar(64)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  redeemCode ForgeRedeemCode? @relation(fields: [redeemCodeId], references: [id])
+  product    ForgeProduct?    @relation(fields: [typeKey], references: [typeKey])
 
   @@index([redeemCodeId])
   @@index([status, createdAt])
+  @@index([status, expireAt])
   @@index([typeKey])
+  @@index([userId, createdAt])
   @@map("forge_orders")
 }
 

@@ -10,9 +10,11 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ForgeOrderStatus } from '@prisma/client';
-import { ForgeRedeemService } from './forge-redeem.service';
+import { ForgeOrderStatus, ForgePaymentMethod } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ForgeProductsService } from './forge-products.service';
+import { ForgeRedeemCodesService } from './forge-redeem-codes.service';
+import { ForgeOrdersService } from './forge-orders.service';
 import { GenerateForgeCodesDto, UpdateForgeProductDto } from './dto';
 
 @ApiTags('admin-forge')
@@ -20,28 +22,34 @@ import { GenerateForgeCodesDto, UpdateForgeProductDto } from './dto';
 @Roles('ADMIN')
 @Controller('admin/forge')
 export class ForgeRedeemAdminController {
-  constructor(private svc: ForgeRedeemService) {}
+  constructor(
+    private products: ForgeProductsService,
+    private codes: ForgeRedeemCodesService,
+    private orders: ForgeOrdersService,
+  ) {}
 
-  // ── 商品同步 / 管理 ─────────────────────────────────
+  // ── 商品 ───────────────────────────────────────
   @Post('products/sync')
   syncProducts() {
-    return this.svc.syncProducts();
+    return this.products.syncProducts();
   }
 
   @Get('products')
   listProducts() {
-    return this.svc.listProductsAdmin();
+    return this.products.listAdmin();
   }
 
   @Put('products/:typeKey')
-  updateProduct(@Param('typeKey') typeKey: string, @Body() dto: UpdateForgeProductDto) {
-    return this.svc.updateProduct(typeKey, dto);
+  async updateProduct(@Param('typeKey') typeKey: string, @Body() dto: UpdateForgeProductDto) {
+    const r = await this.products.update(typeKey, dto);
+    this.products.invalidateCache();
+    return r;
   }
 
-  // ── 兑换码 ─────────────────────────────────────────
+  // ── 兑换码 ─────────────────────────────────────
   @Post('redeem-codes/generate')
   generateCodes(@Body() dto: GenerateForgeCodesDto) {
-    return this.svc.generateCodes(dto);
+    return this.codes.generate(dto);
   }
 
   @Get('redeem-codes')
@@ -52,7 +60,7 @@ export class ForgeRedeemAdminController {
     @Query('batchTag') batchTag?: string,
     @Query('keyword') keyword?: string,
   ) {
-    return this.svc.listCodes({
+    return this.codes.list({
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       status,
@@ -63,12 +71,12 @@ export class ForgeRedeemAdminController {
 
   @Get('redeem-codes/batches')
   batches() {
-    return this.svc.batches();
+    return this.codes.batches();
   }
 
   @Get('redeem-codes/batch/:batchTag')
   getBatch(@Param('batchTag') batchTag: string) {
-    return this.svc.getBatch(batchTag);
+    return this.codes.getBatch(batchTag);
   }
 
   @Put('redeem-codes/:id/status')
@@ -76,27 +84,29 @@ export class ForgeRedeemAdminController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: { status: 'ACTIVE' | 'DISABLED' },
   ) {
-    return this.svc.toggleCodeStatus(id, body.status);
+    return this.codes.toggleStatus(id, body.status);
   }
 
   @Delete('redeem-codes/:id')
   remove(@Param('id', ParseIntPipe) id: number) {
-    return this.svc.removeCode(id);
+    return this.codes.remove(id);
   }
 
-  // ── 三方订单流水 ─────────────────────────────────────
+  // ── 三方订单 ───────────────────────────────────
   @Get('orders')
   listOrders(
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
+    @Query('paymentMethod') paymentMethod?: string,
     @Query('typeKey') typeKey?: string,
     @Query('keyword') keyword?: string,
   ) {
-    return this.svc.listOrdersAdmin({
+    return this.orders.listAdmin({
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
       status: status ? (status as ForgeOrderStatus) : undefined,
+      paymentMethod: paymentMethod ? (paymentMethod as ForgePaymentMethod) : undefined,
       typeKey,
       keyword,
     });
@@ -104,6 +114,11 @@ export class ForgeRedeemAdminController {
 
   @Get('orders/:orderNo')
   orderDetail(@Param('orderNo') orderNo: string) {
-    return this.svc.detailAdmin(orderNo);
+    return this.orders.detail(orderNo);
+  }
+
+  @Post('orders/:orderNo/retry')
+  retryFulfill(@Param('orderNo') orderNo: string) {
+    return this.orders.adminRetryFulfill(orderNo);
   }
 }

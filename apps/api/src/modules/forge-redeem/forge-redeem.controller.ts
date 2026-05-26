@@ -1,44 +1,95 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
-import { ForgeRedeemService } from './forge-redeem.service';
 import { Public } from '../../common/decorators/public.decorator';
-import { RedeemCheckDto, RedeemOrderDto } from './dto';
+import { ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
+import { ForgeProductsService } from './forge-products.service';
+import { ForgeRedeemCodesService } from './forge-redeem-codes.service';
+import { ForgeOrdersService } from './forge-orders.service';
+import {
+  AlipayOrderDto,
+  RedeemCheckDto,
+  RedeemOrderDto,
+} from './dto';
 
 /**
- * 公开端点：访客直接访问（兑换流程）
+ * 公开端点（无需登录）。
+ * 前缀沿用 /forge-redeem 以保持向后兼容；新增的支付宝路径也挂在这下面。
  */
 @ApiTags('forge-redeem')
 @Controller('forge-redeem')
 export class ForgeRedeemController {
-  constructor(private svc: ForgeRedeemService) {}
+  constructor(
+    private products: ForgeProductsService,
+    private codes: ForgeRedeemCodesService,
+    private orders: ForgeOrdersService,
+  ) {}
 
-  /** 查询兑换码状态 + 余额 + 可下单商品 */
+  // ── 商品 ─────────────────────────────────────────
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('products')
+  listProducts() {
+    return this.products.listPublic();
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  @Get('products/:typeKey')
+  async getProduct(@Param('typeKey') typeKey: string) {
+    const p = await this.products.getPublic(typeKey);
+    if (!p) return null;
+    return p;
+  }
+
+  // ── 兑换码 ───────────────────────────────────────
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('check')
-  check(@Body() body: RedeemCheckDto) {
-    return this.svc.checkCode(body.code);
+  async check(@Body() body: RedeemCheckDto) {
+    const info = await this.codes.info(body.code);
+    const products = await this.products.listPublic();
+    return { ...info, products };
   }
 
-  /** 触发下单 */
   @Public()
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post('order')
-  async order(@Body() body: RedeemOrderDto, @Req() req: Request) {
-    return this.svc.createOrder({
-      code: body.code,
+  async orderByCode(@Body() body: RedeemOrderDto, @Req() req: Request) {
+    try {
+      return await this.orders.createByRedeemCode({
+        code: body.code,
+        typeKey: body.typeKey,
+        quantity: body.quantity,
+        contact: body.contact,
+        ip: req.ip,
+      });
+    } catch (e) {
+      throw ForgeOpenapiService.toHttpException(e);
+    }
+  }
+
+  // ── 支付宝路径下单 ────────────────────────────────
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('alipay-order')
+  async orderByAlipay(@Body() body: AlipayOrderDto, @Req() req: Request) {
+    return this.orders.createForAlipay({
       typeKey: body.typeKey,
       quantity: body.quantity,
+      contact: body.contact,
       ip: req.ip,
     });
   }
 
-  /** 公开订单详情（凭 orderNo 直接查询） */
+  // ── 订单查询 ────────────────────────────────────
   @Public()
   @Get('order/:orderNo')
-  detail(@Param('orderNo') orderNo: string) {
-    return this.svc.detail(orderNo);
+  detail(
+    @Param('orderNo') orderNo: string,
+    @Query('contact') contact?: string,
+  ) {
+    return this.orders.query(orderNo, contact);
   }
 }

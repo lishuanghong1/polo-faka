@@ -116,7 +116,23 @@ export const api = {
   },
 
   forge: {
-    // 公开
+    // 公开 · 商品
+    listProducts: () =>
+      http.get<Array<{
+        typeKey: string;
+        categoryKey: string;
+        categoryName: string;
+        typeName: string;
+        displayPrice: number;
+        agentPrice: number;
+        stock: number;
+        warrantyHours: number | null;
+        emailCodeEnabled: boolean;
+      }>>('/forge-redeem/products'),
+    getProduct: (typeKey: string) =>
+      http.get<any>(`/forge-redeem/products/${encodeURIComponent(typeKey)}`),
+
+    // 公开 · 兑换码
     check: (code: string) =>
       http.post<{
         code: string;
@@ -132,55 +148,27 @@ export const api = {
           typeKey: string;
           quantity: number;
           totalAmount: number;
-          status: 'PENDING' | 'DELIVERED' | 'FAILED';
+          status: 'PENDING' | 'PAID' | 'DELIVERED' | 'FAILED' | 'EXPIRED' | 'CANCELLED';
           createdAt: string;
           deliveredAt?: string;
         }>;
-        products: Array<{
-          typeKey: string;
-          categoryKey: string;
-          categoryName: string;
-          typeName: string;
-          displayPrice: number;
-          stock: number;
-          warrantyHours: number | null;
-          emailCodeEnabled: boolean;
-        }>;
+        products: any[];
       }>('/forge-redeem/check', { code }, { silent: true } as any),
-    order: (body: { code: string; typeKey: string; quantity: number }) =>
-      http.post<{
-        orderNo: string;
-        typeKey: string;
-        typeName: string;
-        quantity: number;
-        displayPrice: number;
-        totalAmount: number;
-        status: 'PENDING' | 'DELIVERED' | 'FAILED';
-        accounts: Array<{
-          id?: number;
-          email: string;
-          account_json?: { email?: string; access_token?: string };
-        }>;
-      }>('/forge-redeem/order', body, { silent: true } as any),
-    orderDetail: (orderNo: string) =>
-      http.get<{
-        orderNo: string;
-        typeKey: string;
-        typeName: string;
-        quantity: number;
-        displayPrice: number;
-        totalAmount: number;
-        status: 'PENDING' | 'DELIVERED' | 'FAILED';
-        upstreamOrderNo?: string;
-        deliveredAt?: string;
-        failReason?: string;
-        createdAt: string;
-        accounts: Array<{
-          id?: number;
-          email: string;
-          account_json?: { email?: string; access_token?: string };
-        }>;
-      }>(`/forge-redeem/order/${encodeURIComponent(orderNo)}`),
+
+    // 公开 · 下单（兑换码路径）
+    order: (body: { code: string; typeKey: string; quantity: number; contact?: string }) =>
+      http.post<any>('/forge-redeem/order', body, { silent: true } as any),
+
+    // 公开 · 下单（支付宝路径）
+    alipayOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
+      http.post<any>('/forge-redeem/alipay-order', body, { silent: true } as any),
+
+    // 公开 · 订单详情（带 contact 校验）
+    orderDetail: (orderNo: string, contact?: string) =>
+      http.get<any>(
+        `/forge-redeem/order/${encodeURIComponent(orderNo)}`,
+        contact ? { params: { contact } } : undefined,
+      ),
 
     // Admin
     admin: {
@@ -201,6 +189,8 @@ export const api = {
       listOrders: (params: any) => http.get('/admin/forge/orders', { params }),
       orderDetail: (orderNo: string) =>
         http.get(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
+      retryFulfill: (orderNo: string) =>
+        http.post(`/admin/forge/orders/${encodeURIComponent(orderNo)}/retry`),
     },
   },
 

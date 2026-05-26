@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   Get,
   Logger,
@@ -14,8 +13,19 @@ import { ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { AlipayService } from './alipay.service';
 import { OrdersService } from '../orders/orders.service';
+import { ForgeOrdersService } from '../forge-redeem/forge-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Public } from '../../common/decorators/public.decorator';
+
+/**
+ * 订单号规则：
+ *   - 本地卡密订单：以 'P' 开头（如 P20260519143012xxxxxxxxxxx）
+ *   - Cursorforge 三方订单：以 'F' 开头（如 F20260519143012xxxxxxxxxxx）
+ * 支付宝 create / notify 根据前缀分发。
+ */
+function isForgeOrder(orderNo: string) {
+  return typeof orderNo === 'string' && orderNo.startsWith('F');
+}
 
 @ApiTags('alipay')
 @Controller('pay/alipay')
@@ -25,17 +35,17 @@ export class AlipayController {
   constructor(
     private readonly alipay: AlipayService,
     private readonly orders: OrdersService,
+    private readonly forgeOrders: ForgeOrdersService,
     private readonly prisma: PrismaService,
   ) {}
 
-  /** 检测前台是否要展示「支付宝」选项 */
   @Public()
   @Get('enabled')
   async enabled() {
     return { enabled: await this.alipay.isEnabled() };
   }
 
-  /** 创建支付链接（前端跳转到该 URL 进入支付宝收银台） */
+  /** 创建支付链接（兼容本地订单 / 三方订单） */
   @Public()
   @Get('create/:orderNo')
   async create(
@@ -43,26 +53,44 @@ export class AlipayController {
     @Query('channel') channel: 'PC' | 'WAP' = 'PC',
     @Query('return') returnUrl?: string,
   ) {
-    const order = await this.prisma.order.findUnique({ where: { orderNo } });
-    if (!order) throw new BadRequestException('订单不存在');
-    if (order.status !== 'PENDING') {
-      throw new BadRequestException('订单状态不允许支付');
+    let payAmount: number;
+    let subject: string;
+
+    if (isForgeOrder(orderNo)) {
+      const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
+      if (!order) throw new BadRequestException('订单不存在');
+      if (order.paymentMethod !== 'ALIPAY') {
+        throw new BadRequestException('订单不是支付宝订单');
+      }
+      if (order.status !== 'PENDING') {
+        throw new BadRequestException('订单状态不允许支付');
+      }
+      if (order.expireAt && order.expireAt.getTime() < Date.now()) {
+        throw new BadRequestException('订单已过期');
+      }
+      payAmount = Number(order.totalAmount);
+      subject = order.typeName;
+    } else {
+      const order = await this.prisma.order.findUnique({ where: { orderNo } });
+      if (!order) throw new BadRequestException('订单不存在');
+      if (order.status !== 'PENDING') {
+        throw new BadRequestException('订单状态不允许支付');
+      }
+      payAmount = Number(order.payAmount);
+      subject = order.productTitle;
     }
+
     const url = await this.alipay.createPayUrl({
-      orderNo: order.orderNo,
-      amount: Number(order.payAmount),
-      subject: order.productTitle,
+      orderNo,
+      amount: payAmount,
+      subject,
       channel: channel === 'WAP' ? 'WAP' : 'PC',
       returnUrl,
     });
     return { orderNo, payUrl: url };
   }
 
-  /**
-   * 异步通知（支付宝服务器 POST，application/x-www-form-urlencoded）
-   * 必须验签 + 金额校验，幂等。
-   * 必须返回纯文本 "success" 或 "fail"。
-   */
+  /** 异步通知（必须验签 + 金额校验 + 幂等；纯文本响应） */
   @Public()
   @Post('notify')
   async notify(@Req() req: Request, @Res() res: Response) {
@@ -83,37 +111,40 @@ export class AlipayController {
 
       if (!orderNo) return res.status(200).send('fail');
 
-      // 仅在交易成功状态下处理
       if (tradeStatus !== 'TRADE_SUCCESS' && tradeStatus !== 'TRADE_FINISHED') {
         return res.status(200).send('success');
       }
 
+      if (isForgeOrder(orderNo)) {
+        // ── Cursorforge 三方订单分支 ──
+        try {
+          await this.forgeOrders.markPaidAndFulfill(orderNo, tradeNo, totalAmount);
+        } catch (e) {
+          this.logger.error(`forge markPaidAndFulfill failed: ${(e as Error).message}`);
+          // 注意：依然返回 success 给支付宝（已收到通知），失败由 admin 重试
+        }
+        return res.status(200).send('success');
+      }
+
+      // ── 本地卡密订单分支 ──
       const order = await this.prisma.order.findUnique({ where: { orderNo } });
       if (!order) {
         this.logger.warn(`alipay notify: order ${orderNo} not found`);
         return res.status(200).send('fail');
       }
-
-      // 金额校验：必须等于订单 payAmount
       if (Math.abs(totalAmount - Number(order.payAmount)) > 0.01) {
         this.logger.error(
           `alipay notify amount mismatch: order=${order.payAmount} notify=${totalAmount}`,
         );
         return res.status(200).send('fail');
       }
-
-      // 已发货/已退款/已取消：直接返回 success（幂等）
       if (['DELIVERED', 'REFUNDED', 'CANCELLED'].includes(order.status)) {
         return res.status(200).send('success');
       }
-
-      // 记录 trade_no
       await this.prisma.order.update({
         where: { orderNo },
         data: { thirdTradeNo: tradeNo },
       });
-
-      // 触发标记已支付 + 自动出库
       await this.orders.markPaidAndDeliver(orderNo);
       return res.status(200).send('success');
     } catch (e) {
@@ -122,10 +153,7 @@ export class AlipayController {
     }
   }
 
-  /**
-   * 同步跳转回（用户支付完成后浏览器 GET 回到这里）
-   * 不能完全信任，仅用于跳转 + 兜底快查一次状态。真发货以 notify 为准。
-   */
+  /** 同步跳转回（仅用于浏览器重定向 + 兜底） */
   @Public()
   @Get('return')
   async ret(@Req() req: Request, @Res() res: Response) {
@@ -133,8 +161,18 @@ export class AlipayController {
     try {
       const ok = await this.alipay.verifyNotify(query);
       const orderNo = query.out_trade_no;
+      const tradeNo = query.trade_no;
+      const totalAmount = Number(query.total_amount);
       if (ok && orderNo) {
-        // 兜底：try 标记一次（如果通知还没到）
+        if (isForgeOrder(orderNo)) {
+          try {
+            await this.forgeOrders.markPaidAndFulfill(orderNo, tradeNo, totalAmount);
+          } catch (e) {
+            this.logger.warn(`return-ack forge fulfill fallback: ${(e as Error).message}`);
+          }
+          return res.redirect(`/forge-order/${encodeURIComponent(orderNo)}`);
+        }
+
         try {
           const order = await this.prisma.order.findUnique({ where: { orderNo } });
           if (order && order.status === 'PENDING') {
@@ -151,7 +189,6 @@ export class AlipayController {
     return res.redirect('/');
   }
 
-  /** 设置变更后强制重载 SDK */
   @Post('reload')
   async reload() {
     this.alipay.invalidate();

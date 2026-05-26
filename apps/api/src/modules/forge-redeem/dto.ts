@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -22,7 +23,7 @@ export class GenerateForgeCodesDto {
   @Max(5000)
   count!: number;
 
-  @ApiProperty({ required: false, description: '过期时间 ISO 字符串' })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
   expireAt?: string;
@@ -72,4 +73,35 @@ export class RedeemOrderDto {
   @Min(1)
   @Max(10)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  contact?: string;
+}
+
+export class AlipayOrderDto {
+  @IsString()
+  @Length(1, 64)
+  typeKey!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  contact?: string;
+}
+
+export class OrderQueryDto {
+  @IsString()
+  @Length(1, 64)
+  orderNo!: string;
+
+  @IsOptional()
+  @IsString()
+  contact?: string;
 }

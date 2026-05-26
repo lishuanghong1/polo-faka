@@ -9,19 +9,31 @@ const total = ref(0);
 const page = ref(1);
 const pageSize = ref(50);
 const status = ref('');
+const paymentMethod = ref('');
 const typeKey = ref('');
 const keyword = ref('');
 const loading = ref(false);
 
 const detailVisible = ref(false);
 const detail = ref<any>(null);
+const retrying = ref<string | null>(null);
 
 function statusBadge(s: string) {
   return {
-    PENDING: { text: '处理中', cls: 'bg-amber-100 text-amber-700' },
+    PENDING: { text: '待支付', cls: 'bg-amber-100 text-amber-700' },
+    PAID: { text: '已付款', cls: 'bg-blue-100 text-blue-700' },
     DELIVERED: { text: '已发货', cls: 'bg-emerald-100 text-emerald-700' },
     FAILED: { text: '失败', cls: 'bg-rose-100 text-rose-700' },
+    CANCELLED: { text: '已取消', cls: 'bg-gray-100 text-gray-600' },
+    EXPIRED: { text: '已过期', cls: 'bg-gray-100 text-gray-600' },
   }[s] || { text: s, cls: 'bg-gray-100 text-gray-600' };
+}
+
+function payMethodBadge(m: string) {
+  return {
+    ALIPAY: { text: '支付宝', cls: 'bg-blue-50 text-blue-700' },
+    REDEEM: { text: '兑换码', cls: 'bg-purple-50 text-purple-700' },
+  }[m] || { text: m, cls: 'bg-gray-50 text-gray-600' };
 }
 
 async function load() {
@@ -31,6 +43,7 @@ async function load() {
       page: page.value,
       pageSize: pageSize.value,
       status: status.value || undefined,
+      paymentMethod: paymentMethod.value || undefined,
       typeKey: typeKey.value || undefined,
       keyword: keyword.value || undefined,
     });
@@ -47,6 +60,19 @@ async function view(orderNo: string) {
     detailVisible.value = true;
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error?.message || '加载失败');
+  }
+}
+
+async function retry(orderNo: string) {
+  retrying.value = orderNo;
+  try {
+    await api.forge.admin.retryFulfill(orderNo);
+    ElMessage.success('重发成功');
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '重发失败');
+  } finally {
+    retrying.value = null;
   }
 }
 
@@ -76,9 +102,17 @@ onMounted(load);
     />
     <select v-model="status" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white">
       <option value="">全部状态</option>
-      <option value="PENDING">处理中</option>
+      <option value="PENDING">待支付</option>
+      <option value="PAID">已付款</option>
       <option value="DELIVERED">已发货</option>
       <option value="FAILED">失败</option>
+      <option value="EXPIRED">已过期</option>
+      <option value="CANCELLED">已取消</option>
+    </select>
+    <select v-model="paymentMethod" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white">
+      <option value="">全部支付方式</option>
+      <option value="ALIPAY">支付宝</option>
+      <option value="REDEEM">兑换码</option>
     </select>
     <button
       class="px-3.5 py-1.5 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm"
@@ -92,6 +126,8 @@ onMounted(load);
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">订单号</th>
           <th class="px-4 py-2.5 text-left font-medium">商品</th>
+          <th class="px-4 py-2.5 text-center font-medium">支付方式</th>
+          <th class="px-4 py-2.5 text-left font-medium">联系方式</th>
           <th class="px-4 py-2.5 text-center font-medium">数量</th>
           <th class="px-4 py-2.5 text-right font-medium">售价</th>
           <th class="px-4 py-2.5 text-right font-medium">三方成本</th>
@@ -110,10 +146,21 @@ onMounted(load);
             <div v-if="it.redeemCode" class="text-[11px] text-ink-400 mt-0.5">
               code <code class="font-mono">{{ it.redeemCode }}</code>
             </div>
+            <div v-if="it.thirdTradeNo" class="text-[11px] text-ink-400 mt-0.5">
+              支付 <code class="font-mono">{{ it.thirdTradeNo }}</code>
+            </div>
           </td>
           <td class="px-4 py-3">
             <div class="text-ink-900">{{ it.typeName }}</div>
             <div class="text-[11px] text-ink-400 font-mono">{{ it.typeKey }}</div>
+          </td>
+          <td class="px-4 py-3 text-center">
+            <span :class="['px-2 py-0.5 text-xs rounded', payMethodBadge(it.paymentMethod).cls]">
+              {{ payMethodBadge(it.paymentMethod).text }}
+            </span>
+          </td>
+          <td class="px-4 py-3 text-xs text-ink-700 max-w-[160px] truncate" :title="it.contact || ''">
+            {{ it.contact || '—' }}
           </td>
           <td class="px-4 py-3 text-center">× {{ it.quantity }}</td>
           <td class="px-4 py-3 text-right">¥{{ Number(it.totalAmount).toFixed(2) }}</td>
@@ -131,8 +178,14 @@ onMounted(load);
           <td class="px-4 py-3 text-xs text-ink-500">
             {{ new Date(it.createdAt).toLocaleString() }}
           </td>
-          <td class="px-4 py-3 text-center">
-            <button class="text-xs text-brand-600 hover:underline" @click="view(it.orderNo)">查看</button>
+          <td class="px-4 py-3 text-center whitespace-nowrap">
+            <button class="text-xs text-brand-600 hover:underline mx-1" @click="view(it.orderNo)">查看</button>
+            <button
+              v-if="['FAILED', 'PAID'].includes(it.status)"
+              class="text-xs text-emerald-600 hover:underline mx-1 disabled:opacity-50"
+              :disabled="retrying === it.orderNo"
+              @click="retry(it.orderNo)"
+            >{{ retrying === it.orderNo ? '重发中…' : '重发' }}</button>
           </td>
         </tr>
       </tbody>
