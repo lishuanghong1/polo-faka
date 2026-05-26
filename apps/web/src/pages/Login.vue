@@ -15,9 +15,15 @@ async function submit() {
   loading.value = true;
   try {
     await user.login(form.value.username, form.value.password);
+    // 兜底：确保 profile 已加载，避免 router guard 看不到 role 把 admin 弹回首页
+    if (!user.profile) {
+      await user.restore();
+    }
     ElMessage.success('登录成功');
     const redirect = (route.query.redirect as string) || '/';
-    router.replace(redirect);
+    // 管理员默认进后台
+    const target = user.profile?.role === 'ADMIN' && redirect === '/' ? '/admin' : redirect;
+    router.replace(target);
   } catch {
     /* http interceptor handles err */
   } finally {

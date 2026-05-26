@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 
-const props = defineProps<{
-  /** 预填邮箱（如订单页传入交付邮箱） */
-  modelValue?: string;
-  /** 是否允许用户编辑邮箱输入框；默认允许 */
-  editable?: boolean;
-  /** 紧凑模式（订单详情页用） */
-  compact?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** 预填邮箱（如订单页传入交付邮箱） */
+    modelValue?: string;
+    /** 是否允许用户编辑邮箱输入框；默认允许 */
+    editable?: boolean;
+    /** 紧凑模式（订单详情页用） */
+    compact?: boolean;
+  }>(),
+  {
+    editable: true,
+    compact: false,
+  },
+);
 
 const email = ref(props.modelValue || '');
 const polling = ref(false);
@@ -30,9 +36,11 @@ let cancelled = false;
 let timer: number | undefined;
 let elapsedTimer: number | undefined;
 
-const isEditable = () => props.editable !== false;
+const isEditable = computed(() => props.editable !== false);
 
-const isValidEmail = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email.value || '').trim());
+const isValidEmail = computed(() =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email.value || '').trim()),
+);
 
 watch(() => props.modelValue, (v) => {
   if (v !== undefined && v !== email.value) email.value = v;
@@ -64,7 +72,7 @@ function reset() {
 }
 
 async function start() {
-  if (!isValidEmail()) {
+  if (!isValidEmail.value) {
     ElMessage.warning('请输入正确的邮箱地址');
     return;
   }
@@ -165,14 +173,14 @@ function formatTime(ts?: number) {
           type="email"
           placeholder="your-account@outlook.com"
           autocomplete="email"
-          :disabled="polling || !isEditable()"
+          :disabled="polling || !isEditable"
           class="flex-1 px-3.5 py-2.5 rounded-lg border border-ink-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-sm transition disabled:bg-ink-50"
           @keydown.enter="!polling && start()"
         />
         <button
           v-if="!polling"
           class="px-5 py-2.5 rounded-lg brand-gradient text-white text-sm font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          :disabled="!isValidEmail()"
+          :disabled="!isValidEmail"
           @click="start"
         >
           获取验证码

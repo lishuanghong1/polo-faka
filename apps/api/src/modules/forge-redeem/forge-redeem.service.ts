@@ -118,9 +118,15 @@ export class ForgeRedeemService {
   }
 
   async listProductsAdmin() {
-    return this.prisma.forgeProduct.findMany({
+    const rows = await this.prisma.forgeProduct.findMany({
       orderBy: [{ enabled: 'desc' }, { sort: 'asc' }, { typeKey: 'asc' }],
     });
+    return rows.map((r) => ({
+      ...r,
+      price: Number(r.price),
+      agentPrice: Number(r.agentPrice),
+      displayPrice: Number(r.displayPrice),
+    }));
   }
 
   /** 前台展示：仅 enabled 商品，且按 sort 排序，并暴露最少字段 */
@@ -207,7 +213,16 @@ export class ForgeRedeemService {
         take: pageSize,
       }),
     ]);
-    return { total, page, pageSize, items };
+    return {
+      total,
+      page,
+      pageSize,
+      items: items.map((it) => ({
+        ...it,
+        totalAmount: Number(it.totalAmount),
+        usedAmount: Number(it.usedAmount),
+      })),
+    };
   }
 
   async batches(limit = 50) {
@@ -304,7 +319,11 @@ export class ForgeRedeemService {
       remaining,
       expireAt: code.expireAt,
       note: code.note,
-      orders: code.orders,
+      // 把 Decimal 显式转成 number，避免 JSON 序列化变成 string 让前端 .toFixed 挂
+      orders: code.orders.map((o) => ({
+        ...o,
+        totalAmount: Number(o.totalAmount),
+      })),
       products,
     };
   }

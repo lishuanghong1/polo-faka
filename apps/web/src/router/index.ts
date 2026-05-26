@@ -73,8 +73,12 @@ const router = createRouter({
   },
 });
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const user = useUserStore();
+  // 有 token 但 profile 还没 hydrate（首次进入 / 直接打开受保护页面）→ 先拉一下
+  if (user.isLoggedIn && !user.profile) {
+    await user.restore();
+  }
   if (to.meta.auth && !user.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } };
   }
