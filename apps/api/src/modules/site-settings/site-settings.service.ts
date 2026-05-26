@@ -1,7 +1,7 @@
 import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AlipayService } from '../alipay/alipay.service';
-import { EmailCodeService } from '../email-code/email-code.service';
+import { ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 
 /**
@@ -23,7 +23,7 @@ export class SiteSettingsService {
   constructor(
     private prisma: PrismaService,
     @Optional() @Inject(forwardRef(() => AlipayService)) private alipay?: AlipayService,
-    @Optional() @Inject(forwardRef(() => EmailCodeService)) private emailCode?: EmailCodeService,
+    @Optional() @Inject(forwardRef(() => ForgeOpenapiService)) private forge?: ForgeOpenapiService,
   ) {}
 
   async getPublic() {
@@ -115,7 +115,7 @@ export class SiteSettingsService {
       this.alipay?.invalidate();
     }
     if (keys.some((k) => k.startsWith('email_code_'))) {
-      this.emailCode?.invalidate();
+      this.forge?.invalidate();
     }
     return { updated: ops.length };
   }

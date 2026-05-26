@@ -11,6 +11,7 @@ declare module 'vue' {
     AnnouncementDialog: typeof import('./components/AnnouncementDialog.vue')['default']
     DataTable: typeof import('./components/admin/DataTable.vue')['default']
     ElDialog: typeof import('element-plus/es')['ElDialog']
+    EmailCodeBox: typeof import('./components/EmailCodeBox.vue')['default']
     OrderDetailDrawer: typeof import('./components/admin/OrderDetailDrawer.vue')['default']
     ProductCard: typeof import('./components/ProductCard.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

@@ -396,6 +396,108 @@ model RedeemRecord {
   @@map("redeem_records")
 }
 
+// ===================== Cursorforge 三方代理 =====================
+//
+// 通过 HMAC-SHA256 签名调用 https://apiforge.cursorforgeai.top
+// 业务模型：
+//   1. 管理员同步三方商品 → 写入 forge_products
+//   2. 管理员对每款商品设售价 displayPrice（cny）
+//   3. 管理员批量生成兑换码（余额型，面额 totalAmount）
+//   4. 用户输入兑换码 → 选商品 → 按 displayPrice 扣 usedAmount
+//   5. 后端用 forge-openapi 调三方下单 → 拿到 accounts 加密入库
+//   6. 用户在 /forge-order/:orderNo 查看 email + token，并可在本页接验证码
+
+/// 本地缓存的三方商品（通过 GET /openapi/v1/products 同步）
+model ForgeProduct {
+  typeKey           String   @id @db.VarChar(64)
+  categoryKey       String   @db.VarChar(64)
+  typeName          String   @db.VarChar(128)
+  categoryName      String   @db.VarChar(128)
+  price             Decimal  @db.Decimal(12, 2) // 三方普通用户价
+  agentPrice        Decimal  @db.Decimal(12, 2) // 三方代理价（我方成本）
+  stock             Int      @default(0)        // 三方库存快照
+  warrantyHours    Int?
+  emailCodeEnabled  Boolean  @default(false)    // 三方是否允许接验证码
+  /// 我方设的对终端用户售价（CNY），从兑换码余额扣减
+  displayPrice      Decimal  @db.Decimal(12, 2)
+  /// 我方是否上架（前台是否展示）
+  enabled           Boolean  @default(false)
+  sort              Int      @default(0)
+  lastSyncAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orders ForgeOrder[]
+
+  @@index([enabled, sort])
+  @@map("forge_products")
+}
+
+enum ForgeRedeemStatus {
+  ACTIVE
+  DISABLED
+  EXHAUSTED
+  EXPIRED
+}
+
+/// Cursorforge 兑换码（余额型）
+model ForgeRedeemCode {
+  id           Int               @id @default(autoincrement())
+  code         String            @unique @db.VarChar(64)
+  totalAmount  Decimal           @db.Decimal(12, 2) // 面额
+  usedAmount   Decimal           @default(0) @db.Decimal(12, 2)
+  status       ForgeRedeemStatus @default(ACTIVE)
+  expireAt     DateTime?
+  batchTag     String?           @db.VarChar(64)
+  note         String?           @db.VarChar(255)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  orders ForgeOrder[]
+
+  @@index([batchTag])
+  @@index([status, expireAt])
+  @@map("forge_redeem_codes")
+}
+
+enum ForgeOrderStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+/// Cursorforge 三方订单（兑换码触发下单，account_json 加密保存）
+model ForgeOrder {
+  id                Int              @id @default(autoincrement())
+  orderNo           String           @unique @db.VarChar(64) // 我方订单号 & 三方 external_order_id
+  redeemCodeId      Int
+  typeKey           String           @db.VarChar(64)
+  typeName          String           @db.VarChar(128)
+  quantity          Int              @default(1)
+  displayPrice      Decimal          @db.Decimal(12, 2) // 单价（售价）
+  totalAmount       Decimal          @db.Decimal(12, 2) // displayPrice × quantity
+  customerRef       String           @db.VarChar(128)   // sha256(redeem_code + salt)
+  status            ForgeOrderStatus @default(PENDING)
+  upstreamOrderNo   String?          @db.VarChar(64)    // 三方 order_no
+  upstreamRequestId String?          @db.VarChar(64)
+  upstreamAmount    Decimal?         @db.Decimal(12, 2) // 三方扣我方的成本
+  /// 三方返回 accounts 数组（加密 JSON），含 email + access_token
+  upstreamData      String?          @db.Text
+  deliveredAt       DateTime?
+  failReason        String?          @db.VarChar(500)
+  ip                String?          @db.VarChar(64)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  redeemCode ForgeRedeemCode @relation(fields: [redeemCodeId], references: [id])
+  product    ForgeProduct?   @relation(fields: [typeKey], references: [typeKey])
+
+  @@index([redeemCodeId])
+  @@index([status, createdAt])
+  @@index([typeKey])
+  @@map("forge_orders")
+}
+
 // ===================== 审计日志 =====================
 
 /// 记录所有敏感/管理操作，便于事后追溯。

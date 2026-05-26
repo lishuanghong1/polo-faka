@@ -115,6 +115,95 @@ export const api = {
       }),
   },
 
+  forge: {
+    // 公开
+    check: (code: string) =>
+      http.post<{
+        code: string;
+        status: 'ACTIVE' | 'DISABLED' | 'EXHAUSTED' | 'EXPIRED';
+        totalAmount: number;
+        usedAmount: number;
+        remaining: number;
+        expireAt: string | null;
+        note?: string;
+        orders: Array<{
+          orderNo: string;
+          typeName: string;
+          typeKey: string;
+          quantity: number;
+          totalAmount: number;
+          status: 'PENDING' | 'DELIVERED' | 'FAILED';
+          createdAt: string;
+          deliveredAt?: string;
+        }>;
+        products: Array<{
+          typeKey: string;
+          categoryKey: string;
+          categoryName: string;
+          typeName: string;
+          displayPrice: number;
+          stock: number;
+          warrantyHours: number | null;
+          emailCodeEnabled: boolean;
+        }>;
+      }>('/forge-redeem/check', { code }, { silent: true } as any),
+    order: (body: { code: string; typeKey: string; quantity: number }) =>
+      http.post<{
+        orderNo: string;
+        typeKey: string;
+        typeName: string;
+        quantity: number;
+        displayPrice: number;
+        totalAmount: number;
+        status: 'PENDING' | 'DELIVERED' | 'FAILED';
+        accounts: Array<{
+          id?: number;
+          email: string;
+          account_json?: { email?: string; access_token?: string };
+        }>;
+      }>('/forge-redeem/order', body, { silent: true } as any),
+    orderDetail: (orderNo: string) =>
+      http.get<{
+        orderNo: string;
+        typeKey: string;
+        typeName: string;
+        quantity: number;
+        displayPrice: number;
+        totalAmount: number;
+        status: 'PENDING' | 'DELIVERED' | 'FAILED';
+        upstreamOrderNo?: string;
+        deliveredAt?: string;
+        failReason?: string;
+        createdAt: string;
+        accounts: Array<{
+          id?: number;
+          email: string;
+          account_json?: { email?: string; access_token?: string };
+        }>;
+      }>(`/forge-redeem/order/${encodeURIComponent(orderNo)}`),
+
+    // Admin
+    admin: {
+      syncProducts: () => http.post('/admin/forge/products/sync'),
+      listProducts: () => http.get('/admin/forge/products'),
+      updateProduct: (typeKey: string, body: any) =>
+        http.put(`/admin/forge/products/${encodeURIComponent(typeKey)}`, body),
+
+      generateCodes: (body: any) => http.post('/admin/forge/redeem-codes/generate', body),
+      listCodes: (params: any) => http.get('/admin/forge/redeem-codes', { params }),
+      batches: () => http.get('/admin/forge/redeem-codes/batches'),
+      getBatch: (tag: string) =>
+        http.get(`/admin/forge/redeem-codes/batch/${encodeURIComponent(tag)}`),
+      toggleStatus: (id: number, status: 'ACTIVE' | 'DISABLED') =>
+        http.put(`/admin/forge/redeem-codes/${id}/status`, { status }),
+      removeCode: (id: number) => http.delete(`/admin/forge/redeem-codes/${id}`),
+
+      listOrders: (params: any) => http.get('/admin/forge/orders', { params }),
+      orderDetail: (orderNo: string) =>
+        http.get(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
+    },
+  },
+
   emailCode: {
     enabled: () => http.get<{ enabled: boolean }>('/email-code/enabled'),
     fetch: (body: {

@@ -29,6 +29,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/ActivateTool.vue'),
       },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
+      {
+        path: 'forge-redeem',
+        name: 'forge-redeem',
+        component: () => import('@/pages/ForgeRedeem.vue'),
+      },
+      {
+        path: 'forge-order/:orderNo',
+        name: 'forge-order',
+        component: () => import('@/pages/ForgeOrder.vue'),
+      },
     ],
   },
   {
@@ -47,6 +57,9 @@ const routes: RouteRecordRaw[] = [
       { path: 'settings', name: 'admin-settings', component: () => import('@/pages/admin/Settings.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/pages/admin/Audit.vue') },
       { path: 'redeem-codes', name: 'admin-redeem', component: () => import('@/pages/admin/RedeemCodes.vue') },
+      { path: 'forge-products', name: 'admin-forge-products', component: () => import('@/pages/admin/ForgeProducts.vue') },
+      { path: 'forge-redeem-codes', name: 'admin-forge-redeem', component: () => import('@/pages/admin/ForgeRedeemCodes.vue') },
+      { path: 'forge-orders', name: 'admin-forge-orders', component: () => import('@/pages/admin/ForgeOrders.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFound.vue') },
