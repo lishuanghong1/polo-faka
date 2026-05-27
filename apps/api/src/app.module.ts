@@ -25,7 +25,6 @@ import { ForgeRedeemModule } from './modules/forge-redeem/forge-redeem.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RedeemModule } from './modules/redeem/redeem.module';
 import { HealthModule } from './modules/health/health.module';
-import { CursorToolsModule } from './modules/cursor-tools/cursor-tools.module';
 
 @Module({
   imports: [
@@ -56,7 +55,6 @@ import { CursorToolsModule } from './modules/cursor-tools/cursor-tools.module';
     RedeemModule,
     AdminModule,
     HealthModule,
-    CursorToolsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

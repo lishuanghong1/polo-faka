@@ -230,34 +230,6 @@ export const api = {
         order_no?: string;
       }>('/email-code/fetch', body, { silent: true } as any),
   },
-
-  cursorTools: {
-    /**
-     * 用 token 在线查询 cursor.com 账号信息。
-     * 注意：token 经服务端中转一次，服务端不持久化、不写日志。
-     */
-    inspect: (token: string) =>
-      http.post<{
-        valid: boolean;
-        email?: string | null;
-        name?: string | null;
-        picture?: string | null;
-        sub?: string | null;
-        membership?: any;
-        usage?: any;
-        stripe?: {
-          membershipType?: string | null;
-          trialEligible?: boolean | null;
-          trialEnd?: number | null;
-          verifiedStudent?: boolean | null;
-          subscriptionStatus?: string | null;
-          currentPeriodEnd?: number | null;
-          cancelAtPeriodEnd?: boolean | null;
-          plan?: string | null;
-        } | null;
-        errors: string[];
-      }>('/tools/cursor/inspect', { token }, { silent: true } as any),
-  },
 };
 
 export default api;
