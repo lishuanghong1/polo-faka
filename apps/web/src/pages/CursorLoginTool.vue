@@ -19,21 +19,52 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 const rawInput = ref('');
 const showAdvanced = ref(false);
 
-/** 从用户输入中尽量抽出真正的 JWT */
+/**
+ * cursor.com 的完整会话字符串，必须形如 `user_XXX::eyJhbG...`，
+ * 这才是 WorkosCursorSessionToken cookie 的真实值（写入时再 url-encode）。
+ * 之前只取后半 JWT 会写不进去。
+ */
 const cleanToken = computed(() => {
   let v = rawInput.value.trim();
   if (!v) return '';
 
+  // 1) 从 "WorkosCursorSessionToken=xxx; Path=/..." 中抠出 cookie 值
   const cookieMatch = v.match(/WorkosCursorSessionToken=([^;\s]+)/i);
-  if (cookieMatch) v = decodeURIComponent(cookieMatch[1]);
+  if (cookieMatch) v = cookieMatch[1];
 
-  if (v.includes('::')) {
-    const parts = v.split('::');
-    v = parts[parts.length - 1].trim();
+  // 2) 多次 decodeURIComponent 兜底（cookie 可能 %3A%3A → ::）
+  for (let i = 0; i < 3; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(v)) break;
+    try {
+      const next = decodeURIComponent(v);
+      if (next === v) break;
+      v = next;
+    } catch {
+      break;
+    }
   }
 
+  // 3) 去引号 / 空白
   v = v.replace(/^["']+|["']+$/g, '').trim();
   return v;
+});
+
+/** 只用于解码 JWT payload 的部分 */
+const jwtPart = computed(() => {
+  const v = cleanToken.value;
+  if (!v) return '';
+  if (v.includes('::')) {
+    const parts = v.split('::');
+    return parts[parts.length - 1].trim();
+  }
+  return v;
+});
+
+/** 从输入里抠出 user_XXX 前缀（可选展示） */
+const userId = computed(() => {
+  const v = cleanToken.value;
+  if (!v.includes('::')) return '';
+  return v.split('::')[0];
 });
 
 interface DecodedPayload {
@@ -42,11 +73,16 @@ interface DecodedPayload {
   iss?: string;
   exp?: number;
   iat?: number;
+  time?: string;
+  scope?: string;
+  aud?: string;
+  type?: string;
+  workosSessionId?: string;
   [k: string]: any;
 }
 
 const decoded = computed<DecodedPayload | null>(() => {
-  const t = cleanToken.value;
+  const t = jwtPart.value;
   if (!t || !t.includes('.')) return null;
   const parts = t.split('.');
   if (parts.length < 2) return null;
@@ -73,11 +109,15 @@ const remainingDays = computed(() => {
   return Math.ceil(diff / 86400_000);
 });
 
-/** 注入到 cursor.com Console 的 JS 片段 */
+/**
+ * 注入到 cursor.com Console 的 JS 片段。
+ * 注意：cookie 值必须是完整的 `user_XXX::JWT`（包含 user_ 前缀），
+ *       然后整体 encodeURIComponent。否则 cursor.com 不认。
+ */
 const browserSnippet = computed(() => {
   const t = cleanToken.value;
   if (!t) return '';
-  return `(()=>{const t=${JSON.stringify(t)};const c=\`WorkosCursorSessionToken=\${encodeURIComponent(t)}; path=/; max-age=2592000; secure; samesite=lax\`;document.cookie=c;document.cookie=c+'; domain=.cursor.com';document.cookie=c+'; domain=cursor.com';alert('Cookie 已写入，正在跳转');location.href='https://www.cursor.com/dashboard';})();`;
+  return `(()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);['.cursor.com','cursor.com',''].forEach(d=>{const c='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');document.cookie=c;});const set=document.cookie.includes('WorkosCursorSessionToken=');if(!set){alert('Cookie 写入失败，请确认在 cursor.com 域名下执行');return;}alert('Cookie 已写入，正在跳转');location.href='https://www.cursor.com/dashboard';})();`;
 });
 
 const submitting = ref(false);
@@ -177,7 +217,7 @@ function clearInput() {
         spellcheck="false"
         autocorrect="off"
         class="w-full px-3 py-2.5 border border-ink-200 rounded-lg text-xs font-mono focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-200 transition"
-        placeholder="支持粘贴：&#10;· user_xxx::eyJhbG...&#10;· eyJhbG... （纯 JWT）&#10;· WorkosCursorSessionToken=eyJhbG... （cookie 整段）"
+        placeholder="支持以下三种粘贴格式：&#10;· user_xxx::eyJhbG...        ← 推荐&#10;· WorkosCursorSessionToken=user_xxx%3A%3AeyJhbG...&#10;· 浏览器复制 cookie 值（带 url-encode）"
       />
       <div class="mt-2 flex items-center justify-between text-xs">
         <span class="text-ink-400">{{ rawInput ? `${rawInput.length} 字符 / 已识别 ${cleanToken.length}` : '尚未输入' }}</span>
@@ -187,9 +227,30 @@ function clearInput() {
 
     <!-- Token 解析 -->
     <div v-if="decoded" class="mt-4 card p-4 bg-white border border-ink-100">
-      <div class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-3">账号信息</div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-semibold tracking-widest uppercase text-ink-500">Token 信息</div>
+        <span
+          v-if="isExpired === false"
+          class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700"
+        >有效</span>
+        <span
+          v-else-if="isExpired === true"
+          class="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700"
+        >已过期</span>
+      </div>
       <dl class="space-y-1.5 text-sm">
-        <div v-if="decoded.email" class="flex gap-3"><dt class="text-ink-500 w-16 shrink-0">账号</dt><dd class="font-mono text-ink-900 break-all">{{ decoded.email }}</dd></div>
+        <div v-if="userId" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">用户 ID</dt>
+          <dd class="font-mono text-xs text-ink-900 break-all">{{ userId }}</dd>
+        </div>
+        <div v-if="decoded.workosSessionId" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">Session</dt>
+          <dd class="font-mono text-xs text-ink-700 break-all">{{ decoded.workosSessionId }}</dd>
+        </div>
+        <div v-if="decoded.type" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">类型</dt>
+          <dd class="text-xs text-ink-700">{{ decoded.type === 'web' ? 'web（网页 / IDE）' : decoded.type }}</dd>
+        </div>
         <div v-if="issuedAt" class="flex gap-3"><dt class="text-ink-500 w-16 shrink-0">签发</dt><dd class="text-xs text-ink-700">{{ issuedAt.toLocaleString() }}</dd></div>
         <div v-if="expiredAt" class="flex gap-3">
           <dt class="text-ink-500 w-16 shrink-0">过期</dt>
@@ -207,10 +268,10 @@ function clearInput() {
     </div>
 
     <div
-      v-else-if="rawInput && !cleanToken.includes('.')"
+      v-else-if="rawInput && !jwtPart.includes('.')"
       class="mt-4 card p-3 bg-amber-50/60 border border-amber-200 text-sm text-amber-800"
     >
-      ⚠️ Token 格式无法识别。请确认是完整 JWT（形如 <code class="font-mono">eyJ...xxx.yyy</code>）。
+      ⚠️ Token 格式无法识别。请粘贴完整字符串（含 <code class="font-mono">user_XXX::</code> 前缀）。
     </div>
 
     <!-- 登录按钮 -->
@@ -250,7 +311,8 @@ function clearInput() {
     <div class="mt-6 text-[11px] text-ink-400 leading-relaxed border-t border-ink-100 pt-4 space-y-1">
       <p>· Token 在你的浏览器中处理，不会上传服务器、不会写入任何日志</p>
       <p>· 浏览器禁止跨域设 cookie，所以需要在 cursor.com 控制台执行一次脚本</p>
-      <p>· 如果脚本执行后没登录上，多半是 Token 已过期 / Token 不属于网页会话类型</p>
+      <p>· <b>cookie 值必须保留 <code class="font-mono">user_XXX::</code> 前缀</b>。直接粘 <code class="font-mono">eyJ...</code> 纯 JWT 是不能登录的</p>
+      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code></p>
     </div>
   </div>
 </template>
