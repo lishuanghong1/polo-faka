@@ -47,10 +47,6 @@ function isMobile() {
 
 async function buy() {
   if (!skuId.value) return;
-  if (currentSku.value.stock <= 0) {
-    ElMessage.warning('该规格已售罄');
-    return;
-  }
   if (!alipayEnabled.value) {
     ElMessage.warning('支付宝暂未启用，请稍后再试');
     return;
@@ -108,14 +104,23 @@ async function buy() {
             v-for="s in product.skus"
             :key="s.id"
             :value="s.id"
-            :disabled="s.stock <= 0"
             class="!mr-2 !mb-2"
           >
             <span>{{ s.name }}</span>
             <span class="ml-1 text-rose-600 font-medium">¥{{ s.price }}</span>
-            <span class="ml-1 text-gray-400 text-xs">({{ s.stock }})</span>
+            <span
+              class="ml-1 text-xs"
+              :class="s.stock <= 0 ? 'text-amber-600' : 'text-gray-400'"
+            >({{ s.stock <= 0 ? '需联系客服' : s.stock }})</span>
           </el-radio>
         </el-radio-group>
+      </div>
+
+      <div
+        v-if="currentSku && currentSku.stock <= 0"
+        class="mt-3 px-3 py-2 rounded-lg bg-amber-50/70 border border-amber-200 text-xs text-amber-800 leading-relaxed"
+      >
+        当前规格暂无库存，可正常下单并完成支付，付款后我们会人工尽快为您发货；如急需可在订单页联系客服。
       </div>
 
       <div v-if="bulk && bulk.length" class="mt-4 text-xs text-gray-500">
@@ -164,15 +169,15 @@ async function buy() {
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!skuId || !currentSku || currentSku.stock <= 0 || !alipayEnabled"
+          :disabled="!skuId || !currentSku || !alipayEnabled"
           @click="buy"
         >
           {{
             !alipayEnabled
               ? '支付宝未启用'
-              : currentSku?.stock > 0
-                ? '立即购买'
-                : '暂无库存'
+              : currentSku && currentSku.stock <= 0
+                ? '下单（人工发货）'
+                : '立即购买'
           }}
         </el-button>
       </div>

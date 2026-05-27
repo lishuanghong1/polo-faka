@@ -1,20 +1,47 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
+import { useSiteStore } from '@/stores/site';
 import { formatCardKeyContent, formatCardKeysForCopy } from '@/utils/card-key';
 
 const route = useRoute();
+const site = useSiteStore();
 const order = ref<any>(null);
 const loading = ref(true);
 let timer: any = null;
+
+const wechat = computed(() => site.settings.cs_wechat || 'ymw_polo');
+const qq = computed(() => site.settings.cs_qq || '');
+const telegram = computed(() => site.settings.cs_telegram || '');
+
+/** PAID/DELIVERED 但没有任何卡密发出来 → 显示联系卡片 */
+const needContactSupport = computed(() => {
+  if (!order.value) return false;
+  if (!['PAID', 'DELIVERED'].includes(order.value.status)) return false;
+  return !order.value.cardKeys?.length;
+});
 
 async function load() {
   try {
     order.value = await api.orderQuery(route.params.orderNo as string);
   } finally {
     loading.value = false;
+  }
+}
+
+const paying = ref(false);
+async function goPay() {
+  if (!order.value || paying.value) return;
+  paying.value = true;
+  try {
+    const channel = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'WAP' : 'PC';
+    const r = await api.pay.alipayCreate(order.value.orderNo, channel);
+    window.location.href = r.payUrl;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '获取支付链接失败');
+    paying.value = false;
   }
 }
 
@@ -103,17 +130,55 @@ function statusColor(s: string) {
           </ul>
         </div>
 
-        <div v-else-if="order.status === 'PAID'" class="mt-4 text-sm text-amber-600">
-          ⏳ 卡密正在分配中，请稍候...
+        <div
+          v-else-if="needContactSupport"
+          class="mt-6 p-4 rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50/40"
+        >
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-5 h-5 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/>
+            </svg>
+            <h3 class="font-semibold text-amber-900">该商品暂无库存，请联系管理员发货</h3>
+          </div>
+          <p class="text-sm text-amber-800 mb-3 leading-relaxed">
+            您已付款成功，订单号 <code class="font-mono bg-white/70 px-1.5 py-0.5 rounded text-amber-900">{{ order.orderNo }}</code>。
+            管理员会在工作时间尽快人工为您发货。
+          </p>
+
+          <div class="bg-white/80 rounded-lg p-3 space-y-2 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="w-16 text-ink-500 shrink-0">微信</span>
+              <code class="font-mono text-ink-900 font-semibold">{{ wechat }}</code>
+              <button
+                class="ml-auto text-xs text-brand-600 hover:underline"
+                @click="copy(wechat)"
+              >复制微信号</button>
+            </div>
+            <div v-if="qq" class="flex items-center gap-2">
+              <span class="w-16 text-ink-500 shrink-0">QQ</span>
+              <code class="font-mono text-ink-900">{{ qq }}</code>
+              <button class="ml-auto text-xs text-brand-600 hover:underline" @click="copy(qq)">复制</button>
+            </div>
+            <div v-if="telegram" class="flex items-center gap-2">
+              <span class="w-16 text-ink-500 shrink-0">Telegram</span>
+              <code class="font-mono text-ink-900">{{ telegram }}</code>
+              <button class="ml-auto text-xs text-brand-600 hover:underline" @click="copy(telegram)">复制</button>
+            </div>
+          </div>
+
+          <p class="mt-3 text-[11px] text-amber-700/80 leading-relaxed">
+            联系时请提供订单号便于核单。如长时间未发货可申请原路退款。
+          </p>
         </div>
 
         <div v-if="order.status === 'PENDING'" class="mt-6 flex justify-end">
-          <router-link
-            :to="`/mock-pay?orderNo=${order.orderNo}`"
-            class="px-4 py-2 rounded-lg brand-gradient text-white text-sm"
+          <button
+            class="px-4 py-2 rounded-lg brand-gradient text-white text-sm disabled:opacity-50"
+            :disabled="paying"
+            @click="goPay"
           >
-            去支付
-          </router-link>
+            {{ paying ? '正在跳转支付宝…' : '去支付' }}
+          </button>
         </div>
       </div>
     </template>
