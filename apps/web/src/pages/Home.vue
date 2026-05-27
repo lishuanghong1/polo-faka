@@ -142,21 +142,19 @@ onMounted(() => load(false));
 <template>
   <!-- Hero -->
   <section class="border-b border-ink-100 bg-white">
-    <div class="max-w-7xl mx-auto px-4 py-10 md:py-12 flex items-end justify-between gap-6 flex-wrap">
-      <div>
-        <div class="inline-flex items-center gap-2 text-xs text-ink-500 mb-3">
-          <span class="w-1.5 h-1.5 rounded-full bg-brand-600"></span>
-          源头好货 · 自动发货
-        </div>
-        <h1 class="text-2xl md:text-3xl font-semibold tracking-tight text-ink-900">
+    <div class="max-w-7xl mx-auto px-4 py-4 md:py-5 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0"></span>
+        <h1 class="text-lg md:text-xl font-semibold tracking-tight text-ink-900 shrink-0">
           {{ banner.title }}
         </h1>
-        <p class="mt-2 text-sm text-ink-500 max-w-2xl">{{ banner.tagline }}</p>
+        <span class="text-ink-300 hidden sm:inline shrink-0">·</span>
+        <p class="text-xs md:text-sm text-ink-500 truncate hidden sm:block">{{ banner.tagline }}</p>
       </div>
-      <div class="flex flex-wrap gap-2 text-xs text-ink-600">
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">⚡ 即时发货</span>
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">🛡️ 售后质保</span>
-        <span class="px-2.5 py-1 border border-ink-200 rounded-full bg-ink-50">📧 在线接码</span>
+      <div class="flex flex-wrap gap-1.5 text-[11px] text-ink-600">
+        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">⚡ 即时发货</span>
+        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">🛡️ 售后质保</span>
+        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">📧 在线接码</span>
       </div>
     </div>
   </section>
