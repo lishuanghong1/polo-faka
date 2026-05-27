@@ -8,6 +8,15 @@ import { useSiteStore } from '@/stores/site';
 const site = useSiteStore();
 const router = useRouter();
 
+const wechat = computed(() => site.settings.cs_wechat || 'ymw_polo');
+const qq = computed(() => site.settings.cs_qq || '');
+const telegram = computed(() => site.settings.cs_telegram || '');
+
+function copyContact(text: string, label: string) {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(() => ElMessage.success(`${label} 已复制`));
+}
+
 interface UnifiedProduct {
   source: 'local' | 'forge';
   /** 卡片 key */
@@ -183,6 +192,70 @@ onMounted(() => load(false));
     </div>
   </section>
 
+  <!-- 客服联系条 -->
+  <section class="max-w-7xl mx-auto px-4 mt-4">
+    <div class="rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50/40 px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2.5">
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-sm font-semibold text-amber-900">联系客服</div>
+          <div class="text-[11px] text-amber-700/80">缺货商品 / 售后 / 自定义需求</div>
+        </div>
+      </div>
+
+      <div class="h-8 w-px bg-amber-200/80 hidden md:block"></div>
+
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <button
+          v-if="wechat"
+          class="inline-flex items-center gap-1.5 group text-sm"
+          :title="`复制微信号 ${wechat}`"
+          @click="copyContact(wechat, '微信号')"
+        >
+          <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8.69 8.34c-1.74 0-3.15 1.13-3.15 2.55 0 .58.23 1.11.62 1.53l-.31.94 1.1-.55c.51.18 1.04.28 1.6.28h.31a2.7 2.7 0 0 1-.1-.73c0-1.62 1.54-2.91 3.45-2.91h.31C12.21 8.84 10.61 7.34 8.69 8.34zm-1.2 1.61a.43.43 0 1 1 0-.86.43.43 0 0 1 0 .86zm2.42 0a.43.43 0 1 1 0-.86.43.43 0 0 1 0 .86z"/>
+            <path d="M18.5 14.5c0-2.21-2.16-4-4.83-4-2.67 0-4.83 1.79-4.83 4s2.16 4 4.83 4c.55 0 1.07-.08 1.55-.22l.93.5-.26-.8c.79-.54 1.31-1.39 1.4-2.34l.01-.09H18l.07.12-.04.12s.47.44.47.71zm-6.5-.5a.34.34 0 1 1 0-.68.34.34 0 0 1 0 .68zm3.34 0a.34.34 0 1 1 0-.68.34.34 0 0 1 0 .68z"/>
+          </svg>
+          <span class="text-ink-500 text-xs">微信</span>
+          <code class="font-mono text-ink-900 font-medium">{{ wechat }}</code>
+          <span class="text-[10px] text-brand-600 opacity-0 group-hover:opacity-100 transition">复制</span>
+        </button>
+
+        <button
+          v-if="qq"
+          class="inline-flex items-center gap-1.5 group text-sm"
+          :title="`复制 QQ ${qq}`"
+          @click="copyContact(qq, 'QQ')"
+        >
+          <svg class="w-4 h-4 text-[#1296db]" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2a7.3 7.3 0 0 0-7.3 7.3v.7c0 .8-.4 1.4-1 2a4 4 0 0 0-.4 5.3c.4.6 1 1 1.6 1.3-.1 1 .2 1.7.8 2.3.7.6 1.7.8 2.7.5 1.1 1.2 2.7 1.6 4.3 1.5h.6c1.6 0 3.2-.3 4.3-1.5 1 .3 2 0 2.7-.5.6-.6.9-1.4.8-2.3a4 4 0 0 0 1.6-1.3 4 4 0 0 0-.4-5.3c-.6-.6-1-1.2-1-2v-.7A7.3 7.3 0 0 0 12 2z"/>
+          </svg>
+          <span class="text-ink-500 text-xs">QQ</span>
+          <code class="font-mono text-ink-900 font-medium">{{ qq }}</code>
+          <span class="text-[10px] text-brand-600 opacity-0 group-hover:opacity-100 transition">复制</span>
+        </button>
+
+        <a
+          v-if="telegram"
+          :href="`https://t.me/${telegram.replace(/^@/, '')}`"
+          target="_blank"
+          class="inline-flex items-center gap-1.5 text-sm hover:text-brand-600"
+          :title="`打开 Telegram ${telegram}`"
+        >
+          <svg class="w-4 h-4 text-sky-500" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.7 4.3c-.2-.1-.5-.1-.7-.1L3.7 10.6c-.4.1-.7.4-.7.8 0 .4.3.7.6.9l3.9 1.4 1.4 4.6c.1.3.4.5.7.5.2 0 .4-.1.5-.2l2.2-2.1 4.1 3c.2.1.4.2.6.2.4 0 .8-.3.9-.7l3-13.4c.1-.4 0-.8-.2-1.1zM9.8 14.7l-.7 2.4-1-3.2 7.4-6.5-5.7 7.3z"/>
+          </svg>
+          <span class="text-ink-500 text-xs">Telegram</span>
+          <code class="font-mono text-ink-900 font-medium">{{ telegram }}</code>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- 商品列表 -->
   <section class="max-w-7xl mx-auto px-4 mt-8 pb-12">
     <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
@@ -244,10 +317,20 @@ onMounted(() => load(false));
                 <div
                   :class="[
                     'text-xs',
-                    p.stock <= 0 ? 'text-rose-500' : p.stock <= 5 ? 'text-amber-600' : 'text-ink-400',
+                    p.stock <= 0
+                      ? p.source === 'local'
+                        ? 'text-amber-600'
+                        : 'text-rose-500'
+                      : p.stock <= 5
+                        ? 'text-amber-600'
+                        : 'text-ink-400',
                   ]"
                 >
-                  {{ p.stock <= 0 ? '缺货' : `库存 ${p.stock}` }}
+                  {{
+                    p.stock <= 0
+                      ? p.source === 'local' ? '可下单 · 联系客服' : '缺货'
+                      : `库存 ${p.stock}`
+                  }}
                 </div>
               </div>
             </div>
