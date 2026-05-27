@@ -111,13 +111,28 @@ const remainingDays = computed(() => {
 
 /**
  * 注入到 cursor.com Console 的 JS 片段。
- * 注意：cookie 值必须是完整的 `user_XXX::JWT`（包含 user_ 前缀），
- *       然后整体 encodeURIComponent。否则 cursor.com 不认。
+ *
+ * 关键点：
+ * 1) cookie 值必须保留 `user_XXX::JWT` 完整字符串 + 整体 url-encode
+ * 2) 官方 cookie 是 HttpOnly + domain=.cursor.com，JS 无法覆盖。
+ *    所以执行前必须确保已 logout（无活动 session），否则浏览器会拒绝
+ *    JS 写入到 .cursor.com 这个 domain（fall back 到 host-only 不生效）。
+ * 3) 脚本前置检测：若已存在同名 cookie 但 JS 读不到内容（HttpOnly），
+ *    则提示用户先在右上角头像处退出登录。
  */
 const browserSnippet = computed(() => {
   const t = cleanToken.value;
   if (!t) return '';
-  return `(()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);['.cursor.com','cursor.com',''].forEach(d=>{const c='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');document.cookie=c;});const set=document.cookie.includes('WorkosCursorSessionToken=');if(!set){alert('Cookie 写入失败，请确认在 cursor.com 域名下执行');return;}alert('Cookie 已写入，正在跳转');location.href='https://www.cursor.com/dashboard';})();`;
+  return `(()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);
+const writeAll=()=>{['.cursor.com','cursor.com',''].forEach(d=>{document.cookie='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');});};
+writeAll();
+const after=document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('WorkosCursorSessionToken='));
+if(!after||!after.includes(enc.slice(0,20))){
+  alert('⚠️ 写入失败：检测到当前已登录账号（官方 cookie 为 HttpOnly 受保护）。\\n\\n请按以下步骤操作：\\n1) 点击页面右上角头像 → 退出登录（Sign out）\\n2) 退到登录页后，刷新本页面（不要登录）\\n3) 再次按 F12 粘贴此脚本回车');
+  return;
+}
+alert('✅ Cookie 已写入，正在跳转 dashboard');
+location.href='https://www.cursor.com/dashboard';})();`;
 });
 
 const submitting = ref(false);
@@ -149,6 +164,7 @@ async function doLogin() {
     }
 
     // 2. 打开 cursor.com 新标签
+    //    用户需要自己确认是否已登录；已登录的话要先退出
     const win = window.open('https://www.cursor.com/dashboard', '_blank');
     if (!win) {
       ElMessage.error('浏览器拦截了新窗口，请允许弹窗后重试');
@@ -156,18 +172,22 @@ async function doLogin() {
       return;
     }
 
-    // 3. 弹清晰指引
+    // 3. 弹清晰指引（强调先退出登录）
     await ElMessageBox.alert(
-      `<div style="line-height:1.7;font-size:13px">
+      `<div style="line-height:1.75;font-size:13px">
         <p>已为你打开 <b>cursor.com</b> 并将登录脚本复制到剪贴板。</p>
-        <p>在新标签中按下面 3 步操作即可：</p>
+        <p style="color:#991b1b;background:#fee2e2;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
+          ⚠️ <b>重要</b>：如果新标签里已登录过 Cursor 账号，必须先 <b>点右上角头像 → 退出登录（Sign out）</b>，
+          否则官方的 HttpOnly cookie 会让新登录写不进去。
+        </p>
+        <p>退出登录后，按下面 3 步即可：</p>
         <ol style="padding-left:18px;margin:6px 0">
-          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">F12</kbd> 打开开发者工具</li>
-          <li>切到 <b>Console</b> 标签</li>
-          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">Ctrl+V</kbd> 粘贴，回车执行</li>
+          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">F12</kbd> 打开开发者工具，切到 <b>Console</b></li>
+          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">Ctrl+V</kbd> 粘贴脚本，回车执行</li>
+          <li>看到 "✅ Cookie 已写入" 即登录成功</li>
         </ol>
         <p style="color:#92400e;background:#fef3c7;padding:8px;border-radius:6px;margin-top:8px;font-size:12px">
-          首次粘贴 Chrome 可能要求你输入「allow pasting」后才允许，按提示输入即可。
+          首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。
         </p>
       </div>`,
       '操作指引',
@@ -290,7 +310,7 @@ function clearInput() {
     </button>
 
     <p class="mt-2 text-center text-xs text-ink-400">
-      点击后会打开 cursor.com 并自动复制脚本，再到新标签按 F12 粘贴即可登录
+      点击后会打开 cursor.com 并自动复制脚本，<b class="text-rose-500">如果当前已登录请先在该标签退出登录</b>，再按 F12 粘贴
     </p>
 
     <!-- 高级：手动复制 -->
@@ -311,8 +331,9 @@ function clearInput() {
     <div class="mt-6 text-[11px] text-ink-400 leading-relaxed border-t border-ink-100 pt-4 space-y-1">
       <p>· Token 在你的浏览器中处理，不会上传服务器、不会写入任何日志</p>
       <p>· 浏览器禁止跨域设 cookie，所以需要在 cursor.com 控制台执行一次脚本</p>
-      <p>· <b>cookie 值必须保留 <code class="font-mono">user_XXX::</code> 前缀</b>。直接粘 <code class="font-mono">eyJ...</code> 纯 JWT 是不能登录的</p>
-      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code></p>
+      <p>· cookie 值必须保留 <code class="font-mono">user_XXX::</code> 前缀。直接粘 <code class="font-mono">eyJ...</code> 纯 JWT 是不能登录的</p>
+      <p>· <b class="text-rose-500">官方 cookie 是 HttpOnly，JS 不能覆盖。已登录时必须先在 cursor.com 退出再粘脚本，否则不生效</b></p>
+      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code> / 没清旧 cookie</p>
     </div>
   </div>
 </template>
