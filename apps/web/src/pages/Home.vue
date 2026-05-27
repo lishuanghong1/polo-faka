@@ -4,12 +4,29 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
-import EmailCodeBox from '@/components/EmailCodeBox.vue';
 
 const site = useSiteStore();
 const router = useRouter();
 
-const products = ref<any[]>([]);
+interface UnifiedProduct {
+  source: 'local' | 'forge';
+  /** 卡片 key */
+  key: string;
+  /** 显示名 */
+  typeName: string;
+  /** 主标识：本地 id 字符串 / 三方 typeKey */
+  typeKey: string;
+  displayPrice: number;
+  stock: number;
+  warrantyHours?: number | null;
+  categoryKey: string;
+  categoryName: string;
+  emailCodeEnabled?: boolean;
+  /** 本地商品才有，多 SKU 时是最低价 */
+  fromPrice?: boolean;
+}
+
+const products = ref<UnifiedProduct[]>([]);
 const loading = ref(false);
 const refreshing = ref(false);
 const lastError = ref('');
@@ -20,31 +37,89 @@ const banner = computed(() => ({
 }));
 
 const grouped = computed(() => {
-  const map = new Map<string, { categoryName: string; items: any[] }>();
+  const map = new Map<string, { categoryName: string; items: UnifiedProduct[] }>();
   for (const p of products.value) {
-    const key = p.categoryKey || 'others';
+    const key = p.categoryKey;
     if (!map.has(key)) map.set(key, { categoryName: p.categoryName, items: [] });
     map.get(key)!.items.push(p);
   }
   return Array.from(map.values());
 });
 
+function normalizeLocal(p: any): UnifiedProduct {
+  const prices = (p.skus || [])
+    .map((s: any) => Number(s.price))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  return {
+    source: 'local',
+    key: `local:${p.id}`,
+    typeKey: String(p.id),
+    typeName: p.title,
+    displayPrice: minPrice,
+    fromPrice: prices.length > 1,
+    stock: Number(p.totalStock || 0),
+    warrantyHours: p.warrantyHours ?? null,
+    categoryKey: p.category?.slug || `cat-${p.category?.id || 'others'}`,
+    categoryName: p.category?.name || '其它',
+    emailCodeEnabled: false,
+  };
+}
+
+function normalizeForge(p: any): UnifiedProduct {
+  return {
+    source: 'forge',
+    key: `forge:${p.typeKey}`,
+    typeKey: p.typeKey,
+    typeName: p.typeName,
+    displayPrice: Number(p.displayPrice),
+    stock: Number(p.stock || 0),
+    warrantyHours: p.warrantyHours ?? null,
+    categoryKey: p.categoryKey || 'forge-others',
+    categoryName: p.categoryName || '其它',
+    emailCodeEnabled: !!p.emailCodeEnabled,
+  };
+}
+
 async function load(showRefreshing = false) {
   if (showRefreshing) refreshing.value = true;
   else loading.value = true;
   lastError.value = '';
-  try {
-    products.value = await api.forge.listProducts();
-  } catch (e: any) {
-    lastError.value = e?.response?.data?.error?.message || e?.message || '加载商品失败';
-  } finally {
-    loading.value = false;
-    refreshing.value = false;
+
+  // 并发拉两边，任意一边失败都不影响另一边
+  const [localRes, forgeRes] = await Promise.allSettled([
+    api.products({ pageSize: 100 }),
+    api.forge.listProducts(),
+  ]);
+
+  const merged: UnifiedProduct[] = [];
+
+  if (localRes.status === 'fulfilled') {
+    const items = (localRes.value as any).items || [];
+    for (const it of items) merged.push(normalizeLocal(it));
   }
+
+  if (forgeRes.status === 'fulfilled') {
+    for (const it of forgeRes.value as any[]) merged.push(normalizeForge(it));
+  }
+
+  // 两个都失败才报错
+  if (localRes.status === 'rejected' && forgeRes.status === 'rejected') {
+    const e: any = forgeRes.reason || localRes.reason;
+    lastError.value = e?.response?.data?.error?.message || e?.message || '加载商品失败';
+  }
+
+  products.value = merged;
+  loading.value = false;
+  refreshing.value = false;
 }
 
-function gotoDetail(typeKey: string) {
-  router.push(`/forge-product/${encodeURIComponent(typeKey)}`);
+function gotoDetail(p: UnifiedProduct) {
+  if (p.source === 'local') {
+    router.push(`/product/${encodeURIComponent(p.typeKey)}`);
+  } else {
+    router.push(`/forge-product/${encodeURIComponent(p.typeKey)}`);
+  }
 }
 
 async function refresh() {
@@ -138,27 +213,31 @@ onMounted(() => load(false));
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <button
             v-for="p in g.items"
-            :key="p.typeKey"
+            :key="p.key"
             class="card p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition bg-white border border-ink-100 group"
-            @click="gotoDetail(p.typeKey)"
+            @click="gotoDetail(p)"
           >
             <div class="flex items-start justify-between gap-2 mb-3">
               <div class="min-w-0">
                 <div class="font-semibold text-ink-900 group-hover:text-brand-600 transition truncate">
                   {{ p.typeName }}
                 </div>
-                <div class="text-[11px] text-ink-400 font-mono mt-0.5">{{ p.typeKey }}</div>
+                <div v-if="p.source === 'forge'" class="text-[11px] text-ink-400 font-mono mt-0.5 truncate">{{ p.typeKey }}</div>
               </div>
-              <span
-                v-if="p.emailCodeEnabled"
-                class="shrink-0 px-1.5 py-0.5 text-[10px] bg-brand-50 text-brand-700 rounded"
-                title="支持在线接验证码"
-              >可接码</span>
+              <div class="flex flex-col items-end gap-1 shrink-0">
+                <span
+                  v-if="p.emailCodeEnabled"
+                  class="px-1.5 py-0.5 text-[10px] bg-brand-50 text-brand-700 rounded"
+                  title="支持在线接验证码"
+                >可接码</span>
+              </div>
             </div>
 
             <div class="flex items-end justify-between mt-2">
               <div>
-                <div class="text-2xl font-bold text-rose-600">¥{{ p.displayPrice.toFixed(2) }}</div>
+                <div class="text-2xl font-bold text-rose-600">
+                  <span v-if="p.fromPrice" class="text-xs font-normal text-ink-400 mr-0.5">起</span>¥{{ p.displayPrice.toFixed(2) }}
+                </div>
                 <div v-if="p.warrantyHours" class="text-[11px] text-ink-400 mt-1">质保 {{ p.warrantyHours }} 小时</div>
               </div>
               <div class="text-right">
