@@ -74,6 +74,37 @@ async function refund() {
   emit('changed');
 }
 
+async function alipayQuery() {
+  const r = await api.admin.alipayQuery(order.value.orderNo);
+  if (!r.tradeStatus) {
+    ElMessage.info('支付宝侧暂无此订单（未支付或已关闭）');
+  } else {
+    ElMessage.success(
+      `支付宝状态：${r.tradeStatus}${r.totalAmount ? ` 金额 ¥${r.totalAmount}` : ''}`,
+    );
+  }
+  await load();
+  emit('changed');
+}
+
+async function alipayRefund() {
+  const { value } = await ElMessageBox.prompt(
+    '支付宝原路退款（不可撤销，会立即退款到买家账户）',
+    '确认原路退款',
+    {
+      inputType: 'text',
+      inputPlaceholder: '退款原因，会写入支付宝账单',
+      confirmButtonText: '确认退款',
+      confirmButtonClass: 'el-button--danger',
+      inputValidator: (v) => (v && v.trim().length >= 2 ? true : '原因至少 2 个字'),
+    },
+  );
+  const r = await api.admin.alipayRefund(order.value.orderNo, value);
+  ElMessage.success(`支付宝退款成功 ¥${r.amount}`);
+  await load();
+  emit('changed');
+}
+
 async function cancel() {
   await ElMessageBox.confirm('确认取消此未支付订单？', '提示', { type: 'warning' });
   await api.admin.orderCancel(order.value.orderNo);
@@ -166,6 +197,10 @@ function close() {
             <div v-if="order.userId" class="flex justify-between"><dt class="text-ink-500">用户 ID</dt><dd>#{{ order.userId }}</dd></div>
             <div v-else class="flex justify-between"><dt class="text-ink-500">用户</dt><dd class="text-ink-400">游客订单</dd></div>
             <div v-if="order.ip" class="flex justify-between"><dt class="text-ink-500">IP</dt><dd class="font-mono text-xs">{{ order.ip }}</dd></div>
+            <div v-if="order.thirdTradeNo" class="flex justify-between"><dt class="text-ink-500">支付宝单号</dt><dd class="font-mono text-xs">{{ order.thirdTradeNo }}</dd></div>
+            <div v-if="order.buyerLogonId" class="flex justify-between"><dt class="text-ink-500">买家</dt><dd class="text-xs">{{ order.buyerLogonId }}</dd></div>
+            <div v-if="order.refundedAt" class="flex justify-between"><dt class="text-ink-500">退款时间</dt><dd class="text-xs">{{ new Date(order.refundedAt).toLocaleString() }}</dd></div>
+            <div v-if="order.refundReason" class="flex justify-between"><dt class="text-ink-500">退款原因</dt><dd class="text-xs">{{ order.refundReason }}</dd></div>
             <div v-if="order.remark" class="flex justify-between"><dt class="text-ink-500">备注</dt><dd class="text-xs">{{ order.remark }}</dd></div>
           </dl>
         </div>
@@ -221,10 +256,22 @@ function close() {
         >手动输入卡密发货</button>
 
         <button
+          v-if="order.payMethod === 'ALIPAY' && ['PENDING','PAID','DELIVERED'].includes(order.status)"
+          class="px-3 py-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50 text-sm"
+          @click="alipayQuery"
+        >查询支付宝状态</button>
+
+        <button
+          v-if="order.payMethod === 'ALIPAY' && ['PAID', 'DELIVERED'].includes(order.status)"
+          class="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm"
+          @click="alipayRefund"
+        >支付宝原路退款</button>
+
+        <button
           v-if="['PAID', 'DELIVERED'].includes(order.status)"
           class="ml-auto px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-sm"
           @click="refund"
-        >退款</button>
+        >账面退款</button>
       </div>
     </div>
   </el-drawer>

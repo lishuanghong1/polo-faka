@@ -88,6 +88,17 @@ export const api = {
     auditList: (params: any) => http.get('/admin/audit', { params }),
     auditActions: () => http.get<string[]>('/admin/audit/actions'),
 
+    alipayReload: () => http.post('/pay/alipay/reload'),
+    alipayQuery: (orderNo: string) =>
+      http.get<{ tradeStatus: string | null; tradeNo?: string; totalAmount?: number; buyerLogonId?: string }>(
+        `/pay/alipay/query/${orderNo}`,
+      ),
+    alipayRefund: (orderNo: string, reason?: string) =>
+      http.post<{ ok: boolean; amount: number; refundFee?: number }>(
+        `/pay/alipay/refund/${orderNo}`,
+        { reason },
+      ),
+
     // 兑换码
     redeemGenerate: (body: any) => http.post('/admin/redeem-codes/generate', body),
     redeemList: (params: any) => http.get('/admin/redeem-codes', { params }),

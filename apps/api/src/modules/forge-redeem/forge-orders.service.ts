@@ -168,10 +168,20 @@ export class ForgeOrdersService {
   }
 
   /**
-   * 标记 ALIPAY 订单为已付款，并触发发货。
-   * 由 alipay notify 调用；金额校验 + 幂等。
+   * 仅做支付状态推进（PENDING → PAID），同步快速完成，<100ms。
+   * 由 alipay notify 调用：金额校验 + 幂等 + 立即返回，发货走 fulfillAsync。
+   *
+   * 返回值：
+   *   - 'recorded' = 这次确实把 PENDING 推进到了 PAID（外层应触发发货）
+   *   - 'already'  = 已经是 PAID/DELIVERED 等终态（幂等命中，无需发货）
+   * 任何不一致都抛错（金额、订单类型、状态非法等）→ 让 notify 回 fail 让支付宝重推。
    */
-  async markPaidAndFulfill(orderNo: string, tradeNo: string, paidAmount: number) {
+  async markPaid(
+    orderNo: string,
+    tradeNo: string,
+    paidAmount: number,
+    buyerLogonId?: string,
+  ): Promise<'recorded' | 'already'> {
     const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
     if (!order) throw new NotFoundException('订单不存在');
     if (order.paymentMethod !== ForgePaymentMethod.ALIPAY) {
@@ -182,18 +192,13 @@ export class ForgeOrdersService {
         `金额不一致：订单 ¥${order.totalAmount}，支付 ¥${paidAmount}`,
       );
     }
-    // 幂等：已 PAID/DELIVERED 直接返回
+    // 幂等：终态直接返回
     if (
       order.status === ForgeOrderStatus.DELIVERED ||
-      order.status === ForgeOrderStatus.PAID
+      order.status === ForgeOrderStatus.PAID ||
+      order.status === ForgeOrderStatus.REFUNDED
     ) {
-      // 但已 PAID 没发货的，要尝试补发
-      if (order.status === ForgeOrderStatus.PAID && !order.upstreamOrderNo) {
-        await this.fulfillOrder(orderNo).catch((e) =>
-          this.logger.error(`fulfill retry failed: ${(e as Error).message}`),
-        );
-      }
-      return;
+      return 'already';
     }
     if (order.status !== ForgeOrderStatus.PENDING) {
       throw new BadRequestException(`订单状态 ${order.status} 不允许标记已付款`);
@@ -204,13 +209,33 @@ export class ForgeOrdersService {
       data: {
         status: ForgeOrderStatus.PAID,
         thirdTradeNo: tradeNo,
+        buyerLogonId: buyerLogonId?.slice(0, 128),
         paidAt: new Date(),
       },
     });
-    // 立即发货
-    await this.fulfillOrder(orderNo).catch((e) =>
-      this.logger.error(`fulfill after alipay failed: ${(e as Error).message}`),
-    );
+    return 'recorded';
+  }
+
+  /**
+   * 异步触发上游发货 + 自补发。
+   * - 入参订单必须是 PAID 状态
+   * - 失败会标 FAILED + failReason；不抛出（异步场景没人接）
+   * - 幂等：已 DELIVERED 直接返回
+   */
+  fulfillAsync(orderNo: string): void {
+    setImmediate(() => {
+      this.fulfillOrder(orderNo).catch((e) => {
+        this.logger.error(`fulfillAsync ${orderNo} failed: ${(e as Error).message}`);
+      });
+    });
+  }
+
+  /** 兼容旧名：notify 走 markPaid + fulfillAsync 替代 */
+  async markPaidAndFulfill(orderNo: string, tradeNo: string, paidAmount: number) {
+    const r = await this.markPaid(orderNo, tradeNo, paidAmount);
+    if (r === 'recorded') {
+      this.fulfillAsync(orderNo);
+    }
   }
 
   /**
@@ -309,15 +334,25 @@ export class ForgeOrdersService {
     };
   }
 
-  /** 公开查单：按 orderNo + 可选 contact 校验 */
+  /**
+   * 公开查单：强制 contact 校验防订单号被猜中。
+   * - 订单建单时录入了 contact → 必须传同样的 contact
+   * - 订单没 contact（理论上前端必填，不应存在） → 仅返回基础状态，不返回 accounts
+   */
   async query(orderNo: string, contact?: string) {
     const order = await this.detail(orderNo);
     if (order.contact) {
       if (!contact || contact.trim() !== order.contact) {
         throw new NotFoundException('订单不存在');
       }
+      return order;
     }
-    return order;
+    // 没有 contact 的订单：隐藏发货内容（防爆破订单号）
+    return {
+      ...order,
+      accounts: [],
+      contact: null,
+    };
   }
 
   /** Admin 列表 */

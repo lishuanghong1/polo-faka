@@ -134,6 +134,53 @@ export class OrdersService {
     }).then(() => this.markPaidAndDeliver(orderNo));
   }
 
+  /**
+   * 仅推进订单到 PAID（不发货），<100ms，由 alipay notify 调用。
+   * 返回 'recorded' = 这次推进了；'already' = 已经是终态。
+   * 任何不一致抛错让 notify 回 fail。
+   */
+  async markPaidOnly(
+    orderNo: string,
+    tradeNo: string,
+    paidAmount: number,
+    buyerLogonId?: string,
+  ): Promise<'recorded' | 'already'> {
+    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (Math.abs(Number(order.payAmount) - paidAmount) > 0.01) {
+      throw new BadRequestException(
+        `金额不一致：订单 ¥${order.payAmount}，支付 ¥${paidAmount}`,
+      );
+    }
+    if (['PAID', 'DELIVERED', 'REFUNDED', 'CANCELLED'].includes(order.status)) {
+      return 'already';
+    }
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException(`订单状态 ${order.status} 不允许标记已付款`);
+    }
+    await this.prisma.order.update({
+      where: { orderNo },
+      data: {
+        status: 'PAID',
+        thirdTradeNo: tradeNo,
+        buyerLogonId: buyerLogonId?.slice(0, 128),
+        paidAt: new Date(),
+      },
+    });
+    return 'recorded';
+  }
+
+  /** 异步发货（notify / cron 用），失败标 PAID 不抛错 */
+  deliverAsync(orderNo: string): void {
+    setImmediate(() => {
+      this.markPaidAndDeliver(orderNo).catch((e) => {
+        // markPaidAndDeliver 本身大部分错误已吞掉；这里兜底
+        // eslint-disable-next-line no-console
+        console.error(`[orders.deliverAsync] ${orderNo}:`, (e as Error).message);
+      });
+    });
+  }
+
   /** 标记已支付并自动分配卡密 */
   async markPaidAndDeliver(orderNo: string) {
     const lockKey = `lock:order:${orderNo}`;
@@ -239,16 +286,25 @@ export class OrdersService {
     return { total, page, pageSize, items };
   }
 
-  /** 公开订单查询（订单号 + 可选 contact 校验） */
+  /**
+   * 公开订单查询（订单号 + contact 校验）。
+   * - 有 contact 的订单：必须提供匹配的 contact
+   * - 没 contact 的订单：仅返回基础状态，不返回卡密内容（避免订单号被爆破）
+   * 登录用户走 /orders/mine 拿完整数据。
+   */
   async query(orderNo: string, contact?: string) {
     const order = await this.detail(orderNo);
-    // 如果订单创建时记录了 contact，查询必须提供且匹配（防订单号被猜中）
     if (order.contact) {
       if (!contact || contact.trim() !== order.contact) {
         throw new NotFoundException('订单不存在');
       }
+      return order;
     }
-    return order;
+    return {
+      ...order,
+      cardKeys: [],
+      contact: null,
+    };
   }
 
   /** 管理员：标记订单为已支付，并尝试发货 */

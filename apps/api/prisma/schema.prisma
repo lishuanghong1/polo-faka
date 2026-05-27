@@ -216,10 +216,14 @@ model Order {
   contact       String?     // 联系方式（QQ/邮箱/手机）
   remark        String?
   thirdTradeNo  String?     // 第三方交易号（支付宝 trade_no 等）
+  buyerLogonId  String?     @db.VarChar(128) // 支付宝买家（脱敏）
   ip            String?
   paidAt        DateTime?
   deliveredAt   DateTime?
   expireAt      DateTime    // 待支付订单超时时间
+  refundAmount  Decimal?    @db.Decimal(12, 2)
+  refundedAt    DateTime?
+  refundReason  String?     @db.VarChar(500)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -467,6 +471,7 @@ enum ForgeOrderStatus {
   FAILED        // 失败（库存 / 上游错误 等）
   CANCELLED     // 用户/系统取消
   EXPIRED       // 超时未支付
+  REFUNDED      // 已退款（admin 原路退）
 }
 
 enum ForgePaymentMethod {
@@ -498,9 +503,15 @@ model ForgeOrder {
 
   /// 支付宝交易号（仅 ALIPAY 路径）
   thirdTradeNo      String?            @db.VarChar(64)
+  /// 支付宝买家登录名（脱敏存，如 138****1234@qq.com）
+  buyerLogonId      String?            @db.VarChar(128)
   paidAt            DateTime?
   /// 待支付订单超时时间（仅 ALIPAY 路径，超时变 EXPIRED）
   expireAt          DateTime?
+  /// 退款金额（admin 发起原路退款时记录）
+  refundAmount      Decimal?           @db.Decimal(12, 2)
+  refundedAt        DateTime?
+  refundReason      String?            @db.VarChar(500)
 
   upstreamOrderNo   String?            @db.VarChar(64)
   upstreamRequestId String?            @db.VarChar(64)

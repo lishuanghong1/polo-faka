@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 
@@ -26,7 +26,46 @@ function statusBadge(s: string) {
     FAILED: { text: '失败', cls: 'bg-rose-100 text-rose-700' },
     CANCELLED: { text: '已取消', cls: 'bg-gray-100 text-gray-600' },
     EXPIRED: { text: '已过期', cls: 'bg-gray-100 text-gray-600' },
+    REFUNDED: { text: '已退款', cls: 'bg-rose-100 text-rose-700' },
   }[s] || { text: s, cls: 'bg-gray-100 text-gray-600' };
+}
+
+async function alipayQuery(orderNo: string) {
+  try {
+    const r = await api.admin.alipayQuery(orderNo);
+    if (!r.tradeStatus) {
+      ElMessage.info('支付宝侧暂无此订单（未支付或已关闭）');
+    } else {
+      ElMessage.success(
+        `支付宝状态：${r.tradeStatus}${r.totalAmount ? ` 金额 ¥${r.totalAmount}` : ''}`,
+      );
+    }
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '查询失败');
+  }
+}
+
+async function alipayRefund(orderNo: string) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '支付宝原路退款（不可撤销）',
+      '确认原路退款',
+      {
+        inputType: 'text',
+        inputPlaceholder: '退款原因（必填）',
+        confirmButtonText: '确认退款',
+        confirmButtonClass: 'el-button--danger',
+        inputValidator: (v) => (v && v.trim().length >= 2 ? true : '原因至少 2 个字'),
+      },
+    );
+    const r = await api.admin.alipayRefund(orderNo, value);
+    ElMessage.success(`已退款 ¥${r.amount}`);
+    await load();
+  } catch (e: any) {
+    if (e === 'cancel') return;
+    ElMessage.error(e?.response?.data?.error?.message || '退款失败');
+  }
 }
 
 function payMethodBadge(m: string) {
@@ -186,6 +225,16 @@ onMounted(load);
               :disabled="retrying === it.orderNo"
               @click="retry(it.orderNo)"
             >{{ retrying === it.orderNo ? '重发中…' : '重发' }}</button>
+            <button
+              v-if="it.paymentMethod === 'ALIPAY' && ['PENDING','PAID','DELIVERED'].includes(it.status)"
+              class="text-xs text-sky-600 hover:underline mx-1"
+              @click="alipayQuery(it.orderNo)"
+            >查支付</button>
+            <button
+              v-if="it.paymentMethod === 'ALIPAY' && ['PAID','DELIVERED'].includes(it.status)"
+              class="text-xs text-rose-600 hover:underline mx-1"
+              @click="alipayRefund(it.orderNo)"
+            >退款</button>
           </td>
         </tr>
       </tbody>
