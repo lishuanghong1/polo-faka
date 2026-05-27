@@ -3,16 +3,13 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElRadioGroup, ElRadio, ElInputNumber, ElButton } from 'element-plus';
 import api from '@/api';
-import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
 const router = useRouter();
-const user = useUserStore();
 
 const product = ref<any>(null);
 const skuId = ref<number | null>(null);
 const qty = ref(1);
-const payMethod = ref<'ALIPAY' | 'BALANCE' | 'MOCK'>('ALIPAY');
 const contact = ref('');
 const submitting = ref(false);
 const alipayEnabled = ref(false);
@@ -37,12 +34,8 @@ async function load() {
   try {
     const r = await api.pay.alipayEnabled();
     alipayEnabled.value = !!r.enabled;
-    if (!alipayEnabled.value && payMethod.value === 'ALIPAY') {
-      payMethod.value = user.isLoggedIn ? 'BALANCE' : 'MOCK';
-    }
   } catch {
     alipayEnabled.value = false;
-    payMethod.value = user.isLoggedIn ? 'BALANCE' : 'MOCK';
   }
 }
 
@@ -58,9 +51,8 @@ async function buy() {
     ElMessage.warning('该规格已售罄');
     return;
   }
-  if (payMethod.value === 'BALANCE' && !user.isLoggedIn) {
-    ElMessage.info('余额支付请先登录');
-    router.push({ name: 'login', query: { redirect: route.fullPath } });
+  if (!alipayEnabled.value) {
+    ElMessage.warning('支付宝暂未启用，请稍后再试');
     return;
   }
   submitting.value = true;
@@ -69,21 +61,14 @@ async function buy() {
       productId: product.value.id,
       skuId: skuId.value,
       quantity: qty.value,
-      payMethod: payMethod.value,
+      payMethod: 'ALIPAY',
       contact: contact.value || undefined,
     });
-    if (payMethod.value === 'BALANCE') {
-      router.push(`/order/${order.orderNo}`);
-    } else if (payMethod.value === 'ALIPAY') {
-      const channel = isMobile() ? 'WAP' : 'PC';
-      const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
-      // 直接跳支付宝
-      window.location.href = payUrl;
-    } else {
-      router.push(`/mock-pay?orderNo=${encodeURIComponent(order.orderNo)}`);
-    }
+    const channel = isMobile() ? 'WAP' : 'PC';
+    const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
+    window.location.href = payUrl;
   } catch (e: any) {
-    ElMessage.error(e?.message || '下单失败');
+    ElMessage.error(e?.response?.data?.error?.message || e?.message || '下单失败');
   } finally {
     submitting.value = false;
   }
@@ -147,21 +132,20 @@ async function buy() {
 
       <div class="mt-4">
         <div class="text-sm text-gray-700 mb-2">支付方式</div>
-        <el-radio-group v-model="payMethod">
-          <el-radio v-if="alipayEnabled" value="ALIPAY">
-            <span class="inline-flex items-center">
-              <svg class="w-4 h-4 mr-1 text-[#1677ff]" viewBox="0 0 1024 1024" fill="currentColor">
-                <path d="M230 0h564c127 0 230 103 230 230v564c0 127-103 230-230 230H230C103 1024 0 921 0 794V230C0 103 103 0 230 0z"/>
-                <path fill="#fff" d="M310 624c0 31 25 56 56 56h44v-87h-44c-31 0-56 14-56 31zm334-138c-9 0-26 1-46 5l50 134c30-19 45-39 45-58 0-43-15-81-49-81zm-43-104c-43 0-90 23-90 47h180c0-24-47-47-90-47z"/>
-              </svg>
-              支付宝
-            </span>
-          </el-radio>
-          <el-radio v-if="user.isLoggedIn" value="BALANCE">
-            余额（{{ user.profile?.balance ?? '0.00' }}）
-          </el-radio>
-          <el-radio value="MOCK">Mock（开发）</el-radio>
-        </el-radio-group>
+        <div
+          v-if="alipayEnabled"
+          class="inline-flex items-center px-3 py-2 rounded-lg border border-brand-200 bg-brand-50/50 text-sm"
+        >
+          <svg class="w-4 h-4 mr-1.5 text-[#1677ff]" viewBox="0 0 1024 1024" fill="currentColor">
+            <path d="M230 0h564c127 0 230 103 230 230v564c0 127-103 230-230 230H230C103 1024 0 921 0 794V230C0 103 103 0 230 0z"/>
+            <path fill="#fff" d="M310 624c0 31 25 56 56 56h44v-87h-44c-31 0-56 14-56 31zm334-138c-9 0-26 1-46 5l50 134c30-19 45-39 45-58 0-43-15-81-49-81zm-43-104c-43 0-90 23-90 47h180c0-24-47-47-90-47z"/>
+          </svg>
+          支付宝
+          <span class="ml-1.5 text-xs text-ink-500">扫码 / 跳转支付，秒到货</span>
+        </div>
+        <div v-else class="text-sm text-amber-700 bg-amber-50/60 border border-amber-200 rounded-lg px-3 py-2 inline-block">
+          支付宝暂未启用，请稍后再试
+        </div>
       </div>
 
       <div class="mt-4">
@@ -180,10 +164,16 @@ async function buy() {
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!skuId || !currentSku || currentSku.stock <= 0"
+          :disabled="!skuId || !currentSku || currentSku.stock <= 0 || !alipayEnabled"
           @click="buy"
         >
-          {{ currentSku?.stock > 0 ? '立即购买' : '暂无库存' }}
+          {{
+            !alipayEnabled
+              ? '支付宝未启用'
+              : currentSku?.stock > 0
+                ? '立即购买'
+                : '暂无库存'
+          }}
         </el-button>
       </div>
     </div>
