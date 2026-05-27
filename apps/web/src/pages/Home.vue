@@ -304,7 +304,10 @@ onMounted(() => load(false));
                   </span>
                 </div>
                 <div class="min-w-0">
-                  <div class="font-semibold text-ink-900 group-hover:text-brand-600 transition truncate">
+                  <div
+                    class="font-semibold text-ink-900 group-hover:text-brand-600 transition leading-snug line-clamp-2 break-words"
+                    :title="p.typeName"
+                  >
                     {{ p.typeName }}
                   </div>
                   <div v-if="p.subtitle" class="text-xs text-ink-500 mt-0.5 line-clamp-2">{{ p.subtitle }}</div>
