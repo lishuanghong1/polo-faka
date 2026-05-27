@@ -37,8 +37,13 @@ export class UsersController {
 
   @Roles('ADMIN')
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: any, @Req() req: Request) {
-    const r = await this.svc.update(Number(id), body);
+  async update(
+    @Param('id') id: string,
+    @Body() body: any,
+    @CurrentUser('sub') actorId: number,
+    @Req() req: Request,
+  ) {
+    const r = await this.svc.update(Number(id), body, actorId);
     this.audit.fromReq(req, AuditActions.USER_UPDATE, {
       target: `user:${id}`,
       detail: { keys: Object.keys(body || {}) },

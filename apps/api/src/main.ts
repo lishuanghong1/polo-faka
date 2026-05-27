@@ -43,26 +43,41 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: false,
+      // 生产开启 forbidNonWhitelisted：DTO 不允许的字段直接 400，防止类似 role/balance 之类的属性透传
+      forbidNonWhitelisted: process.env.NODE_ENV === 'production',
+      transformOptions: { enableImplicitConversion: true },
     }),
   );
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const origins = (config.get<string>('CORS_ORIGINS') || '').split(',').filter(Boolean);
+  if (process.env.NODE_ENV === 'production' && !origins.length) {
+    logger.warn('CORS_ORIGINS 未配置：生产环境将拒绝跨域请求，请明确指定允许的域名');
+  }
   app.enableCors({
-    origin: origins.length ? origins : true,
+    // 生产模式没配置时收紧到同源；开发模式仍允许全开方便联调
+    origin: origins.length
+      ? origins
+      : process.env.NODE_ENV === 'production'
+        ? false
+        : true,
     credentials: true,
   });
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Polo Faka API')
-    .setDescription('AI 账号 / 卡密自动发货商城')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .build();
-  const doc = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${prefix.replace(/^\//, '')}/docs`, app, doc);
+  // Swagger：仅在显式开启时挂载（默认在生产关闭，避免暴露路由结构）
+  const swaggerEnabled =
+    process.env.ENABLE_SWAGGER === 'true' || process.env.NODE_ENV !== 'production';
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Polo Faka API')
+      .setDescription('AI 账号 / 卡密自动发货商城')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .build();
+    const doc = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup(`${prefix.replace(/^\//, '')}/docs`, app, doc);
+  }
 
   const port = Number(config.get('PORT') || 4000);
   await app.listen(port);

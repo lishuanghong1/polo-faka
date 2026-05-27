@@ -24,6 +24,7 @@ import { ForgeOpenapiModule } from './modules/forge-openapi/forge-openapi.module
 import { ForgeRedeemModule } from './modules/forge-redeem/forge-redeem.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RedeemModule } from './modules/redeem/redeem.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { RedeemModule } from './modules/redeem/redeem.module';
     ForgeRedeemModule,
     RedeemModule,
     AdminModule,
+    HealthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

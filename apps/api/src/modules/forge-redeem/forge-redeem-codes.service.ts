@@ -172,7 +172,7 @@ export class ForgeRedeemCodesService {
       usedAmount: Number(code.usedAmount),
       remaining,
       expireAt: code.expireAt,
-      note: code.note,
+      // 注意：不下发 note（admin 内部备注，可能含敏感信息）
       orders: code.orders.map((o) => ({
         ...o,
         totalAmount: Number(o.totalAmount),

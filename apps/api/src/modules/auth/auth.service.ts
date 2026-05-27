@@ -16,7 +16,8 @@ export class AuthService {
     if (exists) throw new BadRequestException('用户名已被占用');
     if (dto.email) {
       const e = await this.prisma.user.findUnique({ where: { email: dto.email } });
-      if (e) throw new BadRequestException('邮箱已被占用');
+      // 不暴露邮箱占用，避免邮箱枚举攻击；统一提示
+      if (e) throw new BadRequestException('该邮箱无法用于注册');
     }
     const hash = await argon2.hash(dto.password);
     const user = await this.prisma.user.create({

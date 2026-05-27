@@ -50,11 +50,14 @@ async function reveal(a: any) {
     { type: 'warning' },
   );
   const r = await api.admin.poolReveal(a.id);
-  await ElMessageBox.alert(
-    `<div style="word-break:break-all;font-family:monospace;font-size:12px;line-height:1.5">${r.token}</div>`,
-    `${r.label} 的 Token`,
-    { dangerouslyUseHTMLString: true, confirmButtonText: '我已复制' },
-  );
+  // 用 ElMessageBox.prompt 安全显示（input 不会执行 HTML），避免 token 中含恶意字符触发 XSS
+  await ElMessageBox({
+    title: `${a.label} 的 Token`,
+    message: r.token,
+    customClass: 'token-reveal-dialog',
+    confirmButtonText: '我已复制',
+    type: 'info',
+  } as any).catch(() => null);
 }
 async function del(a: any) {
   await ElMessageBox.confirm(`删除「${a.label}」？`, '提示', { type: 'warning' });

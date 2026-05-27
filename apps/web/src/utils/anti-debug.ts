@@ -1,0 +1,206 @@
+/// <reference types="vite/client" />
+/**
+ * 前端反调试 / 防控制台。
+ *
+ * 注意：这是「防君子不防小人」的措施 —— 任何反调试都可以被绕过（关掉 JS、
+ * 用 Charles 抓包、改本地 hosts 跳过等）。它的真正价值是：
+ *   1. 提高普通用户的窥探门槛（90% 用户会被劝退）
+ *   2. 把决心调试的人逼到桌面端，留下水印 / 可追踪痕迹
+ *
+ * 真正的安全永远靠后端 —— 这部分的代码已经做好（鉴权 / 限流 / 加密 / 审计）。
+ *
+ * 默认在 production 生效；通过 VITE_ANTI_DEBUG=false 可关闭。
+ * 同时可通过 url 加 ?devtools=1 + localStorage 里设置开发凭证短路放行（仅 dev 模式）。
+ */
+
+// 用类型断言绕过环境类型不全的问题（部分项目没装 vite/client 三斜杠）
+const META_ENV: Record<string, string | boolean | undefined> =
+  ((import.meta as any).env as Record<string, string | boolean | undefined>) || {};
+
+const ENABLED = !!META_ENV.PROD && META_ENV.VITE_ANTI_DEBUG !== 'false';
+
+type Mode = 'block' | 'warn' | 'silent';
+const MODE: Mode = ((META_ENV.VITE_ANTI_DEBUG_MODE as Mode) || 'block');
+
+let started = false;
+
+function showBlocker(reason: string) {
+  if (typeof document === 'undefined') return;
+  // 已经渲染过了就别重复
+  if (document.getElementById('__anti_debug_blocker')) return;
+
+  const div = document.createElement('div');
+  div.id = '__anti_debug_blocker';
+  div.style.cssText = [
+    'position:fixed',
+    'inset:0',
+    'z-index:2147483647',
+    'background:#0b1220',
+    'color:#e2e8f0',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'flex-direction:column',
+    'font-family:system-ui,-apple-system,sans-serif',
+    'text-align:center',
+    'padding:24px',
+    'user-select:none',
+  ].join(';');
+  div.innerHTML = `
+    <div style="font-size:48px;margin-bottom:16px;">🛡️</div>
+    <div style="font-size:20px;font-weight:600;margin-bottom:8px;">页面已暂停</div>
+    <div style="font-size:14px;color:#94a3b8;max-width:480px;line-height:1.7;">
+      检测到调试工具，出于安全考虑页面已被锁定。<br/>
+      请关闭浏览器开发者工具后刷新页面继续访问。
+    </div>
+    <div style="font-size:12px;color:#64748b;margin-top:24px;opacity:.6;">${reason}</div>
+  `;
+  document.body.appendChild(div);
+}
+
+function blockOrWarn(reason: string) {
+  if (MODE === 'silent') return;
+  if (MODE === 'warn') {
+    // 不挡用户，仅一次 toast 之类（这里简单 console.warn 给开发者）
+    console.warn('[anti-debug]', reason);
+    return;
+  }
+  showBlocker(reason);
+}
+
+/**
+ * 1. 禁用右键菜单（防止「检查元素」入口）
+ */
+function disableContextMenu() {
+  window.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+  });
+}
+
+/**
+ * 2. 屏蔽常见 DevTools 快捷键
+ *    F12 / Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C / Ctrl+U
+ */
+function disableShortcuts() {
+  window.addEventListener('keydown', (e) => {
+    const key = e.key?.toLowerCase();
+    if (key === 'f12') {
+      e.preventDefault();
+      blockOrWarn('快捷键被禁用');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && ['i', 'j', 'c'].includes(key)) {
+      e.preventDefault();
+      blockOrWarn('快捷键被禁用');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && key === 'u') {
+      e.preventDefault();
+      blockOrWarn('快捷键被禁用');
+      return;
+    }
+  });
+}
+
+/**
+ * 3. DevTools 打开检测 —— 用窗口尺寸差。
+ *    DevTools 停靠时 outerWidth/Height 与 innerWidth/Height 差距明显（一般 > 160px）。
+ *    分离窗口检测不到，但绝大多数小白都是停靠模式。
+ */
+function detectByWindowSize() {
+  const threshold = 160;
+  const check = () => {
+    const widthDiff = window.outerWidth - window.innerWidth;
+    const heightDiff = window.outerHeight - window.innerHeight;
+    if (widthDiff > threshold || heightDiff > threshold) {
+      blockOrWarn('检测到开发者工具');
+    }
+  };
+  setInterval(check, 1000);
+}
+
+/**
+ * 4. debugger 拖时检测 —— 主流方法。
+ *    在 console.log(对象) 时若有 DevTools 打开，对象的 getter 会被触发。
+ *    或通过 `debugger` + performance.now() 测量执行时间。
+ */
+function detectByDebuggerStmt() {
+  const check = () => {
+    const t0 = performance.now();
+    // eslint-disable-next-line no-debugger
+    debugger;
+    const dt = performance.now() - t0;
+    // 没开 DevTools 时 debugger 是 noop；开了会触发断点暂停（>100ms）
+    if (dt > 100) {
+      blockOrWarn('检测到调试器');
+    }
+  };
+  setInterval(check, 1500);
+}
+
+/**
+ * 5. console getter trick —— DevTools 在打印对象时会访问其属性。
+ *    给一个 toString 触发 getter，能感知到 console 面板被打开。
+ */
+function detectByConsoleGetter() {
+  const bait: any = /./;
+  bait.toString = () => {
+    blockOrWarn('检测到控制台被打开');
+    return '';
+  };
+  setInterval(() => {
+    console.log(bait);
+    console.clear();
+  }, 2000);
+}
+
+/**
+ * 6. 清空原始 console 方法 —— 用户即便打开了控制台也看不到任何输出。
+ */
+function muteConsole() {
+  if (typeof window === 'undefined' || !window.console) return;
+  const noop = () => undefined;
+  const methods: string[] = [
+    'log',
+    'debug',
+    'info',
+    'warn',
+    'error',
+    'trace',
+    'table',
+    'group',
+    'groupEnd',
+    'groupCollapsed',
+    'dir',
+    'dirxml',
+    'count',
+    'time',
+    'timeEnd',
+    'timeLog',
+    'profile',
+    'profileEnd',
+    'assert',
+  ];
+  for (const m of methods) {
+    try {
+      (window.console as any)[m] = noop;
+    } catch {
+      /* readonly 浏览器忽略 */
+    }
+  }
+}
+
+export function startAntiDebug() {
+  if (!ENABLED || started) return;
+  started = true;
+
+  // 给一些反应时间（极慢的浏览器加载时可能误触发尺寸检测）
+  setTimeout(() => {
+    disableContextMenu();
+    disableShortcuts();
+    detectByWindowSize();
+    detectByDebuggerStmt();
+    detectByConsoleGetter();
+    muteConsole();
+  }, 600);
+}

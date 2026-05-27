@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -18,9 +18,13 @@ export class AuthController {
   ) {}
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('register')
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
+    // 允许通过环境变量临时关闭注册（应对刷号攻击）
+    if (process.env.DISABLE_REGISTER === 'true') {
+      throw new ForbiddenException('注册功能已关闭');
+    }
     const r = await this.auth.register(dto);
     this.audit.fromReq(req, AuditActions.REGISTER, {
       target: `user:${r.user.id}`,

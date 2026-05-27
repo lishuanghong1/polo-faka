@@ -23,8 +23,14 @@ export class CardKeysService {
     ]).then(([total, items]) => ({ total, page, pageSize, items }));
   }
 
-  /** 批量录入：content 行分隔，自动去重 */
+  /** 批量录入：content 行分隔，自动去重；单次最多 5000 行防数据库压力 */
   async bulkImport(productId: number, skuId: number, raw: string, remark?: string) {
+    if (typeof raw !== 'string') {
+      throw new Error('content 必须是字符串');
+    }
+    if (raw.length > 5_000_000) {
+      throw new Error('单次导入大小超过 5MB 上限');
+    }
     const lines = Array.from(
       new Set(
         raw
@@ -34,6 +40,15 @@ export class CardKeysService {
       ),
     );
     if (!lines.length) return { inserted: 0, duplicated: 0, total: 0 };
+    if (lines.length > 5000) {
+      throw new Error(`单次最多导入 5000 行（当前 ${lines.length} 行），请分批`);
+    }
+    // 单条最长 4KB，防 BLOB 注入式撑爆
+    for (const l of lines) {
+      if (l.length > 4096) {
+        throw new Error('存在单条超过 4KB 的内容，请检查输入');
+      }
+    }
 
     // 库内已存在的 content（同一 SKU 下）排除
     const existing = await this.prisma.cardKey.findMany({

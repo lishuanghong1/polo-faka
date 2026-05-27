@@ -7,7 +7,7 @@ import {
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { createHash, createHmac, randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { decryptString, isEncrypted } from '../../common/crypto.util';
+import { decryptString, isEncrypted, maskSecret } from '../../common/crypto.util';
 
 /**
  * Cursorforge 代理 OpenAPI 通用客户端。
@@ -125,7 +125,9 @@ export class ForgeOpenapiService {
         validateStatus: (s) => s < 500,
       });
       this.snapshot = cfg;
-      this.logger.log(`Forge OpenAPI client ready (baseUrl=${cfg.baseUrl}, agentKey=${cfg.agentKey})`);
+      this.logger.log(
+        `Forge OpenAPI client ready (baseUrl=${cfg.baseUrl}, agentKey=${maskSecret(cfg.agentKey)})`,
+      );
     }
     return { client: this.client, cfg };
   }

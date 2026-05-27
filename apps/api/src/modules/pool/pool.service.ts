@@ -71,21 +71,39 @@ export class PoolService {
     return { id: a.id, label: a.label, token };
   }
 
+  /** 允许 ADMIN 编辑的字段白名单（防止透传 createdAt / id / 内部字段） */
+  private pickAccountFields(data: any) {
+    const out: any = {};
+    if (typeof data?.label === 'string') out.label = data.label.slice(0, 64);
+    if (typeof data?.type === 'string') out.type = data.type.slice(0, 32);
+    if (typeof data?.email === 'string') out.email = data.email.slice(0, 128);
+    if (Number.isFinite(Number(data?.totalQuota))) out.totalQuota = Number(data.totalQuota);
+    if (Number.isFinite(Number(data?.usedQuota))) out.usedQuota = Number(data.usedQuota);
+    if (typeof data?.status === 'string') out.status = data.status.slice(0, 16);
+    if (typeof data?.note === 'string') out.note = data.note.slice(0, 500);
+    return out;
+  }
+
   async createAccount(data: any) {
-    const { token, ...rest } = data;
+    const { token } = data;
     if (!token) throw new NotFoundException('token 不能为空');
+    if (typeof token !== 'string' || token.length > 10_000) {
+      throw new NotFoundException('token 非法或过长');
+    }
+    const safe = this.pickAccountFields(data);
     return this.prisma.poolAccount
-      .create({ data: { ...rest, token: encryptString(token) } })
+      .create({ data: { ...safe, token: encryptString(token) } })
       .then((a) => this.toListItem(a));
   }
 
   async updateAccount(id: number, data: any) {
-    const { token, ...rest } = data;
-    const patch: any = { ...rest };
+    const { token } = data;
+    const patch: any = this.pickAccountFields(data);
     if (token !== undefined && token !== null && token !== '') {
+      if (typeof token !== 'string' || token.length > 10_000) {
+        throw new NotFoundException('token 非法或过长');
+      }
       patch.token = encryptString(token);
-    } else {
-      delete patch.token;
     }
     return this.prisma.poolAccount
       .update({ where: { id }, data: patch })
