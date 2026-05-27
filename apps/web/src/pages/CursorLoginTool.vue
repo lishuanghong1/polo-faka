@@ -112,29 +112,22 @@ const remainingDays = computed(() => {
 /**
  * 注入到 cursor.com Console 的 JS 片段。
  *
- * 流程：
- *   1) 先尝试调用 cursor.com 同域的多个 logout endpoint
- *      （服务器返回 Set-Cookie 清除 HttpOnly 的 WorkosCursorSessionToken）
- *   2) JS best-effort 再清一遍（针对非 HttpOnly 的同名 cookie）
- *   3) 写入新 cookie（保留 user_XXX:: 前缀 + 整体 url-encode）
- *   4) 回读校验，失败则提示并跳登录页让用户手动退出
+ * 前置条件：用户已经在 Application → Cookies 里手动删掉了旧的
+ * WorkosCursorSessionToken（HttpOnly 的，JS 删不掉，必须手动）。
+ *
+ * 脚本只负责把新 cookie 写入 .cursor.com / cursor.com 两个 domain。
  */
 const browserSnippet = computed(() => {
   const t = cleanToken.value;
   if (!t) return '';
-  return `(async()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);
-const eps=['/api/auth/signout','/api/auth/logout','/api/logout','/api/sign-out','/sign-out','/logout'];
-for(const ep of eps){try{await fetch(ep,{method:'POST',credentials:'include',redirect:'manual'});}catch(e){}try{await fetch(ep,{method:'GET',credentials:'include',redirect:'manual'});}catch(e){}}
-['.cursor.com','cursor.com',''].forEach(d=>{['/','/dashboard','/api'].forEach(p=>{const base='WorkosCursorSessionToken=; path='+p+(d?'; domain='+d:'');document.cookie=base+'; max-age=0';document.cookie=base+'; expires=Thu, 01 Jan 1970 00:00:00 GMT';});});
+  return `(()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);
 ['.cursor.com','cursor.com',''].forEach(d=>{document.cookie='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');});
-const after=document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('WorkosCursorSessionToken='));
-if(!after||!after.includes(enc.slice(0,20))){
-  if(confirm('⚠️ 自动清理旧会话失败（官方 cookie 受 HttpOnly 保护）。\\n\\n点确定后跳到 cursor.com 首页，请手动点右上角头像 → Sign out，然后回到本控制台再粘脚本一次。')){
-    location.href='https://www.cursor.com/';
-  }
+const after=document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('WorkosCursorSessionToken=')&&s.includes(enc.slice(0,20)));
+if(!after){
+  alert('⚠️ Cookie 写入失败。\\n\\n大概率是旧的 WorkosCursorSessionToken 还在（HttpOnly，JS 删不掉）。\\n\\n请到 DevTools → Application → Cookies → https://www.cursor.com，\\n把所有 WorkosCursorSessionToken 行都右键 Delete 删掉，再粘脚本一次。');
   return;
 }
-alert('✅ 已自动清理旧会话并写入新 Cookie，正在跳转 dashboard');
+alert('✅ Cookie 写入成功，正在跳转 dashboard');
 location.href='https://www.cursor.com/dashboard';})();`;
 });
 
@@ -175,28 +168,42 @@ async function doLogin() {
       return;
     }
 
-    // 3. 弹清晰指引
+    // 3. 弹清晰指引：先删旧 cookie，再粘脚本
     await ElMessageBox.alert(
-      `<div style="line-height:1.75;font-size:13px">
+      `<div style="line-height:1.8;font-size:13px">
         <p>已为你打开 <b>cursor.com</b> 并将登录脚本复制到剪贴板。</p>
-        <p style="color:#065f46;background:#d1fae5;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
-          ✨ 脚本会自动清掉旧的登录会话再写入新 token，<b>不需要你手动退出登录</b>。
+        <p style="color:#991b1b;background:#fee2e2;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
+          ⚠️ 浏览器规定 JS 不能删除 HttpOnly cookie，所以需要你<b>手动删一下旧 cookie</b>，之后脚本才能写入新的。
         </p>
-        <p>在新标签里按 3 步操作：</p>
-        <ol style="padding-left:18px;margin:6px 0">
-          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">F12</kbd> 打开开发者工具，切到 <b>Console</b></li>
-          <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">Ctrl+V</kbd> 粘贴脚本，回车执行</li>
-          <li>看到 "✅ 已自动清理旧会话并写入新 Cookie" 即登录成功</li>
-        </ol>
+
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0">
+          <p style="font-weight:600;color:#111827;margin-bottom:4px">第 1 步：删除旧 Cookie</p>
+          <ol style="padding-left:20px;margin:0;color:#374151">
+            <li>在新标签按 <kbd style="background:#fff;border:1px solid #d1d5db;padding:1px 6px;border-radius:3px">F12</kbd> 打开开发者工具</li>
+            <li>切到顶部 <b>Application</b> 标签</li>
+            <li>左侧栏展开 <b>Cookies</b> → 点 <b>https://www.cursor.com</b></li>
+            <li>找到 Name 为 <code style="background:#fff;padding:1px 4px;border-radius:3px">WorkosCursorSessionToken</code> 的行</li>
+            <li><b>右键 → Delete</b>（如果有多行同名都删掉）</li>
+          </ol>
+        </div>
+
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;margin:8px 0">
+          <p style="font-weight:600;color:#065f46;margin-bottom:4px">第 2 步：粘脚本登录</p>
+          <ol style="padding-left:20px;margin:0;color:#374151">
+            <li>切到顶部 <b>Console</b> 标签</li>
+            <li>按 <kbd style="background:#fff;border:1px solid #d1d5db;padding:1px 6px;border-radius:3px">Ctrl+V</kbd> 粘贴脚本，回车</li>
+            <li>看到 "✅ Cookie 写入成功" 即跳转 dashboard 登录成功</li>
+          </ol>
+        </div>
+
         <p style="color:#92400e;background:#fef3c7;padding:8px;border-radius:6px;margin-top:8px;font-size:12px">
-          首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。<br/>
-          如果脚本提示自动清理失败，按弹窗指引手动 Sign out 后再来一次。
+          首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。
         </p>
       </div>`,
-      '操作指引',
+      '操作指引（2 步）',
       {
         dangerouslyUseHTMLString: true,
-        confirmButtonText: '我已经知道了',
+        confirmButtonText: '明白了，去操作',
         customClass: 'cursor-login-guide',
       },
     );
@@ -313,7 +320,7 @@ function clearInput() {
     </button>
 
     <p class="mt-2 text-center text-xs text-ink-400">
-      点击后自动打开 cursor.com、复制脚本，并自动清掉旧会话；在新标签按 F12 粘贴即可
+      点击后自动打开 cursor.com 并复制脚本；按指引<b>手动删一次旧 cookie</b> 再粘脚本即可
     </p>
 
     <!-- 高级：手动复制 -->
@@ -335,9 +342,9 @@ function clearInput() {
       <p>· Token 在你的浏览器中处理，不会上传服务器、不会写入任何日志</p>
       <p>· 浏览器禁止跨域设 cookie，所以需要在 cursor.com 控制台执行一次脚本</p>
       <p>· cookie 值必须保留 <code class="font-mono">user_XXX::</code> 前缀。直接粘 <code class="font-mono">eyJ...</code> 纯 JWT 是不能登录的</p>
-      <p>· 脚本会 <b>自动调用 cursor.com 的 logout 端点</b> 清除旧 HttpOnly cookie，再写入你的新 token</p>
-      <p>· 如果自动清理失败（cursor 改了 logout 路径），按提示跳到 cursor.com 手动 Sign out 后再来一次即可</p>
-      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code></p>
+      <p>· 官方 cookie 是 HttpOnly，JS 不能删。需要你在 <b>DevTools → Application → Cookies → cursor.com</b> 手动右键 Delete 一次</p>
+      <p>· 删干净后再粘脚本，JS 就能写入新 Cookie，回到 dashboard 自动登录</p>
+      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code> / 旧 Cookie 没删干净</p>
     </div>
   </div>
 </template>
