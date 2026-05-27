@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { api } from '@/api';
 
 /**
  * Cursor 网页版一键登录工具
@@ -162,6 +163,87 @@ location.href='https://www.cursor.com/dashboard';})();`;
 });
 
 const submitting = ref(false);
+
+// === 在线查询 cursor.com 账号信息 ===
+interface CursorOnlineInfo {
+  valid: boolean;
+  email?: string | null;
+  name?: string | null;
+  picture?: string | null;
+  sub?: string | null;
+  membership?: any;
+  usage?: any;
+  stripe?: {
+    membershipType?: string | null;
+    subscriptionStatus?: string | null;
+    currentPeriodEnd?: number | null;
+    cancelAtPeriodEnd?: boolean | null;
+    plan?: string | null;
+    trialEnd?: number | null;
+  } | null;
+  errors: string[];
+}
+const onlineInfo = ref<CursorOnlineInfo | null>(null);
+const onlineLoading = ref(false);
+
+// token 变了就清掉旧的查询结果
+watch(cleanToken, () => {
+  onlineInfo.value = null;
+});
+
+async function inspectOnline() {
+  if (!cleanToken.value) {
+    ElMessage.warning('请先粘贴 Token');
+    return;
+  }
+  onlineLoading.value = true;
+  try {
+    const r = await api.cursorTools.inspect(cleanToken.value);
+    onlineInfo.value = r.data;
+    if (!r.data.valid) {
+      ElMessage.warning('Token 看起来无效（cursor.com 拒绝了它）');
+    } else {
+      ElMessage.success('Token 有效，已拉取账号信息');
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '在线查询失败');
+  } finally {
+    onlineLoading.value = false;
+  }
+}
+
+/**
+ * 综合月度用量。cursor /api/usage 返回结构会按模型分桶，
+ * 这里聚合 gpt-4 / gpt-3.5 等的 numRequests / maxRequestUsage。
+ */
+const usageSummary = computed(() => {
+  const u = onlineInfo.value?.usage;
+  if (!u || typeof u !== 'object') return null;
+  const buckets: Array<{ key: string; used: number; total: number | null }> = [];
+  for (const [k, v] of Object.entries(u)) {
+    if (k === 'startOfMonth') continue;
+    if (!v || typeof v !== 'object') continue;
+    const used = Number((v as any).numRequests ?? (v as any).num_requests ?? 0);
+    const max = (v as any).maxRequestUsage ?? (v as any).max_request_usage;
+    const total = max == null ? null : Number(max);
+    buckets.push({ key: k, used, total: Number.isFinite(total as number) ? (total as number) : null });
+  }
+  return { buckets, startOfMonth: u.startOfMonth || null };
+});
+
+function fmtUnixDate(v: number | string | null | undefined) {
+  if (v === null || v === undefined || v === '') return '-';
+  let n: number;
+  if (typeof v === 'string') {
+    const parsed = Date.parse(v);
+    if (!Number.isFinite(parsed)) return '-';
+    return new Date(parsed).toLocaleDateString();
+  }
+  n = v as number;
+  if (!Number.isFinite(n)) return '-';
+  const t = n > 1e12 ? n : n * 1000;
+  return new Date(t).toLocaleDateString();
+}
 
 async function doLogin() {
   if (!cleanToken.value) {
@@ -349,10 +431,121 @@ function clearInput() {
           </dd>
         </div>
       </dl>
-      <button class="mt-2 text-xs text-ink-500 hover:text-brand-600" @click="showAdvanced = !showAdvanced">
-        {{ showAdvanced ? '收起' : '展开' }} 完整 payload
-      </button>
+      <div class="mt-3 flex items-center gap-3">
+        <button
+          class="text-xs px-3 py-1.5 rounded-md border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          :disabled="onlineLoading"
+          @click="inspectOnline"
+        >
+          <span v-if="onlineLoading">查询中…</span>
+          <span v-else>{{ onlineInfo ? '重新查询账号' : '在线查询账号信息（邮箱 / 额度）' }}</span>
+        </button>
+        <button class="text-xs text-ink-500 hover:text-brand-600" @click="showAdvanced = !showAdvanced">
+          {{ showAdvanced ? '收起' : '展开' }} 完整 payload
+        </button>
+      </div>
+      <p class="mt-1 text-[11px] text-ink-400">
+        Token 会经服务端中转一次调用 cursor.com，服务端 <b>不持久化、不写日志</b>
+      </p>
       <pre v-if="showAdvanced" class="mt-2 p-2 bg-ink-50 rounded text-[10px] font-mono text-ink-700 overflow-x-auto">{{ JSON.stringify(decoded, null, 2) }}</pre>
+    </div>
+
+    <!-- 在线查询结果 -->
+    <div
+      v-if="onlineInfo"
+      class="mt-4 card p-4 bg-white border"
+      :class="onlineInfo.valid ? 'border-emerald-200' : 'border-rose-200 bg-rose-50/40'"
+    >
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-semibold tracking-widest uppercase text-ink-500">cursor.com 在线信息</div>
+        <span
+          class="text-[10px] px-1.5 py-0.5 rounded"
+          :class="onlineInfo.valid ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'"
+        >
+          {{ onlineInfo.valid ? 'Token 有效' : 'Token 无效' }}
+        </span>
+      </div>
+
+      <dl v-if="onlineInfo.valid" class="space-y-1.5 text-sm">
+        <div v-if="onlineInfo.email" class="flex gap-3 items-center">
+          <dt class="text-ink-500 w-16 shrink-0">邮箱</dt>
+          <dd class="text-sm font-medium text-ink-900 break-all">{{ onlineInfo.email }}</dd>
+        </div>
+        <div v-if="onlineInfo.name" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">昵称</dt>
+          <dd class="text-xs text-ink-700">{{ onlineInfo.name }}</dd>
+        </div>
+        <div v-if="onlineInfo.stripe?.membershipType" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">套餐</dt>
+          <dd class="text-xs text-ink-700">
+            <span class="font-medium">{{ onlineInfo.stripe.membershipType }}</span>
+            <span v-if="onlineInfo.stripe.plan" class="ml-1.5 text-ink-500">({{ onlineInfo.stripe.plan }})</span>
+            <span v-if="onlineInfo.stripe.subscriptionStatus"
+              class="ml-2 text-[10px] px-1.5 py-0.5 rounded"
+              :class="onlineInfo.stripe.subscriptionStatus === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'"
+            >{{ onlineInfo.stripe.subscriptionStatus }}</span>
+          </dd>
+        </div>
+        <div v-if="onlineInfo.stripe?.currentPeriodEnd" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">续费日</dt>
+          <dd class="text-xs text-ink-700">
+            {{ fmtUnixDate(onlineInfo.stripe.currentPeriodEnd) }}
+            <span v-if="onlineInfo.stripe.cancelAtPeriodEnd" class="ml-1.5 text-rose-600">· 到期取消</span>
+          </dd>
+        </div>
+        <div v-if="onlineInfo.stripe?.trialEnd" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">试用至</dt>
+          <dd class="text-xs text-ink-700">{{ fmtUnixDate(onlineInfo.stripe.trialEnd) }}</dd>
+        </div>
+      </dl>
+
+      <!-- 用量额度 -->
+      <div v-if="usageSummary && usageSummary.buckets.length" class="mt-4 pt-3 border-t border-ink-100">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs font-semibold text-ink-700">本月用量</div>
+          <span v-if="usageSummary.startOfMonth" class="text-[10px] text-ink-400">
+            起算：{{ fmtUnixDate(usageSummary.startOfMonth) }}
+          </span>
+        </div>
+        <div class="space-y-2">
+          <div
+            v-for="b in usageSummary.buckets"
+            :key="b.key"
+            class="text-xs"
+          >
+            <div class="flex justify-between mb-0.5">
+              <span class="font-mono text-ink-700">{{ b.key }}</span>
+              <span class="text-ink-500">
+                <b class="text-ink-900">{{ b.used }}</b>
+                <span v-if="b.total !== null"> / {{ b.total }}</span>
+                <span v-else> · 无限</span>
+              </span>
+            </div>
+            <div v-if="b.total" class="h-1.5 bg-ink-100 rounded overflow-hidden">
+              <div
+                class="h-full rounded transition-all"
+                :class="b.used / b.total > 0.9 ? 'bg-rose-500' : b.used / b.total > 0.6 ? 'bg-amber-500' : 'bg-emerald-500'"
+                :style="{ width: Math.min(100, (b.used / b.total) * 100) + '%' }"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 失败提示 -->
+      <div v-if="!onlineInfo.valid" class="text-xs text-rose-700 space-y-1">
+        <p>cursor.com 拒绝了此 Token。可能原因：</p>
+        <ul class="pl-5 list-disc space-y-0.5 text-ink-600">
+          <li>Token 已过期或被吊销</li>
+          <li>Token 类型不是 web（IDE 专用 token 不能登 dashboard）</li>
+          <li>Token 复制不完整，缺了 <code class="font-mono">user_XXX::</code> 前缀</li>
+        </ul>
+      </div>
+
+      <div v-if="onlineInfo.errors?.length" class="mt-2 text-[10px] text-ink-400">
+        <span>调试：</span>
+        <span v-for="(err, i) in onlineInfo.errors" :key="i" class="mr-2">{{ err }}</span>
+      </div>
     </div>
 
     <div
