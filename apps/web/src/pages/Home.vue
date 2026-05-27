@@ -33,6 +33,10 @@ interface UnifiedProduct {
   emailCodeEnabled?: boolean;
   /** 本地商品才有，多 SKU 时是最低价 */
   fromPrice?: boolean;
+  /** 三方商品才有，自定义副标题 */
+  subtitle?: string | null;
+  /** 三方商品才有，自定义封面 */
+  coverImage?: string | null;
 }
 
 const products = ref<UnifiedProduct[]>([]);
@@ -75,6 +79,7 @@ function normalizeForge(p: any): UnifiedProduct {
     source: 'forge',
     key: `forge:${p.typeKey}`,
     typeKey: p.typeKey,
+    // typeName 已经在后端做过 customName 覆盖
     typeName: p.typeName,
     displayPrice: Number(p.displayPrice),
     stock: Number(p.stock || 0),
@@ -82,6 +87,8 @@ function normalizeForge(p: any): UnifiedProduct {
     categoryKey: p.categoryKey || 'forge-others',
     categoryName: p.categoryName || '其它',
     emailCodeEnabled: !!p.emailCodeEnabled,
+    subtitle: p.subtitle ?? null,
+    coverImage: p.coverImage ?? null,
   };
 }
 
@@ -278,11 +285,24 @@ onMounted(() => load(false));
             @click="gotoDetail(p)"
           >
             <div class="flex items-start justify-between gap-2 mb-3">
-              <div class="min-w-0">
-                <div class="font-semibold text-ink-900 group-hover:text-brand-600 transition truncate">
-                  {{ p.typeName }}
+              <div class="flex items-start gap-3 min-w-0">
+                <img
+                  v-if="p.coverImage"
+                  :src="p.coverImage"
+                  alt=""
+                  class="w-12 h-12 rounded-lg object-cover bg-ink-50 shrink-0"
+                  @error="(($event.target as any).style.display = 'none')"
+                />
+                <div class="min-w-0">
+                  <div class="font-semibold text-ink-900 group-hover:text-brand-600 transition truncate">
+                    {{ p.typeName }}
+                  </div>
+                  <div v-if="p.subtitle" class="text-xs text-ink-500 mt-0.5 line-clamp-2">{{ p.subtitle }}</div>
+                  <div
+                    v-else-if="p.source === 'forge'"
+                    class="text-[11px] text-ink-400 font-mono mt-0.5 truncate"
+                  >{{ p.typeKey }}</div>
                 </div>
-                <div v-if="p.source === 'forge'" class="text-[11px] text-ink-400 font-mono mt-0.5 truncate">{{ p.typeKey }}</div>
               </div>
               <div class="flex flex-col items-end gap-1 shrink-0">
                 <span

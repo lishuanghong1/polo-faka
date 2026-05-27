@@ -106,8 +106,31 @@ onMounted(load);
     <template v-else>
       <!-- 商品信息 -->
       <div class="card p-6 bg-white border border-ink-100 rounded-2xl">
-        <div class="text-xs text-ink-500 mb-2">{{ product.categoryName }}</div>
-        <h1 class="text-2xl font-semibold text-ink-900">{{ product.typeName }}</h1>
+        <!-- 头部：封面 + 标题 -->
+        <div class="flex items-start gap-4">
+          <img
+            v-if="product.coverImage"
+            :src="product.coverImage"
+            alt=""
+            class="w-20 h-20 rounded-lg object-cover bg-ink-50 shrink-0"
+            @error="(($event.target as any).style.display = 'none')"
+          />
+          <div class="min-w-0 flex-1">
+            <div class="text-xs text-ink-500 mb-1">{{ product.categoryName }}</div>
+            <h1 class="text-2xl font-semibold text-ink-900">{{ product.typeName }}</h1>
+            <p v-if="product.subtitle" class="text-sm text-ink-600 mt-1.5">{{ product.subtitle }}</p>
+          </div>
+        </div>
+
+        <!-- 亮点列表 -->
+        <ul
+          v-if="product.highlights && product.highlights.length"
+          class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm text-ink-700"
+        >
+          <li v-for="(h, i) in product.highlights" :key="i" class="flex gap-1.5">
+            <span class="text-emerald-500 font-bold">✓</span><span>{{ h }}</span>
+          </li>
+        </ul>
 
         <div class="flex items-end justify-between gap-4 mt-4 pb-5 border-b border-ink-100">
           <div>
@@ -131,6 +154,12 @@ onMounted(load);
               {{ product.stock <= 0 ? '当前缺货' : `库存 ${product.stock}` }}
             </div>
           </div>
+        </div>
+
+        <!-- 详细描述 -->
+        <div v-if="product.description" class="mt-5 pb-5 border-b border-ink-100">
+          <div class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-2">商品介绍</div>
+          <div class="text-sm text-ink-700 leading-relaxed whitespace-pre-wrap break-words">{{ product.description }}</div>
         </div>
 
         <!-- 数量 -->
@@ -241,6 +270,18 @@ onMounted(load);
           <p class="text-xs text-ink-400 mt-3 text-center">
             下单成功后会自动跳到订单详情页，可查看账号信息<span v-if="product.emailCodeEnabled">并接收验证码</span>。
           </p>
+        </div>
+
+        <!-- 购买须知 -->
+        <div
+          v-if="product.notice"
+          class="mt-5 p-3.5 rounded-lg bg-amber-50/70 border border-amber-200 text-xs text-amber-900 leading-relaxed"
+        >
+          <div class="font-semibold mb-1 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            购买须知
+          </div>
+          <div class="whitespace-pre-wrap">{{ product.notice }}</div>
         </div>
       </div>
     </template>

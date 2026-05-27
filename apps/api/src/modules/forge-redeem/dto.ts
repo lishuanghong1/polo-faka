@@ -52,6 +52,43 @@ export class UpdateForgeProductDto {
   @IsOptional()
   @IsInt()
   sort?: number;
+
+  // ── 自定义详情：null/空串 = 清空回退到三方默认 ─────────
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  customName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  customCategoryName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 255)
+  subtitle?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 512)
+  coverImage?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 20000)
+  description?: string | null;
+
+  /** JSON 数组字符串，如 ["秒到账","30天质保"] */
+  @IsOptional()
+  @IsString()
+  @Length(0, 4000)
+  highlights?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 4000)
+  notice?: string | null;
 }
 
 export class RedeemCheckDto {

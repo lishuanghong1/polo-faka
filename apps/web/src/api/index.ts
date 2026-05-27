@@ -139,6 +139,11 @@ export const api = {
         stock: number;
         warrantyHours: number | null;
         emailCodeEnabled: boolean;
+        subtitle?: string | null;
+        coverImage?: string | null;
+        description?: string | null;
+        highlights?: string[] | null;
+        notice?: string | null;
       }>>('/forge-redeem/products'),
     getProduct: (typeKey: string) =>
       http.get<any>(`/forge-redeem/products/${encodeURIComponent(typeKey)}`),
@@ -183,10 +188,45 @@ export const api = {
 
     // Admin
     admin: {
-      syncProducts: () => http.post('/admin/forge/products/sync'),
-      listProducts: () => http.get('/admin/forge/products'),
-      updateProduct: (typeKey: string, body: any) =>
-        http.put(`/admin/forge/products/${encodeURIComponent(typeKey)}`, body),
+      syncProducts: () => http.post<{ upserted: number; syncedAt: string }>('/admin/forge/products/sync'),
+      listProducts: () =>
+        http.get<Array<{
+          typeKey: string;
+          categoryKey: string;
+          categoryName: string;
+          typeName: string;
+          price: number;
+          agentPrice: number;
+          displayPrice: number;
+          stock: number;
+          warrantyHours: number | null;
+          emailCodeEnabled: boolean;
+          enabled: boolean;
+          sort: number;
+          customName?: string | null;
+          customCategoryName?: string | null;
+          subtitle?: string | null;
+          coverImage?: string | null;
+          description?: string | null;
+          highlights?: string | null;
+          notice?: string | null;
+          lastSyncAt?: string | null;
+        }>>('/admin/forge/products'),
+      updateProduct: (
+        typeKey: string,
+        body: {
+          displayPrice?: number;
+          enabled?: boolean;
+          sort?: number;
+          customName?: string | null;
+          customCategoryName?: string | null;
+          subtitle?: string | null;
+          coverImage?: string | null;
+          description?: string | null;
+          highlights?: string | null;
+          notice?: string | null;
+        },
+      ) => http.put(`/admin/forge/products/${encodeURIComponent(typeKey)}`, body),
 
       generateCodes: (body: any) => http.post('/admin/forge/redeem-codes/generate', body),
       listCodes: (params: any) => http.get('/admin/forge/redeem-codes', { params }),

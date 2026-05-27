@@ -21,6 +21,34 @@ interface PublicProductItem {
   stock: number;
   warrantyHours: number | null;
   emailCodeEnabled: boolean;
+  // ── 自定义详情：留空则不返回 ─────────
+  subtitle?: string | null;
+  coverImage?: string | null;
+  description?: string | null;
+  highlights?: string[] | null;
+  notice?: string | null;
+}
+
+/** 把 ForgeProduct 行的自定义字段叠加到一个 PublicProductItem 输出 */
+function applyOverrides<T extends PublicProductItem>(item: T, local: any): T {
+  if (local.customName) item.typeName = local.customName;
+  if (local.customCategoryName) item.categoryName = local.customCategoryName;
+  item.subtitle = local.subtitle ?? null;
+  item.coverImage = local.coverImage ?? null;
+  item.description = local.description ?? null;
+  item.notice = local.notice ?? null;
+  if (local.highlights) {
+    try {
+      const arr = JSON.parse(local.highlights);
+      if (Array.isArray(arr)) item.highlights = arr.map((x) => String(x)).filter(Boolean);
+      else item.highlights = null;
+    } catch {
+      item.highlights = null;
+    }
+  } else {
+    item.highlights = null;
+  }
+  return item;
 }
 
 interface UpstreamRaw {
@@ -111,6 +139,28 @@ export class ForgeProductsService {
   async update(typeKey: string, dto: UpdateForgeProductDto) {
     const exists = await this.prisma.forgeProduct.findUnique({ where: { typeKey } });
     if (!exists) throw new NotFoundException('商品不存在');
+
+    // 空串视为清除自定义值
+    const norm = (v: string | null | undefined) =>
+      v === undefined ? undefined : v === null || v.trim() === '' ? null : v;
+
+    // highlights 必须是合法 JSON 数组字符串
+    let highlightsVal: string | null | undefined = undefined;
+    if (dto.highlights !== undefined) {
+      const trimmed = (dto.highlights || '').trim();
+      if (!trimmed) {
+        highlightsVal = null;
+      } else {
+        try {
+          const arr = JSON.parse(trimmed);
+          if (!Array.isArray(arr)) throw new Error('not array');
+          highlightsVal = JSON.stringify(arr.map((x) => String(x)).filter(Boolean));
+        } catch {
+          throw new NotFoundException('亮点列表格式错误，需为 JSON 数组字符串');
+        }
+      }
+    }
+
     const r = await this.prisma.forgeProduct.update({
       where: { typeKey },
       data: {
@@ -119,8 +169,18 @@ export class ForgeProductsService {
         }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
         ...(dto.sort !== undefined && { sort: dto.sort }),
+        ...(dto.customName !== undefined && { customName: norm(dto.customName) }),
+        ...(dto.customCategoryName !== undefined && {
+          customCategoryName: norm(dto.customCategoryName),
+        }),
+        ...(dto.subtitle !== undefined && { subtitle: norm(dto.subtitle) }),
+        ...(dto.coverImage !== undefined && { coverImage: norm(dto.coverImage) }),
+        ...(dto.description !== undefined && { description: norm(dto.description) }),
+        ...(highlightsVal !== undefined && { highlights: highlightsVal }),
+        ...(dto.notice !== undefined && { notice: norm(dto.notice) }),
       },
     });
+    this.invalidateCache();
     return r;
   }
 
@@ -156,26 +216,31 @@ export class ForgeProductsService {
 
     // 上游不可用：fallback 到本地表数据
     if (!upstream) {
-      return localRows.map((r) => ({
-        typeKey: r.typeKey,
-        categoryKey: r.categoryKey,
-        categoryName: r.categoryName,
-        typeName: r.typeName,
-        displayPrice: Number(r.displayPrice),
-        agentPrice: Number(r.agentPrice),
-        stock: r.stock,
-        warrantyHours: r.warrantyHours,
-        emailCodeEnabled: r.emailCodeEnabled,
-      }));
+      return localRows.map((r) =>
+        applyOverrides(
+          {
+            typeKey: r.typeKey,
+            categoryKey: r.categoryKey,
+            categoryName: r.categoryName,
+            typeName: r.typeName,
+            displayPrice: Number(r.displayPrice),
+            agentPrice: Number(r.agentPrice),
+            stock: r.stock,
+            warrantyHours: r.warrantyHours,
+            emailCodeEnabled: r.emailCodeEnabled,
+          },
+          r,
+        ),
+      );
     }
 
-    // 上游可用：用上游的库存/名称 + 本地的售价/启用过滤
+    // 上游可用：用上游的库存/名称 + 本地的售价/启用过滤 + 自定义覆盖
     const result: PublicProductItem[] = [];
     for (const cat of upstream.categories) {
       for (const t of cat.types) {
         const local = localMap.get(t.type_key);
         if (!local) continue; // 本地未上架
-        result.push({
+        const item: PublicProductItem = {
           typeKey: t.type_key,
           categoryKey: cat.category_key,
           categoryName: cat.category_name,
@@ -185,7 +250,8 @@ export class ForgeProductsService {
           stock: Number.isInteger(t.stock) ? t.stock : 0,
           warrantyHours: t.warranty_hours ?? local.warrantyHours,
           emailCodeEnabled: !!t.email_code_enabled,
-        });
+        };
+        result.push(applyOverrides(item, local));
       }
     }
 
