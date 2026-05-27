@@ -100,6 +100,7 @@ async function saveSort(item: ForgeProductRow) {
 const drawerVisible = ref(false);
 const drawerSaving = ref(false);
 const drawerTarget = ref<ForgeProductRow | null>(null);
+const coverLoadError = ref(false);
 const drawerForm = reactive({
   customName: '',
   customCategoryName: '',
@@ -249,13 +250,19 @@ onMounted(load);
         >
           <td class="px-4 py-3">
             <div class="flex items-start gap-3">
-              <img
+              <div
                 v-if="it.coverImage"
-                :src="it.coverImage"
-                alt=""
-                class="w-10 h-10 rounded object-cover bg-ink-100 shrink-0"
-                @error="(($event.target as any).style.display = 'none')"
-              />
+                class="w-10 h-10 rounded overflow-hidden bg-ink-100 shrink-0 relative"
+              >
+                <img
+                  :src="it.coverImage"
+                  alt=""
+                  referrerpolicy="no-referrer"
+                  class="w-full h-full object-cover"
+                  @error="(($event.target as HTMLImageElement).style.display = 'none')"
+                />
+                <span class="absolute inset-0 flex items-center justify-center text-xs text-rose-500 -z-10" title="图片加载失败">⚠</span>
+              </div>
               <div class="min-w-0">
                 <div class="font-medium text-ink-900 flex items-center gap-1.5">
                   {{ displayedName(it) }}
@@ -385,9 +392,14 @@ onMounted(load);
           <img
             :src="drawerForm.coverImage"
             alt="封面预览"
+            referrerpolicy="no-referrer"
             class="max-h-32 rounded border border-ink-100 bg-ink-50/50"
-            @error="(($event.target as any).style.display = 'none')"
+            @load="coverLoadError = false"
+            @error="coverLoadError = true"
           />
+          <p v-if="coverLoadError" class="mt-1 text-[11px] text-rose-600">
+            ⚠️ 图片加载失败。可能原因：URL 错误 / 该站点拒绝外链 / 图片被防盗链。换一个稳定的图床（imgur、sm.ms 等）再试。
+          </p>
         </div>
       </div>
 

@@ -108,13 +108,21 @@ onMounted(load);
       <div class="card p-6 bg-white border border-ink-100 rounded-2xl">
         <!-- 头部：封面 + 标题 -->
         <div class="flex items-start gap-4">
-          <img
+          <div
             v-if="product.coverImage"
-            :src="product.coverImage"
-            alt=""
-            class="w-20 h-20 rounded-lg object-cover bg-ink-50 shrink-0"
-            @error="(($event.target as any).style.display = 'none')"
-          />
+            class="w-20 h-20 rounded-lg overflow-hidden bg-ink-50 shrink-0 relative"
+          >
+            <img
+              :src="product.coverImage"
+              alt=""
+              referrerpolicy="no-referrer"
+              class="w-full h-full object-cover"
+              @error="(($event.target as HTMLImageElement).style.display = 'none')"
+            />
+            <span class="absolute inset-0 flex items-center justify-center font-bold text-ink-400 text-2xl select-none -z-10">
+              {{ product.typeName.slice(0, 1) }}
+            </span>
+          </div>
           <div class="min-w-0 flex-1">
             <div class="text-xs text-ink-500 mb-1">{{ product.categoryName }}</div>
             <h1 class="text-2xl font-semibold text-ink-900">{{ product.typeName }}</h1>

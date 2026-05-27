@@ -286,13 +286,23 @@ onMounted(() => load(false));
           >
             <div class="flex items-start justify-between gap-2 mb-3">
               <div class="flex items-start gap-3 min-w-0">
-                <img
+                <div
                   v-if="p.coverImage"
-                  :src="p.coverImage"
-                  alt=""
-                  class="w-12 h-12 rounded-lg object-cover bg-ink-50 shrink-0"
-                  @error="(($event.target as any).style.display = 'none')"
-                />
+                  class="w-12 h-12 rounded-lg overflow-hidden bg-ink-50 shrink-0 relative"
+                >
+                  <img
+                    :src="p.coverImage"
+                    alt=""
+                    referrerpolicy="no-referrer"
+                    loading="lazy"
+                    class="w-full h-full object-cover"
+                    @error="(($event.target as HTMLImageElement).style.display = 'none')"
+                  />
+                  <!-- 加载失败兜底：显示首字母 -->
+                  <span class="absolute inset-0 flex items-center justify-center font-bold text-ink-400 text-lg select-none -z-10">
+                    {{ p.typeName.slice(0, 1) }}
+                  </span>
+                </div>
                 <div class="min-w-0">
                   <div class="font-semibold text-ink-900 group-hover:text-brand-600 transition truncate">
                     {{ p.typeName }}
