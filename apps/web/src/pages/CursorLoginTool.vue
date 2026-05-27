@@ -198,9 +198,10 @@ async function inspectOnline() {
   }
   onlineLoading.value = true;
   try {
-    const r = await api.cursorTools.inspect(cleanToken.value);
-    onlineInfo.value = r.data;
-    if (!r.data.valid) {
+    // http wrapper 已自动解包 { success, data }，这里拿到的就是 data
+    const data = (await api.cursorTools.inspect(cleanToken.value)) as CursorOnlineInfo;
+    onlineInfo.value = data;
+    if (!data.valid) {
       ElMessage.warning('Token 看起来无效（cursor.com 拒绝了它）');
     } else {
       ElMessage.success('Token 有效，已拉取账号信息');
