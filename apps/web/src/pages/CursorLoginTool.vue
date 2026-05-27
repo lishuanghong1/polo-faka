@@ -60,11 +60,23 @@ const jwtPart = computed(() => {
   return v;
 });
 
-/** 从输入里抠出 user_XXX 前缀（可选展示） */
+/**
+ * 抽取 user_XXX：
+ * 1) 优先用 `user_XXX::JWT` 前缀里的
+ * 2) 否则从 JWT 的 sub 字段（auth0|user_XXX）里抠
+ */
 const userId = computed(() => {
   const v = cleanToken.value;
-  if (!v.includes('::')) return '';
-  return v.split('::')[0];
+  if (v.includes('::')) {
+    const head = v.split('::')[0];
+    if (head.startsWith('user_')) return head;
+  }
+  const sub = decoded.value?.sub;
+  if (sub) {
+    const m = sub.match(/user_[A-Za-z0-9]+/i);
+    if (m) return m[0];
+  }
+  return '';
 });
 
 interface DecodedPayload {
@@ -99,8 +111,26 @@ const decoded = computed<DecodedPayload | null>(() => {
   }
 });
 
-const expiredAt = computed(() => (decoded.value?.exp ? new Date(decoded.value.exp * 1000) : null));
-const issuedAt = computed(() => (decoded.value?.iat ? new Date(decoded.value.iat * 1000) : null));
+const expiredAt = computed(() => {
+  const d = decoded.value;
+  if (!d) return null;
+  const raw = typeof d.exp === 'number' ? d.exp : Number(d.exp);
+  if (!raw || !Number.isFinite(raw)) return null;
+  return new Date(raw * 1000);
+});
+
+/**
+ * 签发时间：标准 JWT 是 iat，但 Cursor 自家的 token 用的是 `time` 字段（字符串）
+ */
+const issuedAt = computed(() => {
+  const d = decoded.value;
+  if (!d) return null;
+  const raw =
+    typeof d.iat === 'number' ? d.iat : d.time ? Number(d.time) : null;
+  if (!raw || !Number.isFinite(raw)) return null;
+  return new Date(raw * 1000);
+});
+
 const isExpired = computed(() => (expiredAt.value ? expiredAt.value.getTime() < Date.now() : null));
 const remainingDays = computed(() => {
   if (!expiredAt.value) return null;
@@ -283,17 +313,35 @@ function clearInput() {
           <dt class="text-ink-500 w-16 shrink-0">用户 ID</dt>
           <dd class="font-mono text-xs text-ink-900 break-all">{{ userId }}</dd>
         </div>
+        <div v-if="decoded.email" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">邮箱</dt>
+          <dd class="text-xs text-ink-900 break-all">{{ decoded.email }}</dd>
+        </div>
         <div v-if="decoded.workosSessionId" class="flex gap-3">
           <dt class="text-ink-500 w-16 shrink-0">Session</dt>
           <dd class="font-mono text-xs text-ink-700 break-all">{{ decoded.workosSessionId }}</dd>
         </div>
         <div v-if="decoded.type" class="flex gap-3">
           <dt class="text-ink-500 w-16 shrink-0">类型</dt>
-          <dd class="text-xs text-ink-700">{{ decoded.type === 'web' ? 'web（网页 / IDE）' : decoded.type }}</dd>
+          <dd class="text-xs text-ink-700">
+            {{ decoded.type === 'web' ? 'web（网页登录）' : decoded.type }}
+            <span v-if="decoded.type !== 'web'" class="ml-1 text-amber-600">· 非 web 类型可能无法网页登录</span>
+          </dd>
         </div>
-        <div v-if="issuedAt" class="flex gap-3"><dt class="text-ink-500 w-16 shrink-0">签发</dt><dd class="text-xs text-ink-700">{{ issuedAt.toLocaleString() }}</dd></div>
+        <div v-if="decoded.aud" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">受众</dt>
+          <dd class="font-mono text-xs text-ink-700 break-all">{{ decoded.aud }}</dd>
+        </div>
+        <div v-if="decoded.iss" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">签发方</dt>
+          <dd class="font-mono text-xs text-ink-700 break-all">{{ decoded.iss }}</dd>
+        </div>
+        <div v-if="issuedAt" class="flex gap-3">
+          <dt class="text-ink-500 w-16 shrink-0">签发于</dt>
+          <dd class="text-xs text-ink-700">{{ issuedAt.toLocaleString() }}</dd>
+        </div>
         <div v-if="expiredAt" class="flex gap-3">
-          <dt class="text-ink-500 w-16 shrink-0">过期</dt>
+          <dt class="text-ink-500 w-16 shrink-0">过期于</dt>
           <dd class="text-xs" :class="isExpired ? 'text-rose-600 font-medium' : 'text-ink-700'">
             {{ expiredAt.toLocaleString() }}
             <span v-if="isExpired" class="ml-1.5 text-rose-600">· 已过期</span>
