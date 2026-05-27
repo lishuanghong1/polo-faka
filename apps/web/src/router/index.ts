@@ -28,6 +28,11 @@ const routes: RouteRecordRaw[] = [
         name: 'activate',
         component: () => import('@/pages/ActivateTool.vue'),
       },
+      {
+        path: 'tools/cursor-login',
+        name: 'cursor-login-tool',
+        component: () => import('@/pages/CursorLoginTool.vue'),
+      },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
       {
         path: 'forge-redeem',

@@ -135,32 +135,45 @@ onMounted(() => load(false));
 </script>
 
 <template>
-  <!-- 入口卡片：接验证码 + 兑换码 -->
+  <!-- 入口卡片：接验证码 / 兑换码 / Token 登录 -->
   <section class="max-w-7xl mx-auto px-4 mt-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
       <button
-        class="card p-5 text-left hover:shadow-md transition flex items-center gap-4 bg-white border border-ink-100"
+        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
         @click="router.push('/email-code')"
       >
-        <div class="w-12 h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9 6 9-6M3 8v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8M3 8l9-6 9 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9 6 9-6M3 8v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8M3 8l9-6 9 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-ink-900">在线接验证码</div>
-          <div class="text-xs text-ink-500 mt-1 truncate">输入账号邮箱即可实时接收验证码</div>
+          <div class="font-semibold text-ink-900 text-sm md:text-base">在线接验证码</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">输入账号邮箱即时收验证码</div>
         </div>
       </button>
 
       <button
-        class="card p-5 text-left hover:shadow-md transition flex items-center gap-4 bg-white border border-ink-100"
+        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
         @click="router.push('/forge-redeem')"
       >
-        <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4M20 7v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7M20 7l-2-2H6L4 7M9 11l3 3 5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4M20 7v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7M20 7l-2-2H6L4 7M9 11l3 3 5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-ink-900">兑换码下单</div>
-          <div class="text-xs text-ink-500 mt-1 truncate">已有兑换码？这里直接使用</div>
+          <div class="font-semibold text-ink-900 text-sm md:text-base">兑换码下单</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">已有兑换码？这里直接使用</div>
+        </div>
+      </button>
+
+      <button
+        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
+        @click="router.push('/tools/cursor-login')"
+      >
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a4 4 0 0 0-7 0v3H6v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8h-2V7a4 4 0 0 0 0 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="min-w-0">
+          <div class="font-semibold text-ink-900 text-sm md:text-base">Token 一键登录</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">粘 Token 自动登录 Cursor</div>
         </div>
       </button>
     </div>
