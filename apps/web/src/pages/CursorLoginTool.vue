@@ -153,25 +153,20 @@ async function doLogin() {
   submitting.value = true;
   try {
     // 1. 复制脚本到剪贴板
+    let copied = false;
     try {
       await navigator.clipboard.writeText(browserSnippet.value);
+      copied = true;
     } catch {
       ElMessage.warning('浏览器拒绝写剪贴板，请手动复制下面的代码');
     }
 
-    // 2. 打开 cursor.com 新标签
-    //    用户需要自己确认是否已登录；已登录的话要先退出
-    const win = window.open('https://www.cursor.com/dashboard', '_blank');
-    if (!win) {
-      ElMessage.error('浏览器拦截了新窗口，请允许弹窗后重试');
-      submitting.value = false;
-      return;
-    }
-
-    // 3. 弹清晰指引：先删旧 cookie，再粘脚本
-    await ElMessageBox.alert(
+    // 2. 先弹指引，用户读完点确认按钮才打开 cursor.com
+    let confirmed = false;
+    try {
+      await ElMessageBox.confirm(
       `<div style="line-height:1.8;font-size:13px">
-        <p>已为你打开 <b>cursor.com</b> 并将登录脚本复制到剪贴板。</p>
+        <p>${copied ? '登录脚本已复制到剪贴板。' : '请手动复制下方代码框中的脚本。'}<b>点下方按钮才会打开 cursor.com</b>。</p>
         <p style="color:#991b1b;background:#fee2e2;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
           ⚠️ 浏览器规定 JS 不能删除 HttpOnly cookie，所以需要你<b>手动删一下旧 cookie</b>，之后脚本才能写入新的。
         </p>
@@ -200,13 +195,28 @@ async function doLogin() {
           首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。
         </p>
       </div>`,
-      '操作指引（2 步）',
-      {
-        dangerouslyUseHTMLString: true,
-        confirmButtonText: '明白了，去操作',
-        customClass: 'cursor-login-guide',
-      },
-    );
+        '操作指引（2 步）',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '打开 cursor.com 开始操作',
+          cancelButtonText: '稍后再说',
+          customClass: 'cursor-login-guide',
+          closeOnClickModal: false,
+        },
+      );
+      confirmed = true;
+    } catch {
+      // 用户点了"稍后再说"或关闭弹窗，不跳转
+      return;
+    }
+
+    // 3. 用户点了"打开 cursor.com"按钮后才跳转
+    if (confirmed) {
+      const win = window.open('https://www.cursor.com/dashboard', '_blank');
+      if (!win) {
+        ElMessage.error('浏览器拦截了新窗口，请允许此站点的弹窗权限后重试');
+      }
+    }
   } finally {
     submitting.value = false;
   }
@@ -320,7 +330,7 @@ function clearInput() {
     </button>
 
     <p class="mt-2 text-center text-xs text-ink-400">
-      点击后自动打开 cursor.com 并复制脚本；按指引<b>手动删一次旧 cookie</b> 再粘脚本即可
+      点击后会先弹出操作指引，确认后再打开 cursor.com 并自动复制脚本
     </p>
 
     <!-- 高级：手动复制 -->
