@@ -112,26 +112,29 @@ const remainingDays = computed(() => {
 /**
  * 注入到 cursor.com Console 的 JS 片段。
  *
- * 关键点：
- * 1) cookie 值必须保留 `user_XXX::JWT` 完整字符串 + 整体 url-encode
- * 2) 官方 cookie 是 HttpOnly + domain=.cursor.com，JS 无法覆盖。
- *    所以执行前必须确保已 logout（无活动 session），否则浏览器会拒绝
- *    JS 写入到 .cursor.com 这个 domain（fall back 到 host-only 不生效）。
- * 3) 脚本前置检测：若已存在同名 cookie 但 JS 读不到内容（HttpOnly），
- *    则提示用户先在右上角头像处退出登录。
+ * 流程：
+ *   1) 先尝试调用 cursor.com 同域的多个 logout endpoint
+ *      （服务器返回 Set-Cookie 清除 HttpOnly 的 WorkosCursorSessionToken）
+ *   2) JS best-effort 再清一遍（针对非 HttpOnly 的同名 cookie）
+ *   3) 写入新 cookie（保留 user_XXX:: 前缀 + 整体 url-encode）
+ *   4) 回读校验，失败则提示并跳登录页让用户手动退出
  */
 const browserSnippet = computed(() => {
   const t = cleanToken.value;
   if (!t) return '';
-  return `(()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);
-const writeAll=()=>{['.cursor.com','cursor.com',''].forEach(d=>{document.cookie='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');});};
-writeAll();
+  return `(async()=>{const v=${JSON.stringify(t)};const enc=encodeURIComponent(v);
+const eps=['/api/auth/signout','/api/auth/logout','/api/logout','/api/sign-out','/sign-out','/logout'];
+for(const ep of eps){try{await fetch(ep,{method:'POST',credentials:'include',redirect:'manual'});}catch(e){}try{await fetch(ep,{method:'GET',credentials:'include',redirect:'manual'});}catch(e){}}
+['.cursor.com','cursor.com',''].forEach(d=>{['/','/dashboard','/api'].forEach(p=>{const base='WorkosCursorSessionToken=; path='+p+(d?'; domain='+d:'');document.cookie=base+'; max-age=0';document.cookie=base+'; expires=Thu, 01 Jan 1970 00:00:00 GMT';});});
+['.cursor.com','cursor.com',''].forEach(d=>{document.cookie='WorkosCursorSessionToken='+enc+'; path=/; max-age=2592000; secure; samesite=lax'+(d?'; domain='+d:'');});
 const after=document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('WorkosCursorSessionToken='));
 if(!after||!after.includes(enc.slice(0,20))){
-  alert('⚠️ 写入失败：检测到当前已登录账号（官方 cookie 为 HttpOnly 受保护）。\\n\\n请按以下步骤操作：\\n1) 点击页面右上角头像 → 退出登录（Sign out）\\n2) 退到登录页后，刷新本页面（不要登录）\\n3) 再次按 F12 粘贴此脚本回车');
+  if(confirm('⚠️ 自动清理旧会话失败（官方 cookie 受 HttpOnly 保护）。\\n\\n点确定后跳到 cursor.com 首页，请手动点右上角头像 → Sign out，然后回到本控制台再粘脚本一次。')){
+    location.href='https://www.cursor.com/';
+  }
   return;
 }
-alert('✅ Cookie 已写入，正在跳转 dashboard');
+alert('✅ 已自动清理旧会话并写入新 Cookie，正在跳转 dashboard');
 location.href='https://www.cursor.com/dashboard';})();`;
 });
 
@@ -172,22 +175,22 @@ async function doLogin() {
       return;
     }
 
-    // 3. 弹清晰指引（强调先退出登录）
+    // 3. 弹清晰指引
     await ElMessageBox.alert(
       `<div style="line-height:1.75;font-size:13px">
         <p>已为你打开 <b>cursor.com</b> 并将登录脚本复制到剪贴板。</p>
-        <p style="color:#991b1b;background:#fee2e2;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
-          ⚠️ <b>重要</b>：如果新标签里已登录过 Cursor 账号，必须先 <b>点右上角头像 → 退出登录（Sign out）</b>，
-          否则官方的 HttpOnly cookie 会让新登录写不进去。
+        <p style="color:#065f46;background:#d1fae5;padding:8px 10px;border-radius:6px;margin:8px 0;font-size:12px">
+          ✨ 脚本会自动清掉旧的登录会话再写入新 token，<b>不需要你手动退出登录</b>。
         </p>
-        <p>退出登录后，按下面 3 步即可：</p>
+        <p>在新标签里按 3 步操作：</p>
         <ol style="padding-left:18px;margin:6px 0">
           <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">F12</kbd> 打开开发者工具，切到 <b>Console</b></li>
           <li>按 <kbd style="background:#f3f4f6;padding:2px 6px;border-radius:3px">Ctrl+V</kbd> 粘贴脚本，回车执行</li>
-          <li>看到 "✅ Cookie 已写入" 即登录成功</li>
+          <li>看到 "✅ 已自动清理旧会话并写入新 Cookie" 即登录成功</li>
         </ol>
         <p style="color:#92400e;background:#fef3c7;padding:8px;border-radius:6px;margin-top:8px;font-size:12px">
-          首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。
+          首次粘贴 Chrome 可能要求你输入 <code>allow pasting</code> 后才允许，按提示输入即可。<br/>
+          如果脚本提示自动清理失败，按弹窗指引手动 Sign out 后再来一次。
         </p>
       </div>`,
       '操作指引',
@@ -310,7 +313,7 @@ function clearInput() {
     </button>
 
     <p class="mt-2 text-center text-xs text-ink-400">
-      点击后会打开 cursor.com 并自动复制脚本，<b class="text-rose-500">如果当前已登录请先在该标签退出登录</b>，再按 F12 粘贴
+      点击后自动打开 cursor.com、复制脚本，并自动清掉旧会话；在新标签按 F12 粘贴即可
     </p>
 
     <!-- 高级：手动复制 -->
@@ -332,8 +335,9 @@ function clearInput() {
       <p>· Token 在你的浏览器中处理，不会上传服务器、不会写入任何日志</p>
       <p>· 浏览器禁止跨域设 cookie，所以需要在 cursor.com 控制台执行一次脚本</p>
       <p>· cookie 值必须保留 <code class="font-mono">user_XXX::</code> 前缀。直接粘 <code class="font-mono">eyJ...</code> 纯 JWT 是不能登录的</p>
-      <p>· <b class="text-rose-500">官方 cookie 是 HttpOnly，JS 不能覆盖。已登录时必须先在 cursor.com 退出再粘脚本，否则不生效</b></p>
-      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code> / 没清旧 cookie</p>
+      <p>· 脚本会 <b>自动调用 cursor.com 的 logout 端点</b> 清除旧 HttpOnly cookie，再写入你的新 token</p>
+      <p>· 如果自动清理失败（cursor 改了 logout 路径），按提示跳到 cursor.com 手动 Sign out 后再来一次即可</p>
+      <p>· 如果执行后没登录上，多半是 Token 已过期 / 类型不是 <code class="font-mono">web</code></p>
     </div>
   </div>
 </template>
