@@ -40,11 +40,6 @@ const loading = ref(false);
 const refreshing = ref(false);
 const lastError = ref('');
 
-const banner = computed(() => ({
-  title: site.settings.site_name || 'Polo AI 小铺',
-  tagline: site.settings.site_tagline || 'Cursor · Codex · WindSurf 账号即时发货',
-}));
-
 const grouped = computed(() => {
   const map = new Map<string, { categoryName: string; items: UnifiedProduct[] }>();
   for (const p of products.value) {
@@ -140,25 +135,6 @@ onMounted(() => load(false));
 </script>
 
 <template>
-  <!-- Hero -->
-  <section class="border-b border-ink-100 bg-white">
-    <div class="max-w-7xl mx-auto px-4 py-4 md:py-5 flex items-center justify-between gap-4 flex-wrap">
-      <div class="flex items-center gap-3 min-w-0">
-        <span class="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0"></span>
-        <h1 class="text-lg md:text-xl font-semibold tracking-tight text-ink-900 shrink-0">
-          {{ banner.title }}
-        </h1>
-        <span class="text-ink-300 hidden sm:inline shrink-0">·</span>
-        <p class="text-xs md:text-sm text-ink-500 truncate hidden sm:block">{{ banner.tagline }}</p>
-      </div>
-      <div class="flex flex-wrap gap-1.5 text-[11px] text-ink-600">
-        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">⚡ 即时发货</span>
-        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">🛡️ 售后质保</span>
-        <span class="px-2 py-0.5 border border-ink-200 rounded-full bg-ink-50">📧 在线接码</span>
-      </div>
-    </div>
-  </section>
-
   <!-- 入口卡片：接验证码 + 兑换码 -->
   <section class="max-w-7xl mx-auto px-4 mt-6">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
