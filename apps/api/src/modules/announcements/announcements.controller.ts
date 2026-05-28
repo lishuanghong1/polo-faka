@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,12 @@ import { AnnouncementsService } from './announcements.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
+enum PopupModeDto {
+  ALWAYS = 'ALWAYS',
+  ONCE = 'ONCE',
+  NONE = 'NONE',
+}
+
 class UpsertAnnouncementDto {
   @IsOptional()
   @IsString()
@@ -20,8 +27,21 @@ class UpsertAnnouncementDto {
 
   @IsString()
   @MinLength(1)
-  @MaxLength(5000)
+  @MaxLength(20000)
   content!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cover?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  popup?: boolean;
+
+  @IsOptional()
+  @IsEnum(PopupModeDto)
+  popupMode?: PopupModeDto;
 
   @IsOptional()
   @IsBoolean()
