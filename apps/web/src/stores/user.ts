@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import api from '@/api';
+import { bypassAntiDebugForAdmin } from '@/utils/anti-debug';
 
 export interface UserProfile {
   id: number;
@@ -28,6 +29,10 @@ export const useUserStore = defineStore('user', () => {
     if (!token.value) return;
     try {
       profile.value = await api.profile();
+      if (profile.value?.role === 'ADMIN') {
+        // 管理员登录后即时旁路反调试，避免误锁住运维
+        bypassAntiDebugForAdmin();
+      }
     } catch {
       setToken(null);
       profile.value = null;

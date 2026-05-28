@@ -24,6 +24,34 @@ const MODE: Mode = ((META_ENV.VITE_ANTI_DEBUG_MODE as Mode) || 'block');
 
 let started = false;
 
+/**
+ * 从 localStorage 里取当前 token 并解 base64 payload 拿 role。
+ * 注意：前端不验签，但这无关安全 —— 反调试本来就是「劝退普通用户」，
+ * 即使有人伪造 JWT 让反调试关掉，他也只是看到自己本应能看到的页面而已，
+ * 真正的接口鉴权在后端用 HS256 + JWT_SECRET 兜底。
+ */
+function isAdminFromToken(): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const token = localStorage.getItem('website_token');
+    if (!token) return false;
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    // URL-safe base64 → 标准 base64
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(padded + '==='.slice((padded.length + 3) % 4));
+    const payload = JSON.parse(json);
+    if (payload?.role !== 'ADMIN') return false;
+    // 顺手做一下过期校验（exp 是秒）
+    if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function showBlocker(reason: string) {
   if (typeof document === 'undefined') return;
   // 已经渲染过了就别重复
@@ -58,7 +86,10 @@ function showBlocker(reason: string) {
   document.body.appendChild(div);
 }
 
+let bypassed = false;
+
 function blockOrWarn(reason: string) {
+  if (bypassed) return;
   if (MODE === 'silent') return;
   if (MODE === 'warn') {
     // 不挡用户，仅一次 toast 之类（这里简单 console.warn 给开发者）
@@ -66,6 +97,18 @@ function blockOrWarn(reason: string) {
     return;
   }
   showBlocker(reason);
+}
+
+/**
+ * 登录成 ADMIN 后调用：抑制所有后续告警，并撤掉已渲染的遮罩。
+ * 已经挂上的事件监听 / setInterval 不会被卸载（成本不值），但都会被 bypassed 短路。
+ */
+export function bypassAntiDebugForAdmin() {
+  bypassed = true;
+  const el = typeof document !== 'undefined'
+    ? document.getElementById('__anti_debug_blocker')
+    : null;
+  if (el && el.parentNode) el.parentNode.removeChild(el);
 }
 
 /**
@@ -192,6 +235,15 @@ function muteConsole() {
 
 export function startAntiDebug() {
   if (!ENABLED || started) return;
+
+  // 管理员旁路：登录 token 里 role=ADMIN 时跳过反调试，方便日常排障。
+  // 切换登录态后需刷新页面才会重新判定。
+  if (isAdminFromToken()) {
+    started = true;
+    // 兼顾“开发者控制台不被静音”，啥也不挂，啥也不监听。
+    return;
+  }
+
   started = true;
 
   // 给一些反应时间（极慢的浏览器加载时可能误触发尺寸检测）
