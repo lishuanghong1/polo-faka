@@ -10,6 +10,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AlipayService } from './alipay.service';
 import { OrdersService } from '../orders/orders.service';
@@ -20,6 +21,38 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../audit/audit.constants';
+
+/**
+ * 我方订单号格式：P/F/R 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
+ * 严格白名单字符 + 长度，防止 SQL/XSS payload 进入审计日志。
+ */
+const ORDER_NO_REGEX = /^[PFR][A-Za-z0-9-]{14,64}$/;
+/** 支付宝 trade_no：纯数字、长度 16-64 */
+const TRADE_NO_REGEX = /^\d{16,64}$/;
+
+function isValidOrderNo(s: unknown): s is string {
+  return typeof s === 'string' && ORDER_NO_REGEX.test(s);
+}
+function isValidTradeNo(s: unknown): s is string {
+  return typeof s === 'string' && TRADE_NO_REGEX.test(s);
+}
+
+/** 安全截取一段字符串用于日志/审计 target，去掉控制字符 */
+function safeTrunc(s: unknown, max = 64): string {
+  return String(s ?? '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .slice(0, max);
+}
+
+/** 提取客户端真实 IP（兼容反代 / Cloudflare） */
+function getClientIp(req: Request): string | undefined {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf) return cf.split(',')[0].trim();
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || undefined;
+}
 
 /** 仅允许本站内部相对路径作为 returnUrl，防止 open redirect。 */
 function isSafeReturnUrl(u?: string): boolean {
@@ -146,13 +179,39 @@ export class AlipayController {
    * 关键点：发货走 setImmediate 异步，notify 在 < 100ms 内返回，
    *        避免上游慢导致 Express 超时 → 支付宝以为失败 → 重复推送 → 重复发货风险。
    */
+  // 单 IP 60s 最多 30 次 notify，正常支付宝重推 8 次远低于此阈值；
+  // 攻击者爆破签名/SQL payload 会被快速限速。
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Public()
   @Post('notify')
   async notify(@Req() req: Request, @Res() res: Response) {
     const postData = req.body as Record<string, any>;
+    const clientIp = getClientIp(req);
+    const rawOrderNo = postData?.out_trade_no;
+    const rawTradeNo = postData?.trade_no;
     this.logger.log(
-      `alipay notify: out_trade_no=${postData?.out_trade_no} trade_no=${postData?.trade_no} status=${postData?.trade_status} amount=${postData?.total_amount} buyer=${maskBuyerLogon(postData?.buyer_logon_id)}`,
+      `alipay notify: out_trade_no=${safeTrunc(rawOrderNo, 96)} trade_no=${safeTrunc(rawTradeNo, 64)} status=${safeTrunc(postData?.trade_status, 32)} amount=${safeTrunc(postData?.total_amount, 16)} buyer=${maskBuyerLogon(postData?.buyer_logon_id)} ip=${clientIp}`,
     );
+
+    // ─── L1：入参格式白名单校验（早于 RSA 验签，省 CPU 同时把噪声挡在外面） ───
+    // 任何 payload 不符合订单号 / 交易号格式的请求都不可能是合法的支付宝 notify，
+    // 直接当作可疑请求记录后丢弃。
+    if (!isValidOrderNo(rawOrderNo) || (rawTradeNo && !isValidTradeNo(rawTradeNo))) {
+      await this.audit.record({
+        action: AuditActions.ALIPAY_SIGN_FAIL,
+        target: rawOrderNo ? `order:${safeTrunc(rawOrderNo, 48)}` : null,
+        detail: {
+          reason: 'malformed_input',
+          orderNoSample: safeTrunc(rawOrderNo, 48),
+          tradeNoSample: safeTrunc(rawTradeNo, 48),
+        },
+        ip: clientIp,
+      });
+      this.logger.warn(
+        `alipay notify malformed input from ${clientIp}: out=${safeTrunc(rawOrderNo, 48)}`,
+      );
+      return res.status(200).send('success'); // 不让支付宝重推；攻击者也不要返回详细信息
+    }
 
     try {
       const ok = await this.alipay.verifyNotify(postData);
@@ -160,23 +219,26 @@ export class AlipayController {
         // 验签或 seller_id/app_id 校验失败：高危事件，写审计
         await this.audit.record({
           action: AuditActions.ALIPAY_SIGN_FAIL,
-          target: postData?.out_trade_no ? `order:${postData.out_trade_no}` : null,
+          target: `order:${safeTrunc(rawOrderNo, 48)}`,
           detail: {
-            sellerId: postData?.seller_id,
-            appId: postData?.app_id,
-            tradeNo: postData?.trade_no,
+            sellerId: safeTrunc(postData?.seller_id, 32),
+            appId: safeTrunc(postData?.app_id, 32),
+            tradeNo: safeTrunc(rawTradeNo, 48),
           },
-          ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim(),
+          ip: clientIp,
         });
         // 验签失败不让支付宝重推（重推也不会通过）
         return res.status(200).send('success');
       }
 
-      const orderNo: string = postData.out_trade_no;
-      const tradeNo: string = postData.trade_no;
-      const tradeStatus: string = postData.trade_status;
+      const orderNo: string = rawOrderNo;
+      const tradeNo: string = rawTradeNo;
+      const tradeStatus: string = String(postData.trade_status || '');
       const totalAmount = Number(postData.total_amount);
-      const buyerLogonId: string | undefined = postData.buyer_logon_id;
+      const buyerLogonId: string | undefined =
+        typeof postData.buyer_logon_id === 'string'
+          ? postData.buyer_logon_id.slice(0, 128)
+          : undefined;
 
       if (!orderNo) {
         this.logger.warn('alipay notify missing out_trade_no');

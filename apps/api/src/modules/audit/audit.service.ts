@@ -14,9 +14,18 @@ export interface AuditInput {
 }
 
 function getIp(req: Request): string | undefined {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf) return cf.split(',')[0].trim();
   const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string') return xff.split(',')[0].trim();
+  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
   return req.socket?.remoteAddress || undefined;
+}
+
+/** 通用：去控制字符并截断。防止恶意 payload 撑爆 VarChar 字段。 */
+function clean(s: unknown, max: number): string | null {
+  if (s == null) return null;
+  // eslint-disable-next-line no-control-regex
+  return String(s).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, max);
 }
 
 @Injectable()
@@ -32,12 +41,12 @@ export class AuditService {
       await this.prisma.auditLog.create({
         data: {
           actorId: input.actorId ?? null,
-          actor: input.actor ?? 'system',
-          action: input.action,
-          target: input.target ?? null,
+          actor: clean(input.actor ?? 'system', 64),
+          action: clean(input.action, 64) ?? 'UNKNOWN',
+          target: clean(input.target, 128),
           detail: input.detail ?? undefined,
-          ip: input.ip ?? null,
-          userAgent: input.userAgent?.slice(0, 500) ?? null,
+          ip: clean(input.ip, 64),
+          userAgent: clean(input.userAgent, 500),
         },
       });
     } catch (e) {
