@@ -44,6 +44,37 @@ export const api = {
   captcha: () =>
     http.get<{ id: string; svg: string; expiresIn: number }>('/captcha'),
 
+  // 账户充值（需登录）
+  recharge: {
+    create: (amount: number) =>
+      http.post<{ orderNo: string; amount: number; expireAt: string }>('/recharge', { amount }),
+    detail: (orderNo: string) =>
+      http.get<{
+        orderNo: string;
+        amount: number;
+        status: 'PENDING' | 'PAID' | 'CANCELLED' | 'EXPIRED' | 'REFUNDED';
+        payMethod: string;
+        paidAt: string | null;
+        expireAt: string;
+        createdAt: string;
+      }>(`/recharge/${encodeURIComponent(orderNo)}`),
+    listMine: (params?: { page?: number; pageSize?: number }) =>
+      http.get<{
+        total: number;
+        page: number;
+        pageSize: number;
+        items: Array<{
+          orderNo: string;
+          amount: number;
+          status: string;
+          payMethod: string;
+          paidAt: string | null;
+          expireAt: string;
+          createdAt: string;
+        }>;
+      }>('/recharge', { params }),
+  },
+
   // 用户
   balanceLogs: (params: any) => http.get('/users/my/balance-logs', { params }),
 
@@ -201,6 +232,10 @@ export const api = {
     // 公开 · 下单（支付宝路径）
     alipayOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/alipay-order', body, { silent: true } as any),
+
+    // 登录 · 下单（余额路径）
+    balanceOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
+      http.post<any>('/forge-redeem/balance-order', body, { silent: true } as any),
 
     // 公开 · 订单详情（带 contact 校验）
     orderDetail: (orderNo: string, contact?: string) =>

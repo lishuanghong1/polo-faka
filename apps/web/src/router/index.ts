@@ -40,10 +40,19 @@ const routes: RouteRecordRaw[] = [
       },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
       {
-        path: 'forge-redeem',
-        name: 'forge-redeem',
-        component: () => import('@/pages/ForgeRedeem.vue'),
+        path: 'recharge',
+        name: 'recharge',
+        component: () => import('@/pages/Recharge.vue'),
+        meta: { auth: true },
       },
+      {
+        path: 'recharge/:orderNo',
+        name: 'recharge-detail',
+        component: () => import('@/pages/Recharge.vue'),
+        meta: { auth: true },
+      },
+      // 兼容旧链接 /forge-redeem，重定向到统一兑换页
+      { path: 'forge-redeem', redirect: '/redeem' },
       {
         path: 'forge-product/:typeKey',
         name: 'forge-product',

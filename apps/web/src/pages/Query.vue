@@ -9,11 +9,7 @@ const contact = ref('');
 
 /**
  * 订单号路由分发 + 可选 contact 透传：
- * - F 开头（如 F20260528xxxx）：三方订单 → /forge-order/:no
- * - P 开头（如 P20260528xxxx）：本地订单 → /order/:no
- * - 其他：默认按本地订单查
- *
- * 用户填了 contact 就拼到 ?contact=...，详情页会自动用它查
+ * 根据订单号前缀派发到对应详情页（用户不感知）。
  */
 function submit() {
   const no = orderNo.value.trim();
@@ -66,7 +62,7 @@ function submit() {
       </button>
 
       <p class="mt-3 text-[11px] text-ink-400 leading-relaxed">
-        P 开头为本站订单，F 开头为三方代下订单。下单时若填写过联系方式，需输入相同联系方式才能查看发货内容。
+        下单时若填写过联系方式，需输入相同联系方式才能查看发货内容。
       </p>
     </div>
   </div>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { useSiteStore } from '@/stores/site';
 import { ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
+void ElDropdown; void ElDropdownMenu; void ElDropdownItem;
 
 const router = useRouter();
 const user = useUserStore();
@@ -48,30 +49,7 @@ function goAndClose(path: string) {
         <nav class="hidden md:flex items-center gap-6 text-sm text-ink-600">
           <router-link to="/" class="hover:text-brand-600">首页</router-link>
           <router-link to="/email-code" class="hover:text-brand-600">接验证码</router-link>
-          <el-dropdown trigger="hover">
-            <span class="cursor-pointer hover:text-brand-600 flex items-center gap-1">
-              兑换码
-              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="router.push('/redeem')">
-                  <div class="flex flex-col py-0.5">
-                    <div class="font-medium text-ink-900">本站卡密兑换</div>
-                    <div class="text-[11px] text-ink-400">RD- 开头 · 直接发卡密</div>
-                  </div>
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="router.push('/forge-redeem')">
-                  <div class="flex flex-col py-0.5">
-                    <div class="font-medium text-ink-900">三方账号兑换</div>
-                    <div class="text-[11px] text-ink-400">FK- 开头 · 选三方商品下单</div>
-                  </div>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <router-link to="/redeem" class="hover:text-brand-600">兑换码</router-link>
           <router-link to="/query" class="hover:text-brand-600">订单查询</router-link>
         </nav>
 
@@ -87,6 +65,7 @@ function goAndClose(path: string) {
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="router.push('/me')">个人中心</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/recharge')">账户充值</el-dropdown-item>
                   <el-dropdown-item v-if="user.profile?.role === 'ADMIN'" @click="router.push('/admin')">
                     后台
                   </el-dropdown-item>
@@ -125,23 +104,11 @@ function goAndClose(path: string) {
         <nav class="max-w-7xl mx-auto px-4 py-3 grid gap-1 text-sm">
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/')">首页</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/email-code')">接验证码</button>
-          <div class="px-3 pt-3 pb-1 text-[11px] text-ink-400 uppercase tracking-wider">兑换码</div>
-          <button class="px-3 py-2 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/redeem')">
-            <div class="flex justify-between items-center">
-              <span>本站卡密兑换</span>
-              <span class="text-[10px] text-ink-400 font-mono">RD-</span>
-            </div>
-          </button>
-          <button class="px-3 py-2 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/forge-redeem')">
-            <div class="flex justify-between items-center">
-              <span>三方账号兑换</span>
-              <span class="text-[10px] text-ink-400 font-mono">FK-</span>
-            </div>
-          </button>
-          <div class="border-t border-ink-100 my-2"></div>
+          <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/redeem')">兑换码</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/query')">订单查询</button>
           <template v-if="user.isLoggedIn">
             <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
+            <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recharge')">账户充值</button>
             <button
               v-if="user.profile?.role === 'ADMIN'"
               class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-brand-700"

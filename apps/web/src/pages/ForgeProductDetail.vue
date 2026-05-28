@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
+import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
 const router = useRouter();
+const userStore = useUserStore();
 
 const typeKey = computed(() => decodeURIComponent(route.params.typeKey as string));
 const product = ref<any>(null);
@@ -13,7 +15,8 @@ const loading = ref(true);
 
 const quantity = ref(1);
 const contact = ref('');
-const payMethod = ref<'ALIPAY' | 'REDEEM'>('ALIPAY');
+type PayMethod = 'ALIPAY' | 'BALANCE' | 'REDEEM';
+const payMethod = ref<PayMethod>('ALIPAY');
 const redeemCode = ref('');
 const submitting = ref(false);
 const alipayEnabled = ref(false);
@@ -24,12 +27,19 @@ const lineTotal = computed(() => {
   return +(product.value.displayPrice * quantity.value).toFixed(2);
 });
 
+const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
+const balanceEnough = computed(() => userBalance.value >= lineTotal.value);
+
 const canSubmit = computed(() => {
   if (!product.value) return false;
   if (product.value.stock <= 0) return false;
   if (quantity.value < 1 || quantity.value > 10) return false;
   if (payMethod.value === 'REDEEM' && !redeemCode.value.trim()) return false;
   if (payMethod.value === 'ALIPAY' && !alipayEnabled.value) return false;
+  if (payMethod.value === 'BALANCE') {
+    if (!userStore.isLoggedIn) return false;
+    if (!balanceEnough.value) return false;
+  }
   return true;
 });
 
@@ -45,10 +55,12 @@ async function load() {
   try {
     const r = await api.pay.alipayEnabled();
     alipayEnabled.value = !!r.enabled;
-    if (!alipayEnabled.value) payMethod.value = 'REDEEM';
+    if (!alipayEnabled.value) {
+      payMethod.value = userStore.isLoggedIn ? 'BALANCE' : 'REDEEM';
+    }
   } catch {
     alipayEnabled.value = false;
-    payMethod.value = 'REDEEM';
+    payMethod.value = userStore.isLoggedIn ? 'BALANCE' : 'REDEEM';
   }
 }
 
@@ -68,6 +80,14 @@ async function submit() {
         quantity: quantity.value,
         contact: contact.value.trim() || undefined,
       });
+      router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
+    } else if (payMethod.value === 'BALANCE') {
+      const order = await api.forge.balanceOrder({
+        typeKey: typeKey.value,
+        quantity: quantity.value,
+        contact: contact.value.trim() || undefined,
+      });
+      await userStore.restore();
       router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
     } else {
       const order = await api.forge.alipayOrder({
@@ -211,7 +231,7 @@ onMounted(load);
         <!-- 支付方式 -->
         <div class="mt-6">
           <label class="block text-sm text-ink-700 mb-2">支付方式</label>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               :class="[
                 'p-3 rounded-lg border-2 text-left transition',
@@ -237,6 +257,31 @@ onMounted(load);
             <button
               :class="[
                 'p-3 rounded-lg border-2 text-left transition',
+                payMethod === 'BALANCE' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
+              ]"
+              @click="payMethod = 'BALANCE'"
+            >
+              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  账户余额
+                </span>
+                <span v-if="userStore.isLoggedIn" class="text-xs" :class="balanceEnough ? 'text-emerald-600' : 'text-rose-600'">
+                  ¥{{ userBalance.toFixed(2) }}
+                </span>
+              </div>
+              <div class="text-[11px] text-ink-500 mt-1">
+                <template v-if="!userStore.isLoggedIn">登录后可用</template>
+                <template v-else-if="!balanceEnough">余额不足，前往充值</template>
+                <template v-else>即时扣款，立即发货</template>
+              </div>
+            </button>
+
+            <button
+              :class="[
+                'p-3 rounded-lg border-2 text-left transition',
                 payMethod === 'REDEEM' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
               ]"
               @click="payMethod = 'REDEEM'"
@@ -249,9 +294,21 @@ onMounted(load);
           <div v-if="payMethod === 'REDEEM'" class="mt-3">
             <input
               v-model="redeemCode"
-              placeholder="FK-XXXX-XXXX-XXXX-XXXX"
+              placeholder="请输入兑换码"
               class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm font-mono tracking-wider"
             />
+          </div>
+          <div v-if="payMethod === 'BALANCE' && userStore.isLoggedIn && !balanceEnough" class="mt-3">
+            <button
+              class="text-xs text-brand-600 hover:underline"
+              @click="router.push('/recharge')"
+            >→ 前往充值</button>
+          </div>
+          <div v-if="payMethod === 'BALANCE' && !userStore.isLoggedIn" class="mt-3">
+            <button
+              class="text-xs text-brand-600 hover:underline"
+              @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
+            >→ 去登录</button>
           </div>
         </div>
 
@@ -272,6 +329,7 @@ onMounted(load);
             <template v-if="submitting">下单中（请勿刷新）…</template>
             <template v-else-if="product.stock <= 0">已缺货</template>
             <template v-else-if="payMethod === 'ALIPAY'">立即支付（支付宝）</template>
+            <template v-else-if="payMethod === 'BALANCE'">使用余额支付</template>
             <template v-else>使用兑换码下单</template>
           </button>
 

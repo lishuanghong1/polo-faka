@@ -1,5 +1,5 @@
 /**
- * 订单状态显示工具：统一本地订单（OrderStatus）+ 三方订单（ForgeOrderStatus）的展示。
+ * 订单状态显示工具：统一所有订单类型的展示。
  *
  * 设计原则：同一种业务含义 → 一致的中文文案、相同的颜色 token。
  * 调用方只关心「显示」，不关心订单来源。
@@ -9,7 +9,7 @@ export type OrderStatusKey =
   | 'PENDING'
   | 'PAID'
   | 'DELIVERED'
-  | 'FAILED'        // 仅 forge
+  | 'FAILED'
   | 'CANCELLED'
   | 'EXPIRED'
   | 'REFUNDED';

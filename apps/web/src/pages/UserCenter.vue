@@ -12,7 +12,6 @@ const loading = ref(false);
 async function load() {
   loading.value = true;
   try {
-    // 并行拉取本地订单 + 三方订单 + 余额明细
     const [local, forge, lg] = await Promise.all([
       api.myOrders({ page: 1, pageSize: 20 }) as Promise<any>,
       api.myForgeOrders({ page: 1, pageSize: 20 }).catch(() => ({ items: [] })),
@@ -66,14 +65,12 @@ onMounted(load);
           <div class="text-xs text-gray-500">{{ user.profile?.email || '未绑定邮箱' }}</div>
         </div>
         <div class="ml-auto text-right">
-          <div class="text-xs text-gray-500 flex items-center justify-end gap-1">
-            账户余额
-            <span class="text-[10px] text-ink-400" title="如需充值请联系客服">ⓘ</span>
-          </div>
+          <div class="text-xs text-gray-500">账户余额</div>
           <div class="text-xl font-bold text-rose-600">¥{{ user.profile?.balance ?? 0 }}</div>
-          <div v-if="Number(user.profile?.balance) <= 0" class="text-[11px] text-ink-400 mt-0.5">
-            需充值请联系客服
-          </div>
+          <router-link
+            to="/recharge"
+            class="inline-block mt-1 text-xs text-brand-600 hover:underline"
+          >+ 充值</router-link>
         </div>
       </div>
     </div>
@@ -99,10 +96,6 @@ onMounted(load);
               <router-link :to="o.detailRoute" class="text-brand-600 hover:underline font-mono text-xs">
                 {{ o.orderNo }}
               </router-link>
-              <span
-                v-if="o.source === 'FORGE'"
-                class="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700"
-              >三方</span>
             </td>
             <td class="py-2 px-2">
               <div class="text-ink-900">{{ o.title }}</div>

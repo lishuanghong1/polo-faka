@@ -26,6 +26,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { RedeemModule } from './modules/redeem/redeem.module';
 import { HealthModule } from './modules/health/health.module';
 import { CaptchaModule } from './modules/captcha/captcha.module';
+import { RechargeModule } from './modules/recharge/recharge.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { CaptchaModule } from './modules/captcha/captcha.module';
     AdminModule,
     HealthModule,
     CaptchaModule,
+    RechargeModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

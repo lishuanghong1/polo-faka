@@ -3,9 +3,11 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElRadioGroup, ElRadio, ElInputNumber, ElButton } from 'element-plus';
 import api from '@/api';
+import { useUserStore } from '@/stores/user';
 
 const route = useRoute();
 const router = useRouter();
+const userStore = useUserStore();
 
 const product = ref<any>(null);
 const skuId = ref<number | null>(null);
@@ -13,6 +15,9 @@ const qty = ref(1);
 const contact = ref('');
 const submitting = ref(false);
 const alipayEnabled = ref(false);
+
+type PayMethod = 'ALIPAY' | 'BALANCE';
+const payMethod = ref<PayMethod>('ALIPAY');
 
 const currentSku = computed(() => product.value?.skus?.find((s: any) => s.id === skuId.value));
 const bulk = computed<any[] | null>(() => product.value?.bulkPricing || null);
@@ -25,6 +30,8 @@ const unitPrice = computed(() => {
   return Number(currentSku.value.price);
 });
 const totalAmount = computed(() => +(unitPrice.value * qty.value).toFixed(2));
+const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
+const balanceEnough = computed(() => userBalance.value >= totalAmount.value);
 
 async function load() {
   product.value = await api.product(Number(route.params.id));
@@ -37,6 +44,9 @@ async function load() {
   } catch {
     alipayEnabled.value = false;
   }
+  if (!alipayEnabled.value && userStore.isLoggedIn) {
+    payMethod.value = 'BALANCE';
+  }
 }
 
 onMounted(load);
@@ -47,19 +57,37 @@ function isMobile() {
 
 async function buy() {
   if (!skuId.value) return;
-  if (!alipayEnabled.value) {
+  if (payMethod.value === 'BALANCE') {
+    if (!userStore.isLoggedIn) {
+      ElMessage.warning('余额支付需要先登录');
+      router.push({ name: 'login', query: { redirect: route.fullPath } });
+      return;
+    }
+    if (!balanceEnough.value) {
+      ElMessage.warning('余额不足，前往充值');
+      router.push('/recharge');
+      return;
+    }
+  } else if (!alipayEnabled.value) {
     ElMessage.warning('支付宝暂未启用，请稍后再试');
     return;
   }
+
   submitting.value = true;
   try {
     const order = await api.createOrder({
       productId: product.value.id,
       skuId: skuId.value,
       quantity: qty.value,
-      payMethod: 'ALIPAY',
+      payMethod: payMethod.value,
       contact: contact.value || undefined,
     });
+    if (payMethod.value === 'BALANCE') {
+      ElMessage.success('支付成功，准备发货');
+      await userStore.restore();
+      router.push(`/order/${order.orderNo}`);
+      return;
+    }
     const channel = isMobile() ? 'WAP' : 'PC';
     const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
     window.location.href = payUrl;
@@ -137,19 +165,57 @@ async function buy() {
 
       <div class="mt-4">
         <div class="text-sm text-ink-700 mb-2">支付方式</div>
-        <div
-          v-if="alipayEnabled"
-          class="inline-flex items-center px-3 py-2 rounded-lg border border-brand-200 bg-brand-50/50 text-sm"
-        >
-          <svg class="w-4 h-4 mr-1.5 text-[#1677ff]" viewBox="0 0 1024 1024" fill="currentColor">
-            <path d="M230 0h564c127 0 230 103 230 230v564c0 127-103 230-230 230H230C103 1024 0 921 0 794V230C0 103 103 0 230 0z"/>
-            <path fill="#fff" d="M310 624c0 31 25 56 56 56h44v-87h-44c-31 0-56 14-56 31zm334-138c-9 0-26 1-46 5l50 134c30-19 45-39 45-58 0-43-15-81-49-81zm-43-104c-43 0-90 23-90 47h180c0-24-47-47-90-47z"/>
-          </svg>
-          支付宝
-          <span class="ml-1.5 text-xs text-ink-500">扫码 / 跳转支付，秒到货</span>
-        </div>
-        <div v-else class="text-sm text-amber-700 bg-amber-50/60 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-          支付宝暂未启用，请稍后再试
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            :class="[
+              'text-left px-3 py-2.5 rounded-lg border-2 transition flex items-center gap-2 text-sm',
+              payMethod === 'ALIPAY'
+                ? 'border-brand-500 bg-brand-50/40'
+                : 'border-ink-200 hover:border-ink-300 bg-white',
+              !alipayEnabled && 'opacity-50 cursor-not-allowed',
+            ]"
+            :disabled="!alipayEnabled"
+            @click="alipayEnabled && (payMethod = 'ALIPAY')"
+          >
+            <svg class="w-4 h-4 text-[#1677ff]" viewBox="0 0 1024 1024" fill="currentColor">
+              <path d="M230 0h564c127 0 230 103 230 230v564c0 127-103 230-230 230H230C103 1024 0 921 0 794V230C0 103 103 0 230 0z"/>
+              <path fill="#fff" d="M310 624c0 31 25 56 56 56h44v-87h-44c-31 0-56 14-56 31zm334-138c-9 0-26 1-46 5l50 134c30-19 45-39 45-58 0-43-15-81-49-81zm-43-104c-43 0-90 23-90 47h180c0-24-47-47-90-47z"/>
+            </svg>
+            <div>
+              <div class="font-medium">支付宝</div>
+              <div class="text-[11px] text-ink-500">{{ alipayEnabled ? '扫码 / 跳转支付' : '暂未启用' }}</div>
+            </div>
+          </button>
+          <button
+            type="button"
+            :class="[
+              'text-left px-3 py-2.5 rounded-lg border-2 transition text-sm',
+              payMethod === 'BALANCE'
+                ? 'border-brand-500 bg-brand-50/40'
+                : 'border-ink-200 hover:border-ink-300 bg-white',
+            ]"
+            @click="payMethod = 'BALANCE'"
+          >
+            <div class="flex items-center justify-between">
+              <div class="font-medium flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="16" cy="13" r="1.5" fill="currentColor"/>
+                </svg>
+                账户余额
+              </div>
+              <span v-if="userStore.isLoggedIn" class="text-xs" :class="balanceEnough ? 'text-emerald-600' : 'text-rose-600'">
+                ¥{{ userBalance.toFixed(2) }}
+              </span>
+              <span v-else class="text-xs text-ink-400">未登录</span>
+            </div>
+            <div class="text-[11px] text-ink-500 mt-0.5">
+              <template v-if="!userStore.isLoggedIn">登录后可用</template>
+              <template v-else-if="!balanceEnough">余额不足，前往充值</template>
+              <template v-else>即时扣款，立即发货</template>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -172,15 +238,17 @@ async function buy() {
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!skuId || !currentSku || !alipayEnabled"
+          :disabled="!skuId || !currentSku || (payMethod === 'ALIPAY' && !alipayEnabled)"
           @click="buy"
         >
           {{
-            !alipayEnabled
-              ? '支付宝未启用'
-              : currentSku && currentSku.stock <= 0
-                ? '下单（人工发货）'
-                : '立即购买'
+            payMethod === 'BALANCE'
+              ? (userStore.isLoggedIn
+                  ? (balanceEnough ? '余额支付' : '余额不足 · 去充值')
+                  : '登录后用余额支付')
+              : (alipayEnabled
+                  ? (currentSku && currentSku.stock <= 0 ? '下单（人工发货）' : '立即购买')
+                  : '支付宝未启用')
           }}
         </el-button>
       </div>

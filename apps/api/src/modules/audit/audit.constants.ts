@@ -38,6 +38,9 @@ export const AuditActions = {
   // 用户 / 资金
   USER_UPDATE: 'USER_UPDATE',
   BALANCE_ADJUST: 'BALANCE_ADJUST',
+  BALANCE_RECHARGE: 'BALANCE_RECHARGE',            // 充值到账
+  BALANCE_RECHARGE_AMOUNT_MISMATCH: 'BALANCE_RECHARGE_AMOUNT_MISMATCH', // 充值金额校验失败（高危）
+  BALANCE_RECHARGE_REFUND: 'BALANCE_RECHARGE_REFUND', // 充值退款
 
   // 站点设置
   SETTINGS_UPDATE: 'SETTINGS_UPDATE',
@@ -77,6 +80,9 @@ export const AuditActionLabels: Record<string, string> = {
   CARD_KEY_BULK_IMPORT: '导入卡密',
   USER_UPDATE: '修改用户',
   BALANCE_ADJUST: '调整余额',
+  BALANCE_RECHARGE: '账户充值到账',
+  BALANCE_RECHARGE_AMOUNT_MISMATCH: '充值金额校验失败',
+  BALANCE_RECHARGE_REFUND: '充值退款',
   SETTINGS_UPDATE: '修改站点设置',
   PRODUCT_DELETE: '删除商品',
 };

@@ -133,6 +133,22 @@ export class AlipayOrderDto {
   contact?: string;
 }
 
+export class BalanceOrderDto {
+  @IsString()
+  @Length(1, 64)
+  typeKey!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  contact?: string;
+}
+
 export class OrderQueryDto {
   @IsString()
   @Length(1, 64)

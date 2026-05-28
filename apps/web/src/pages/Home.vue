@@ -346,7 +346,7 @@ onMounted(() => load(false));
                         : 'text-ink-500 bg-ink-50',
                   ]"
                   :title="p.stock <= 0
-                    ? (p.source === 'local' ? '可下单付款，由客服人工发货' : '三方暂时缺货，请稍后再来')
+                    ? (p.source === 'local' ? '可下单付款，由客服人工发货' : '暂时缺货，请稍后再来')
                     : `当前库存 ${p.stock} 件`"
                 >
                   <span

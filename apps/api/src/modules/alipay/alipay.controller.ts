@@ -14,6 +14,7 @@ import { Request, Response } from 'express';
 import { AlipayService } from './alipay.service';
 import { OrdersService } from '../orders/orders.service';
 import { ForgeOrdersService } from '../forge-redeem/forge-orders.service';
+import { RechargeService } from '../recharge/recharge.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -29,10 +30,15 @@ function isSafeReturnUrl(u?: string): boolean {
 /**
  * 订单号规则：
  *   - 本地卡密订单：以 'P' 开头
- *   - Cursorforge 三方订单：以 'F' 开头
+ *   - 代下订单：以 'F' 开头
+ *   - 余额充值订单：以 'R' 开头
  */
 function isForgeOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('F');
+}
+
+function isRechargeOrder(orderNo: string) {
+  return typeof orderNo === 'string' && orderNo.startsWith('R');
 }
 
 /** 脱敏 buyer_logon_id（138****1234@qq.com → 138****1234@qq.com，邮箱/手机分别脱敏） */
@@ -57,6 +63,7 @@ export class AlipayController {
     private readonly alipay: AlipayService,
     private readonly orders: OrdersService,
     private readonly forgeOrders: ForgeOrdersService,
+    private readonly recharge: RechargeService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
@@ -79,7 +86,19 @@ export class AlipayController {
     let subject: string;
     let body: string | undefined;
 
-    if (isForgeOrder(orderNo)) {
+    if (isRechargeOrder(orderNo)) {
+      const r = await this.prisma.rechargeOrder.findUnique({ where: { orderNo } });
+      if (!r) throw new BadRequestException('订单不存在');
+      if (r.status !== 'PENDING') {
+        throw new BadRequestException('订单状态不允许支付');
+      }
+      if (r.expireAt.getTime() < Date.now()) {
+        throw new BadRequestException('订单已过期');
+      }
+      payAmount = Number(r.amount);
+      subject = `账户充值 ¥${payAmount.toFixed(2)}`;
+      body = `账户充值 ${orderNo}`;
+    } else if (isForgeOrder(orderNo)) {
       const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
       if (!order) throw new BadRequestException('订单不存在');
       if (order.paymentMethod !== 'ALIPAY') {
@@ -168,8 +187,33 @@ export class AlipayController {
         return res.status(200).send('success');
       }
 
+      if (isRechargeOrder(orderNo)) {
+        // 充值订单：金额校验 + 入账（增余额 + 写流水），均在 service 内同一事务
+        try {
+          await this.recharge.markPaidAndCredit(orderNo, tradeNo, totalAmount, buyerLogonId);
+          return res.status(200).send('success');
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (msg.includes('金额不一致')) {
+            await this.audit.record({
+              action: AuditActions.BALANCE_RECHARGE_AMOUNT_MISMATCH,
+              target: `recharge:${orderNo}`,
+              detail: { tradeNo, paidAmount: totalAmount, msg },
+            });
+            // 高危：金额不对，不让重推
+            return res.status(200).send('success');
+          }
+          if (msg.includes('订单不存在') || msg.includes('不允许')) {
+            this.logger.warn(`recharge notify hard-fail: ${orderNo} ${msg}`);
+            return res.status(200).send('success');
+          }
+          this.logger.error(`recharge notify retryable: ${orderNo} ${msg}`);
+          return res.status(200).send('fail');
+        }
+      }
+
       if (isForgeOrder(orderNo)) {
-        // 三方订单：仅做状态推进，发货异步
+        // 代下订单：仅做状态推进，发货异步
         try {
           const r = await this.forgeOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
           if (r === 'recorded') {
@@ -241,6 +285,14 @@ export class AlipayController {
       const totalAmount = Number(query.total_amount);
       const buyerLogonId = query.buyer_logon_id as string | undefined;
       if (ok && orderNo) {
+        if (isRechargeOrder(orderNo)) {
+          try {
+            await this.recharge.markPaidAndCredit(orderNo, tradeNo, totalAmount, buyerLogonId);
+          } catch (e) {
+            this.logger.warn(`return-ack recharge fallback: ${(e as Error).message}`);
+          }
+          return res.redirect(`/recharge/${encodeURIComponent(orderNo)}`);
+        }
         if (isForgeOrder(orderNo)) {
           try {
             const r = await this.forgeOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);

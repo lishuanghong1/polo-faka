@@ -56,11 +56,12 @@ export class OrdersService {
 
     let payAmount = total;
 
-    // 余额支付：扣余额并直接置为 PAID
     if (dto.payMethod === PayMethodDto.BALANCE) {
       if (!userId) throw new BadRequestException('余额支付需要登录');
       const u = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!u || Number(u.balance) < total) throw new BadRequestException('余额不足');
+      if (!u) throw new BadRequestException('未登录');
+      if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
+      if (Number(u.balance) < total) throw new BadRequestException('余额不足');
     }
 
     const order = await this.prisma.order.create({
@@ -101,27 +102,39 @@ export class OrdersService {
     return this.detail(orderNo);
   }
 
-  /** 余额支付（即时结算） */
+  /**
+   * 余额支付（即时结算）。
+   * 防 TOCTOU：扣余额使用 `updateMany where balance >= total` 原子条件更新，
+   * 再读最新余额写入流水；任何并发争用都会安全退出而不会扣成负数。
+   */
   async payWithBalance(orderNo: string, userId: number) {
-    return this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { orderNo } });
       if (!order || order.userId !== userId) throw new NotFoundException('订单不存在');
       if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
 
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user || Number(user.balance) < Number(order.payAmount)) {
+      const amount = new Prisma.Decimal(Number(order.payAmount));
+
+      // 原子扣余额：仅在 balance >= amount 时执行，避免并发把余额扣成负数
+      const r = await tx.user.updateMany({
+        where: { id: userId, balance: { gte: amount } },
+        data: { balance: { decrement: amount } },
+      });
+      if (r.count === 0) {
         throw new BadRequestException('余额不足');
       }
-      const newBalance = +(Number(user.balance) - Number(order.payAmount)).toFixed(2);
-      await tx.user.update({
+
+      const after = await tx.user.findUnique({
         where: { id: userId },
-        data: { balance: newBalance },
+        select: { balance: true },
       });
+      const newBalance = Number(after?.balance ?? 0);
+
       await tx.balanceLog.create({
         data: {
           userId,
-          amount: new Prisma.Decimal(-Number(order.payAmount)),
-          balance: newBalance,
+          amount: amount.negated(),
+          balance: new Prisma.Decimal(newBalance),
           type: 'CONSUME',
           note: `订单 ${orderNo}`,
           refOrder: orderNo,
@@ -131,7 +144,8 @@ export class OrdersService {
         where: { orderNo },
         data: { status: 'PAID', paidAt: new Date() },
       });
-    }).then(() => this.markPaidAndDeliver(orderNo));
+    });
+    await this.markPaidAndDeliver(orderNo);
   }
 
   /**

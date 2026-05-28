@@ -133,6 +133,137 @@ export class ForgeOrdersService {
     return this.detail(orderNo);
   }
 
+  /**
+   * 余额路径：登录用户余额直接结算 → 立即调三方发货。
+   * 关键：扣余额走 `updateMany where balance >= total` 原子条件更新；
+   * 上游下单失败会**整笔回滚**余额（原子事务外回退 + 流水补正）。
+   */
+  async createByBalance(input: {
+    typeKey: string;
+    quantity: number;
+    contact?: string;
+    ip?: string;
+    userId: number;
+  }) {
+    if (!input.userId) throw new BadRequestException('余额支付需要登录');
+    const product = await this.products.getEnabledOrThrow(input.typeKey);
+    this.validateQty(input.quantity);
+    const displayPrice = Number(product.displayPrice);
+    const totalAmount = +(displayPrice * input.quantity).toFixed(2);
+    const amountDec = new Prisma.Decimal(totalAmount);
+
+    const u = await this.prisma.user.findUnique({ where: { id: input.userId } });
+    if (!u) throw new NotFoundException('用户不存在');
+    if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
+    if (Number(u.balance) < totalAmount) {
+      throw new BadRequestException('余额不足，请先充值');
+    }
+
+    const orderNo = makeOrderNo();
+    // 事务：原子扣余额 + 写流水 + 创建 PAID 订单
+    await this.prisma.$transaction(async (tx) => {
+      const r = await tx.user.updateMany({
+        where: { id: input.userId, balance: { gte: amountDec } },
+        data: { balance: { decrement: amountDec } },
+      });
+      if (r.count === 0) throw new BadRequestException('余额不足');
+
+      const after = await tx.user.findUnique({
+        where: { id: input.userId },
+        select: { balance: true },
+      });
+      const newBalance = Number(after?.balance ?? 0);
+
+      await tx.balanceLog.create({
+        data: {
+          userId: input.userId,
+          amount: amountDec.negated(),
+          balance: new Prisma.Decimal(newBalance),
+          type: 'CONSUME',
+          note: `订单 ${orderNo}`,
+          refOrder: orderNo,
+        },
+      });
+
+      await tx.forgeOrder.create({
+        data: {
+          orderNo,
+          userId: input.userId,
+          paymentMethod: ForgePaymentMethod.BALANCE,
+          typeKey: product.typeKey,
+          typeName: product.typeName,
+          quantity: input.quantity,
+          displayPrice: new Prisma.Decimal(displayPrice),
+          totalAmount: amountDec,
+          contact: input.contact?.slice(0, 128),
+          customerRef: makeCustomerRef(orderNo),
+          status: ForgeOrderStatus.PAID,
+          paidAt: new Date(),
+          ip: input.ip,
+        },
+      });
+    });
+
+    // 事务外：调三方发货
+    try {
+      await this.fulfillOrder(orderNo);
+    } catch (e) {
+      // 上游失败 → 退回余额，订单保留 FAILED 状态，管理员可手动重发
+      await this.refundBalanceForFailedOrder(orderNo).catch((err) => {
+        this.logger.error(
+          `refund balance for failed order ${orderNo}: ${(err as Error).message}`,
+        );
+      });
+      throw e;
+    }
+    return this.detail(orderNo);
+  }
+
+  /**
+   * 上游发货失败时退回余额。会判断订单本身：
+   * - 必须是 BALANCE 支付且 FAILED 状态
+   * - 不会重复退（用 BalanceLog refOrder 去重 / 订单状态机判断）
+   */
+  private async refundBalanceForFailedOrder(orderNo: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const o = await tx.forgeOrder.findUnique({ where: { orderNo } });
+      if (!o || !o.userId) return;
+      if (o.paymentMethod !== ForgePaymentMethod.BALANCE) return;
+      if (o.status !== ForgeOrderStatus.FAILED) return;
+
+      // 幂等：如果已经存在 type=REFUND refOrder=本订单 的流水就不重复退
+      const exists = await tx.balanceLog.findFirst({
+        where: { refOrder: orderNo, type: 'REFUND' },
+      });
+      if (exists) return;
+
+      const amountDec = new Prisma.Decimal(Number(o.totalAmount));
+      const u = await tx.user.update({
+        where: { id: o.userId },
+        data: { balance: { increment: amountDec } },
+      });
+      await tx.balanceLog.create({
+        data: {
+          userId: o.userId,
+          amount: amountDec,
+          balance: new Prisma.Decimal(Number(u.balance)),
+          type: 'REFUND',
+          note: `发货失败退回 ${orderNo}`,
+          refOrder: orderNo,
+        },
+      });
+      await tx.forgeOrder.update({
+        where: { orderNo },
+        data: {
+          status: ForgeOrderStatus.REFUNDED,
+          refundAmount: amountDec,
+          refundedAt: new Date(),
+          refundReason: '上游发货失败 · 系统自动退回余额',
+        },
+      });
+    });
+  }
+
   /** 支付宝路径：创建 PENDING 订单，等待 notify 触发 fulfillOrder */
   async createForAlipay(input: {
     typeKey: string;
