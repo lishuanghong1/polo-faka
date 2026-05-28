@@ -80,11 +80,23 @@ const filteredItems = computed(() =>
     : products.value.filter((p) => p.categoryKey === activeCategory.value),
 );
 
+/**
+ * 分类归一化：把任意分类名转成统一的合并 key（去空格 + 小写 + 折叠空白）。
+ * 例如「Cursor 账号」「cursor账号」「Cursor  账号」都会归到同一组。
+ */
+function normCategoryKey(name: string | null | undefined) {
+  return (name || '其它')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '');
+}
+
 function normalizeLocal(p: any): UnifiedProduct {
   const prices = (p.skus || [])
     .map((s: any) => Number(s.price))
     .filter((n: number) => Number.isFinite(n) && n > 0);
   const minPrice = prices.length ? Math.min(...prices) : 0;
+  const categoryName = p.category?.name || '其它';
   return {
     source: 'local',
     key: `local:${p.id}`,
@@ -94,13 +106,14 @@ function normalizeLocal(p: any): UnifiedProduct {
     fromPrice: prices.length > 1,
     stock: Number(p.totalStock || 0),
     warrantyHours: p.warrantyHours ?? null,
-    categoryKey: p.category?.slug || `cat-${p.category?.id || 'others'}`,
-    categoryName: p.category?.name || '其它',
+    categoryKey: normCategoryKey(categoryName),
+    categoryName,
     emailCodeEnabled: false,
   };
 }
 
 function normalizeForge(p: any): UnifiedProduct {
+  const categoryName = p.categoryName || '其它';
   return {
     source: 'forge',
     key: `forge:${p.typeKey}`,
@@ -110,8 +123,8 @@ function normalizeForge(p: any): UnifiedProduct {
     displayPrice: Number(p.displayPrice),
     stock: Number(p.stock || 0),
     warrantyHours: p.warrantyHours ?? null,
-    categoryKey: p.categoryKey || 'forge-others',
-    categoryName: p.categoryName || '其它',
+    categoryKey: normCategoryKey(categoryName),
+    categoryName,
     emailCodeEnabled: !!p.emailCodeEnabled,
     subtitle: p.subtitle ?? null,
     coverImage: p.coverImage ?? null,
