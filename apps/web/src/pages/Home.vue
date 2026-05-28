@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
+import ProductCard from '@/components/ProductCard.vue';
 
 const site = useSiteStore();
 const router = useRouter();
@@ -44,15 +45,40 @@ const loading = ref(false);
 const refreshing = ref(false);
 const lastError = ref('');
 
+const ALL_KEY = '__ALL__';
+/** 当前选中的分类 tab（categoryKey），ALL_KEY 表示全部 */
+const activeCategory = ref<string>(ALL_KEY);
+
+/** 全部分组（用于 "全部" tab 展示） */
 const grouped = computed(() => {
-  const map = new Map<string, { categoryName: string; items: UnifiedProduct[] }>();
+  const map = new Map<string, { categoryKey: string; categoryName: string; items: UnifiedProduct[] }>();
   for (const p of products.value) {
     const key = p.categoryKey;
-    if (!map.has(key)) map.set(key, { categoryName: p.categoryName, items: [] });
+    if (!map.has(key)) map.set(key, { categoryKey: key, categoryName: p.categoryName, items: [] });
     map.get(key)!.items.push(p);
   }
   return Array.from(map.values());
 });
+
+/** Tab 列表：[全部 + 各分类]，带每档商品数 */
+const tabs = computed(() => {
+  const items = grouped.value.map((g) => ({
+    key: g.categoryKey,
+    label: g.categoryName,
+    count: g.items.length,
+  }));
+  return [
+    { key: ALL_KEY, label: '全部', count: products.value.length },
+    ...items,
+  ];
+});
+
+/** 当前 tab 对应的商品列表（单分类用） */
+const filteredItems = computed(() =>
+  activeCategory.value === ALL_KEY
+    ? products.value
+    : products.value.filter((p) => p.categoryKey === activeCategory.value),
+);
 
 function normalizeLocal(p: any): UnifiedProduct {
   const prices = (p.skus || [])
@@ -264,6 +290,30 @@ onMounted(() => load(false));
       </button>
     </div>
 
+    <!-- 分类 Tab -->
+    <div
+      v-if="!loading && !lastError && tabs.length > 1"
+      class="mb-5 flex items-center gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide"
+    >
+      <button
+        v-for="t in tabs"
+        :key="t.key"
+        class="shrink-0 px-3.5 py-1.5 rounded-full text-sm border transition whitespace-nowrap"
+        :class="activeCategory === t.key
+          ? 'bg-brand-600 border-brand-600 text-white font-medium shadow-sm'
+          : 'bg-white border-ink-200 text-ink-600 hover:border-ink-300 hover:text-ink-900'"
+        @click="activeCategory = t.key"
+      >
+        {{ t.label }}
+        <span
+          class="ml-1 text-[11px]"
+          :class="activeCategory === t.key ? 'text-white/80' : 'text-ink-400'"
+        >
+          {{ t.count }}
+        </span>
+      </button>
+    </div>
+
     <div v-if="loading" class="text-center py-20 text-ink-400">加载中...</div>
     <div v-else-if="lastError" class="card p-6 bg-amber-50/60 border border-amber-200 text-amber-800 text-sm">
       {{ lastError }}
@@ -273,103 +323,43 @@ onMounted(() => load(false));
     </div>
 
     <template v-else>
-      <div v-for="g in grouped" :key="g.categoryName" class="mb-7">
-        <div class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-2.5">
-          {{ g.categoryName }}
+      <!-- "全部" tab：仍按分类分组 -->
+      <template v-if="activeCategory === ALL_KEY">
+        <div v-for="g in grouped" :key="g.categoryKey" class="mb-7">
+          <div class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-2.5 flex items-center gap-2">
+            <span>{{ g.categoryName }}</span>
+            <span class="text-ink-300 font-normal normal-case tracking-normal text-[11px]">
+              {{ g.items.length }} 款
+            </span>
+            <button
+              class="ml-auto text-[11px] text-brand-600 hover:text-brand-700 normal-case tracking-normal font-normal"
+              @click="activeCategory = g.categoryKey"
+            >
+              只看这个分类 →
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <ProductCard v-for="p in g.items" :key="p.key" :product="p" @click="gotoDetail(p)" />
+          </div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <button
-            v-for="p in g.items"
-            :key="p.key"
-            class="card p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition bg-white border border-ink-100 group"
-            @click="gotoDetail(p)"
-          >
-            <div class="flex items-start justify-between gap-2 mb-3">
-              <div class="flex items-start gap-3 min-w-0">
-                <div
-                  v-if="p.coverImage"
-                  class="w-12 h-12 rounded-lg overflow-hidden bg-ink-50 shrink-0 relative"
-                >
-                  <img
-                    :src="p.coverImage"
-                    alt=""
-                    referrerpolicy="no-referrer"
-                    loading="lazy"
-                    class="w-full h-full object-cover"
-                    @error="(($event.target as HTMLImageElement).style.display = 'none')"
-                  />
-                  <!-- 加载失败兜底：显示首字母 -->
-                  <span class="absolute inset-0 flex items-center justify-center font-bold text-ink-400 text-lg select-none -z-10">
-                    {{ p.typeName.slice(0, 1) }}
-                  </span>
-                </div>
-                <div class="min-w-0">
-                  <div
-                    class="font-semibold text-ink-900 group-hover:text-brand-600 transition leading-snug line-clamp-2 break-words"
-                    :title="p.typeName"
-                  >
-                    {{ p.typeName }}
-                  </div>
-                  <div v-if="p.subtitle" class="text-xs text-ink-500 mt-0.5 line-clamp-2">{{ p.subtitle }}</div>
-                  <div
-                    v-else-if="p.source === 'forge'"
-                    class="text-[11px] text-ink-400 font-mono mt-0.5 truncate"
-                  >{{ p.typeKey }}</div>
-                </div>
-              </div>
-              <div class="flex flex-col items-end gap-1 shrink-0">
-                <span
-                  v-if="p.emailCodeEnabled"
-                  class="px-1.5 py-0.5 text-[10px] bg-brand-50 text-brand-700 rounded"
-                  title="支持在线接验证码"
-                >可接码</span>
-              </div>
-            </div>
+      </template>
 
-            <div class="flex items-end justify-between mt-2">
-              <div>
-                <div class="text-2xl font-bold text-rose-600">
-                  <span v-if="p.fromPrice" class="text-xs font-normal text-ink-400 mr-0.5">起</span>¥{{ p.displayPrice.toFixed(2) }}
-                </div>
-                <div v-if="p.warrantyHours" class="text-[11px] text-ink-400 mt-1">质保 {{ p.warrantyHours }} 小时</div>
-              </div>
-              <div class="text-right">
-                <div
-                  :class="[
-                    'text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
-                    p.stock <= 0
-                      ? p.source === 'local'
-                        ? 'text-amber-700 bg-amber-50'
-                        : 'text-rose-600 bg-rose-50'
-                      : p.stock <= 5
-                        ? 'text-amber-700 bg-amber-50'
-                        : 'text-ink-500 bg-ink-50',
-                  ]"
-                  :title="p.stock <= 0
-                    ? (p.source === 'local' ? '可下单付款，由客服人工发货' : '暂时缺货，请稍后再来')
-                    : `当前库存 ${p.stock} 件`"
-                >
-                  <span
-                    v-if="p.stock <= 0"
-                    class="w-1.5 h-1.5 rounded-full"
-                    :class="p.source === 'local' ? 'bg-amber-500' : 'bg-rose-500'"
-                  ></span>
-                  {{
-                    p.stock <= 0
-                      ? p.source === 'local' ? '缺货 · 可代发' : '暂时缺货'
-                      : `库存 ${p.stock}`
-                  }}
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-4 pt-3 border-t border-ink-100 text-xs text-ink-500 group-hover:text-brand-600 transition flex items-center justify-between">
-              <span>查看详情 / 下单</span>
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-          </button>
+      <!-- 单分类 tab：直接平铺 -->
+      <template v-else>
+        <div
+          v-if="!filteredItems.length"
+          class="card p-10 text-center text-ink-400 text-sm"
+        >
+          这个分类下暂时没有商品
         </div>
-      </div>
+        <div
+          v-else
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+        >
+          <ProductCard v-for="p in filteredItems" :key="p.key" :product="p" @click="gotoDetail(p)" />
+        </div>
+      </template>
     </template>
   </section>
 </template>
+
