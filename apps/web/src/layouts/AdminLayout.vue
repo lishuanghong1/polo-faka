@@ -14,6 +14,8 @@ const groups = [
       { to: '/admin', icon: 'M3 12l9-9 9 9M5 10v10h4v-6h6v6h4V10', label: '概览', exact: true },
       { to: '/admin/orders', icon: 'M9 12h6m-6 4h6M5 8h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9a2 2 0 012-2zm0 0V6a2 2 0 012-2h10a2 2 0 012 2v2', label: '订单' },
       { to: '/admin/users', icon: 'M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 20c0-3 4-5 8-5s8 2 8 5', label: '用户' },
+      { to: '/admin/vip', icon: 'M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 14.3 7.2 17l.9-5.4L4.2 7.7l5.4-.8L12 2z', label: 'VIP 等级' },
+      { to: '/admin/vip/discounts', icon: 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01', label: '商品折扣' },
     ],
   },
   {

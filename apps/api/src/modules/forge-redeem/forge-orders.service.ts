@@ -17,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ForgeApiError, ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 import { ForgeProductsService } from './forge-products.service';
+import { VipService } from '../vip/vip.service';
 
 const orderNano = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 12);
 
@@ -43,6 +44,7 @@ export class ForgeOrdersService {
     private prisma: PrismaService,
     private forge: ForgeOpenapiService,
     private products: ForgeProductsService,
+    private vip: VipService,
   ) {}
 
   /** 兑换码路径：扣余额 + 立即调三方发货 */
@@ -150,21 +152,30 @@ export class ForgeOrdersService {
     this.validateQty(input.quantity);
     const displayPrice = Number(product.displayPrice);
     const totalAmount = +(displayPrice * input.quantity).toFixed(2);
-    const amountDec = new Prisma.Decimal(totalAmount);
+    // VIP 折扣（余额支付也享受）
+    const vipResult = await this.vip.applyDiscount(
+      input.userId,
+      'FORGE',
+      product.typeKey,
+      totalAmount,
+    );
+    const totalDec = new Prisma.Decimal(totalAmount);
+    const payAmount = vipResult.payAmount;
+    const payAmountDec = new Prisma.Decimal(payAmount);
 
     const u = await this.prisma.user.findUnique({ where: { id: input.userId } });
     if (!u) throw new NotFoundException('用户不存在');
     if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
-    if (Number(u.balance) < totalAmount) {
+    if (Number(u.balance) < payAmount) {
       throw new BadRequestException('余额不足，请先充值');
     }
 
     const orderNo = makeOrderNo();
-    // 事务：原子扣余额 + 写流水 + 创建 PAID 订单
+    // 事务：原子扣余额（按折后价 payAmount） + 写流水 + 创建 PAID 订单
     await this.prisma.$transaction(async (tx) => {
       const r = await tx.user.updateMany({
-        where: { id: input.userId, balance: { gte: amountDec } },
-        data: { balance: { decrement: amountDec } },
+        where: { id: input.userId, balance: { gte: payAmountDec } },
+        data: { balance: { decrement: payAmountDec } },
       });
       if (r.count === 0) throw new BadRequestException('余额不足');
 
@@ -177,7 +188,7 @@ export class ForgeOrdersService {
       await tx.balanceLog.create({
         data: {
           userId: input.userId,
-          amount: amountDec.negated(),
+          amount: payAmountDec.negated(),
           balance: new Prisma.Decimal(newBalance),
           type: 'CONSUME',
           note: `订单 ${orderNo}`,
@@ -194,7 +205,10 @@ export class ForgeOrdersService {
           typeName: product.typeName,
           quantity: input.quantity,
           displayPrice: new Prisma.Decimal(displayPrice),
-          totalAmount: amountDec,
+          totalAmount: totalDec,
+          discountAmount: new Prisma.Decimal(vipResult.discountAmount),
+          payAmount: payAmountDec,
+          vipTier: vipResult.tier,
           contact: input.contact?.slice(0, 128),
           customerRef: makeCustomerRef(orderNo),
           status: ForgeOrderStatus.PAID,
@@ -237,7 +251,9 @@ export class ForgeOrdersService {
       });
       if (exists) return;
 
-      const amountDec = new Prisma.Decimal(Number(o.totalAmount));
+      // 余额支付实际扣的是折后价：优先 payAmount，缺省回退 totalAmount（兼容老订单）
+      const refundAmount = o.payAmount !== null ? Number(o.payAmount) : Number(o.totalAmount);
+      const amountDec = new Prisma.Decimal(refundAmount);
       const u = await tx.user.update({
         where: { id: o.userId },
         data: { balance: { increment: amountDec } },
@@ -276,6 +292,13 @@ export class ForgeOrdersService {
     this.validateQty(input.quantity);
     const displayPrice = Number(product.displayPrice);
     const totalAmount = +(displayPrice * input.quantity).toFixed(2);
+    // VIP 折扣
+    const vipResult = await this.vip.applyDiscount(
+      input.userId ?? null,
+      'FORGE',
+      product.typeKey,
+      totalAmount,
+    );
 
     const orderNo = makeOrderNo();
     await this.prisma.forgeOrder.create({
@@ -288,6 +311,9 @@ export class ForgeOrdersService {
         quantity: input.quantity,
         displayPrice: new Prisma.Decimal(displayPrice),
         totalAmount: new Prisma.Decimal(totalAmount),
+        discountAmount: new Prisma.Decimal(vipResult.discountAmount),
+        payAmount: new Prisma.Decimal(vipResult.payAmount),
+        vipTier: vipResult.tier,
         contact: input.contact?.slice(0, 128),
         customerRef: makeCustomerRef(orderNo),
         status: ForgeOrderStatus.PENDING,
@@ -318,9 +344,12 @@ export class ForgeOrdersService {
     if (order.paymentMethod !== ForgePaymentMethod.ALIPAY) {
       throw new BadRequestException('订单不是支付宝订单');
     }
-    if (Math.abs(Number(order.totalAmount) - paidAmount) > 0.01) {
+    // 校验金额：优先比对 payAmount（折后实付），缺失则兼容回退 totalAmount
+    const expectAmount =
+      order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
+    if (Math.abs(expectAmount - paidAmount) > 0.01) {
       throw new BadRequestException(
-        `金额不一致：订单 ¥${order.totalAmount}，支付 ¥${paidAmount}`,
+        `金额不一致：订单 ¥${expectAmount}，支付 ¥${paidAmount}`,
       );
     }
     // 幂等：终态直接返回
@@ -450,6 +479,10 @@ export class ForgeOrdersService {
       quantity: order.quantity,
       displayPrice: Number(order.displayPrice),
       totalAmount: Number(order.totalAmount),
+      discountAmount: Number(order.discountAmount ?? 0),
+      payAmount:
+        order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount),
+      vipTier: order.vipTier,
       contact: order.contact,
       status: order.status,
       thirdTradeNo: order.thirdTradeNo,
@@ -517,6 +550,10 @@ export class ForgeOrdersService {
         quantity: it.quantity,
         displayPrice: Number(it.displayPrice),
         totalAmount: Number(it.totalAmount),
+        discountAmount: Number(it.discountAmount ?? 0),
+        payAmount:
+          it.payAmount !== null ? Number(it.payAmount) : Number(it.totalAmount),
+        vipTier: it.vipTier,
         contact: it.contact,
         paymentMethod: it.paymentMethod,
         status: it.status,
@@ -590,6 +627,10 @@ export class ForgeOrdersService {
         quantity: it.quantity,
         displayPrice: Number(it.displayPrice),
         totalAmount: Number(it.totalAmount),
+        discountAmount: Number(it.discountAmount ?? 0),
+        payAmount:
+          it.payAmount !== null ? Number(it.payAmount) : Number(it.totalAmount),
+        vipTier: it.vipTier,
         contact: it.contact,
         status: it.status,
         thirdTradeNo: it.thirdTradeNo,

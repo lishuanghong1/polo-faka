@@ -305,6 +305,115 @@ export const api = {
     },
   },
 
+  vip: {
+    /** 公开：所有等级配置 */
+    configs: () =>
+      http.get<Array<{
+        tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
+        name: string;
+        threshold: number;
+        defaultDiscount: number;
+        color: string | null;
+        icon: string | null;
+        benefits: string[];
+        sort: number;
+      }>>('/vip/configs'),
+    /** 公开：某商品的 3 档会员价对照 */
+    productDiscounts: (productSource: 'LOCAL' | 'FORGE', productKey: string) =>
+      http.get<Array<{
+        tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
+        name: string;
+        icon: string | null;
+        color: string | null;
+        discount: number;
+        isOverride: boolean;
+      }>>('/vip/product-discounts', { params: { productSource, productKey } }),
+    /** 公开/登录：金额预览（登录则带折扣） */
+    preview: (body: { productSource: 'LOCAL' | 'FORGE'; productKey: string; originalAmount: number }) =>
+      http.post<{
+        tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+        discount: number;
+        originalAmount: number;
+        discountAmount: number;
+        payAmount: number;
+      }>('/vip/preview', body),
+    /** 登录：我的 VIP 信息 */
+    me: () =>
+      http.get<{
+        tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+        tierName: string;
+        tierColor: string | null;
+        tierIcon: string | null;
+        totalRecharged: number;
+        benefits: string[];
+        defaultDiscount: number;
+        upgradedAt: string | null;
+        next: null | {
+          tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
+          name: string;
+          threshold: number;
+          remain: number;
+          progress: number;
+        };
+      }>('/vip/me'),
+    /** 管理员：等级配置列表 */
+    adminConfigs: () => http.get('/vip/admin/configs'),
+    /** 管理员：修改等级配置 */
+    adminUpdateConfig: (
+      tier: 'GOLD' | 'DIAMOND' | 'SUPREME',
+      body: {
+        name: string;
+        threshold: number;
+        defaultDiscount: number;
+        color?: string;
+        icon?: string;
+        benefits?: string[];
+      },
+    ) => http.put(`/vip/admin/configs/${tier}`, body),
+    /** 管理员：所有商品折扣 */
+    adminDiscounts: (productSource?: 'LOCAL' | 'FORGE') =>
+      http.get<Array<{
+        id: number;
+        productSource: 'LOCAL' | 'FORGE';
+        productKey: string;
+        tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
+        discount: number;
+        updatedAt: string;
+      }>>('/vip/admin/discounts', { params: productSource ? { productSource } : {} }),
+    /** 管理员：新增/更新商品折扣 */
+    adminUpsertDiscount: (body: {
+      productSource: 'LOCAL' | 'FORGE';
+      productKey: string;
+      tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
+      discount: number;
+    }) => http.post<{ id: number }>('/vip/admin/discounts', body),
+    /** 管理员：删除商品折扣 */
+    adminRemoveDiscount: (id: number) => http.delete(`/vip/admin/discounts/${id}`),
+    /** 管理员：用户 VIP 列表 */
+    adminUsers: (params: { page?: number; pageSize?: number; keyword?: string; tier?: string }) =>
+      http.get<{
+        total: number;
+        page: number;
+        pageSize: number;
+        items: Array<{
+          id: number;
+          username: string;
+          email: string | null;
+          nickname: string | null;
+          vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+          totalRecharged: number;
+          balance: number;
+          vipUpgradedAt: string | null;
+          createdAt: string;
+        }>;
+      }>('/vip/admin/users', { params }),
+    /** 管理员：手动调级 */
+    adminManualSet: (
+      id: number,
+      body: { tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME'; note?: string },
+    ) => http.post<{ tier: string; changed: boolean }>(`/vip/admin/users/${id}/set`, body),
+  },
+
   emailCode: {
     enabled: () => http.get<{ enabled: boolean }>('/email-code/enabled'),
     fetch: (body: {

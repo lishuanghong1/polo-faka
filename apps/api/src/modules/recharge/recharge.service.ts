@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../audit/audit.constants';
+import { VipService } from '../vip/vip.service';
 
 const orderRand = customAlphabet('23456789ABCDEFGHJKMNPQRSTUVWXYZ', 16);
 
@@ -34,6 +35,7 @@ export class RechargeService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private vip: VipService,
   ) {}
 
   /** 创建一笔 PENDING 充值订单（必须登录），返回订单号供前端走支付宝 */
@@ -112,10 +114,15 @@ export class RechargeService {
       throw new BadRequestException(`订单状态 ${order.status} 不允许标记已付款`);
     }
 
-    // 入账：原子事务（订单 PAID + balance increment + BalanceLog）
-    let newBalance: number | null;
+    // 入账：原子事务（订单 PAID + balance increment + BalanceLog + 累计充值 + VIP 升级）
+    let txResult: {
+      newBalance: number;
+      upgraded: boolean;
+      from: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+      to: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+    } | null;
     try {
-      newBalance = await this.prisma.$transaction(async (tx) => {
+      txResult = await this.prisma.$transaction(async (tx) => {
         // 二次校验状态（防并发）
         const updated = await tx.rechargeOrder.updateMany({
           where: { orderNo, status: RechargeStatus.PENDING },
@@ -145,7 +152,13 @@ export class RechargeService {
             refOrder: orderNo,
           },
         });
-        return after;
+        // 累计充值 + 升级（同一事务）
+        const up = await this.vip.accrueRechargeAndUpgrade(
+          tx,
+          order.userId,
+          Number(order.amount),
+        );
+        return { newBalance: after, upgraded: up.upgraded, from: up.from, to: up.to };
       });
     } catch (e: any) {
       // DB 唯一约束 (refOrder, type=RECHARGE) 命中：说明已经入过账了，幂等命中
@@ -156,7 +169,7 @@ export class RechargeService {
       throw e;
     }
 
-    if (newBalance === null) return 'already';
+    if (!txResult) return 'already';
 
     await this.audit.record({
       action: AuditActions.BALANCE_RECHARGE,
@@ -166,9 +179,13 @@ export class RechargeService {
       detail: {
         amount: Number(order.amount),
         tradeNo,
-        balanceAfter: newBalance,
+        balanceAfter: txResult.newBalance,
       },
     });
+    // 升级审计（非关键路径，事务外）
+    if (txResult.upgraded) {
+      await this.vip.writeUpgradeAudit(order.userId, txResult.from, txResult.to);
+    }
     return 'recorded';
   }
 

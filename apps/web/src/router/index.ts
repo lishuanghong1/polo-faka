@@ -89,6 +89,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'forge-products', name: 'admin-forge-products', component: () => import('@/pages/admin/ForgeProducts.vue') },
       { path: 'forge-redeem-codes', name: 'admin-forge-redeem', component: () => import('@/pages/admin/ForgeRedeemCodes.vue') },
       { path: 'forge-orders', name: 'admin-forge-orders', component: () => import('@/pages/admin/ForgeOrders.vue') },
+      { path: 'vip', name: 'admin-vip', component: () => import('@/pages/admin/Vip.vue') },
+      { path: 'vip/discounts', name: 'admin-vip-discounts', component: () => import('@/pages/admin/VipDiscounts.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFound.vue') },

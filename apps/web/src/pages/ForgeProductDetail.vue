@@ -22,10 +22,35 @@ const submitting = ref(false);
 const alipayEnabled = ref(false);
 const errorMsg = ref('');
 
-const lineTotal = computed(() => {
+// VIP 折扣
+const vipMe = ref<{
+  tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+  tierName: string;
+  defaultDiscount: number;
+  tierColor: string | null;
+  tierIcon: string | null;
+} | null>(null);
+const vipOverrides = ref<Record<string, number>>({});
+
+const lineTotalOriginal = computed(() => {
   if (!product.value) return 0;
   return +(product.value.displayPrice * quantity.value).toFixed(2);
 });
+const effectiveDiscount = computed(() => {
+  // 兑换码路径不享受折扣
+  if (payMethod.value === 'REDEEM') return 1;
+  if (!vipMe.value || vipMe.value.tier === 'NONE') return 1;
+  const t = vipMe.value.tier;
+  if (vipOverrides.value[t] !== undefined) return vipOverrides.value[t];
+  return vipMe.value.defaultDiscount;
+});
+const discountAmount = computed(() => {
+  if (effectiveDiscount.value >= 1) return 0;
+  return +(lineTotalOriginal.value * (1 - effectiveDiscount.value)).toFixed(2);
+});
+const lineTotal = computed(() =>
+  +(lineTotalOriginal.value - discountAmount.value).toFixed(2),
+);
 
 const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
 const balanceEnough = computed(() => userBalance.value >= lineTotal.value);
@@ -61,6 +86,24 @@ async function load() {
   } catch {
     alipayEnabled.value = false;
     payMethod.value = userStore.isLoggedIn ? 'BALANCE' : 'REDEEM';
+  }
+  // VIP
+  if (userStore.isLoggedIn) {
+    try {
+      vipMe.value = await api.vip.me() as any;
+    } catch {
+      vipMe.value = null;
+    }
+  }
+  try {
+    const overrides = await api.vip.productDiscounts('FORGE', typeKey.value);
+    const map: Record<string, number> = {};
+    for (const o of overrides) {
+      if (o.isOverride) map[o.tier] = o.discount;
+    }
+    vipOverrides.value = map;
+  } catch {
+    vipOverrides.value = {};
   }
 }
 
@@ -314,8 +357,18 @@ onMounted(load);
 
         <!-- 总价 + 下单按钮 -->
         <div class="mt-6 pt-5 border-t border-ink-100">
+          <div v-if="discountAmount > 0" class="mb-2 flex items-center justify-between text-xs">
+            <span class="text-ink-500">原价</span>
+            <span class="text-ink-400 line-through">¥{{ lineTotalOriginal.toFixed(2) }}</span>
+          </div>
+          <div v-if="discountAmount > 0" class="mb-3 flex items-center justify-between text-xs">
+            <span class="text-rose-600">
+              {{ vipMe?.tierIcon }} {{ vipMe?.tierName }}专属（{{ (effectiveDiscount * 10).toFixed(1) }} 折）
+            </span>
+            <span class="text-rose-600 font-medium">-¥{{ discountAmount.toFixed(2) }}</span>
+          </div>
           <div class="flex items-center justify-between mb-3">
-            <span class="text-sm text-ink-500">合计</span>
+            <span class="text-sm text-ink-500">{{ discountAmount > 0 ? '实付' : '合计' }}</span>
             <span class="text-2xl font-bold text-rose-600">¥{{ lineTotal.toFixed(2) }}</span>
           </div>
 

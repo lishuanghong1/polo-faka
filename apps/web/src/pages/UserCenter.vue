@@ -25,6 +25,23 @@ const logs = ref<any[]>([]);
 const recharges = ref<any[]>([]);
 const loading = ref(false);
 
+const vipInfo = ref<{
+  tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+  tierName: string;
+  tierColor: string | null;
+  tierIcon: string | null;
+  totalRecharged: number;
+  benefits: string[];
+  defaultDiscount: number;
+  next: null | {
+    tier: string;
+    name: string;
+    threshold: number;
+    remain: number;
+    progress: number;
+  };
+} | null>(null);
+
 const initials = computed(() => {
   const n = user.profile?.nickname || user.profile?.username || '?';
   return n.slice(0, 1).toUpperCase();
@@ -33,12 +50,14 @@ const initials = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    const [local, forge, lg, rc] = await Promise.all([
+    const [local, forge, lg, rc, vip] = await Promise.all([
       api.myOrders({ page: 1, pageSize: 20 }) as Promise<any>,
       api.myForgeOrders({ page: 1, pageSize: 20 }).catch(() => ({ items: [] })),
       api.balanceLogs({ page: 1, pageSize: 20 }) as Promise<any>,
       api.recharge.listMine({ page: 1, pageSize: 10 }).catch(() => ({ items: [] })) as Promise<any>,
+      api.vip.me().catch(() => null) as Promise<any>,
     ]);
+    vipInfo.value = vip;
 
     const localItems = (local.items || []).map((o: any) => ({
       source: 'LOCAL' as const,
@@ -127,8 +146,16 @@ function go(route: string) { router.push(route); }
             {{ initials }}
           </div>
           <div class="min-w-0 flex-1">
-            <div class="font-semibold text-ink-900 truncate">
-              {{ user.profile?.nickname || user.profile?.username }}
+            <div class="font-semibold text-ink-900 truncate flex items-center gap-2 flex-wrap">
+              <span class="truncate">{{ user.profile?.nickname || user.profile?.username }}</span>
+              <span
+                v-if="vipInfo && vipInfo.tier !== 'NONE'"
+                class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full text-white shadow-sm"
+                :style="{ background: vipInfo.tierColor || '#d4a017' }"
+              >
+                <span class="text-xs">{{ vipInfo.tierIcon }}</span>
+                <span>{{ vipInfo.tierName }}</span>
+              </span>
             </div>
             <div class="text-xs text-ink-500 truncate">
               {{ user.profile?.email || '未绑定邮箱' }}
@@ -160,6 +187,90 @@ function go(route: string) { router.push(route); }
               明细
             </BrandButton>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ────── VIP 进度卡片 ────── -->
+    <div v-if="vipInfo" class="card overflow-hidden relative">
+      <div
+        v-if="vipInfo.tier !== 'NONE'"
+        class="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-30 -translate-y-12 translate-x-12 pointer-events-none"
+        :style="{ background: vipInfo.tierColor || '#d4a017' }"
+      />
+      <div class="relative p-5 md:p-6">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-xs text-ink-500">我的会员等级</span>
+              <span v-if="vipInfo.defaultDiscount < 1"
+                class="text-[10px] font-semibold px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded-md"
+              >
+                全场 {{ (vipInfo.defaultDiscount * 10).toFixed(1) }} 折
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span
+                v-if="vipInfo.tier !== 'NONE'"
+                class="w-8 h-8 rounded-lg flex items-center justify-center text-white text-lg shadow-sm"
+                :style="{ background: vipInfo.tierColor || '#d4a017' }"
+              >
+                {{ vipInfo.tierIcon }}
+              </span>
+              <span class="text-lg font-bold text-ink-900">
+                {{ vipInfo.tierName }}
+              </span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[11px] text-ink-400 mb-0.5">累计充值</div>
+            <div class="text-base font-bold text-ink-900 leading-none">
+              <span class="text-xs font-normal text-ink-400">¥</span>{{ formatMoneyRaw(vipInfo.totalRecharged) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- 进度条 -->
+        <div v-if="vipInfo.next">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="text-ink-500">距离 {{ vipInfo.next.name }}</span>
+            <span class="text-ink-900 font-medium">
+              还差 <span class="text-rose-600">¥{{ formatMoneyRaw(vipInfo.next.remain) }}</span>
+            </span>
+          </div>
+          <div class="h-2 bg-ink-100 rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500"
+              :style="{
+                width: `${Math.min(100, vipInfo.next.progress * 100)}%`,
+                background: `linear-gradient(90deg, ${vipInfo.tierColor || '#10b981'}, #ef4444)`,
+              }"
+            />
+          </div>
+          <div class="mt-1 text-[11px] text-ink-400">
+            充到 ¥{{ formatMoneyRaw(vipInfo.next.threshold) }} 即可成为 {{ vipInfo.next.name }}
+          </div>
+        </div>
+        <div v-else class="text-xs text-ink-500">
+          您已是最高等级 🎉 感谢您的支持！
+        </div>
+
+        <!-- 福利 -->
+        <div v-if="vipInfo.benefits.length" class="mt-3 flex flex-wrap gap-1.5">
+          <span
+            v-for="b in vipInfo.benefits"
+            :key="b"
+            class="text-[11px] text-ink-700 bg-ink-50 border border-ink-100 px-2 py-0.5 rounded-md"
+          >
+            ✓ {{ b }}
+          </span>
+        </div>
+
+        <div v-if="vipInfo.tier === 'NONE'" class="mt-3 flex items-center gap-2">
+          <BrandButton variant="primary" size="sm" @click="go('/recharge')">
+            充值升级
+          </BrandButton>
+          <span class="text-xs text-ink-500">解锁全场会员折扣</span>
         </div>
       </div>
     </div>

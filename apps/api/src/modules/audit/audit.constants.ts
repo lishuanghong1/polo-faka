@@ -47,6 +47,12 @@ export const AuditActions = {
 
   // 商品
   PRODUCT_DELETE: 'PRODUCT_DELETE',
+
+  // VIP
+  VIP_UPGRADE: 'VIP_UPGRADE',                    // 用户达到充值阈值自动升级
+  VIP_MANUAL_SET: 'VIP_MANUAL_SET',              // 管理员手动调整等级
+  VIP_CONFIG_UPDATE: 'VIP_CONFIG_UPDATE',        // 修改等级阈值/默认折扣
+  VIP_DISCOUNT_UPDATE: 'VIP_DISCOUNT_UPDATE',    // 修改商品级折扣
 } as const;
 
 export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];
@@ -85,4 +91,8 @@ export const AuditActionLabels: Record<string, string> = {
   BALANCE_RECHARGE_REFUND: '充值退款',
   SETTINGS_UPDATE: '修改站点设置',
   PRODUCT_DELETE: '删除商品',
+  VIP_UPGRADE: 'VIP 自动升级',
+  VIP_MANUAL_SET: 'VIP 手动调级',
+  VIP_CONFIG_UPDATE: '修改 VIP 等级配置',
+  VIP_DISCOUNT_UPDATE: '修改商品折扣',
 };

@@ -208,9 +208,20 @@ const statusHeroClass = computed(() => {
         </div>
         <div class="flex items-end justify-between gap-3 flex-wrap">
           <div class="min-w-0">
-            <div class="text-xs text-ink-500 mb-1">合计金额</div>
+            <div class="text-xs text-ink-500 mb-1">
+              {{ Number(order.discountAmount || 0) > 0 ? '实付金额' : '合计金额' }}
+            </div>
             <div class="text-3xl md:text-4xl font-bold tracking-tight text-ink-900 leading-none">
-              <span class="text-base font-normal text-ink-400 mr-0.5">¥</span>{{ formatMoneyRaw(order.totalAmount) }}
+              <span class="text-base font-normal text-ink-400 mr-0.5">¥</span>{{ formatMoneyRaw(order.payAmount ?? order.totalAmount) }}
+            </div>
+            <div v-if="Number(order.discountAmount || 0) > 0" class="mt-2 flex items-center gap-2 text-xs flex-wrap">
+              <span class="text-ink-400 line-through">¥{{ formatMoneyRaw(order.totalAmount) }}</span>
+              <span
+                v-if="order.vipTier && order.vipTier !== 'NONE'"
+                class="px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded-md font-medium"
+              >
+                {{ order.vipTier === 'GOLD' ? '黄金' : order.vipTier === 'DIAMOND' ? '钻石' : '超级' }}会员立省 ¥{{ formatMoneyRaw(order.discountAmount) }}
+              </span>
             </div>
           </div>
           <div v-if="order.status === 'PENDING'" class="shrink-0">

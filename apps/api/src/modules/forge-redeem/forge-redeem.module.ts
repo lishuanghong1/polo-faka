@@ -7,9 +7,10 @@ import { ForgeOrdersService } from './forge-orders.service';
 import { ForgeOrdersCron } from './forge-orders.cron';
 import { ForgeOpenapiModule } from '../forge-openapi/forge-openapi.module';
 import { AlipayModule } from '../alipay/alipay.module';
+import { VipModule } from '../vip/vip.module';
 
 @Module({
-  imports: [ForgeOpenapiModule, forwardRef(() => AlipayModule)],
+  imports: [ForgeOpenapiModule, forwardRef(() => AlipayModule), VipModule],
   controllers: [ForgeRedeemController, ForgeRedeemAdminController],
   providers: [
     ForgeProductsService,

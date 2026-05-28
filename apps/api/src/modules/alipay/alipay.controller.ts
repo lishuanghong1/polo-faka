@@ -110,7 +110,8 @@ export class AlipayController {
       if (order.expireAt && order.expireAt.getTime() < Date.now()) {
         throw new BadRequestException('订单已过期');
       }
-      payAmount = Number(order.totalAmount);
+      // 优先用折后实付金额（VIP / 优惠券），缺失时回退原价（兼容老订单）
+      payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
       subject = order.typeName;
       body = `${order.typeName} × ${order.quantity}`;
     } else {
@@ -389,7 +390,9 @@ export class AlipayController {
       if (!['PAID', 'DELIVERED', 'FAILED'].includes(order.status)) {
         throw new BadRequestException(`订单状态 ${order.status} 不可退款`);
       }
-      const amount = Number(order.totalAmount);
+      // 退款金额按用户实付（payAmount，含 VIP 折扣），缺失回退 totalAmount
+      const amount =
+        order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
       const r = await this.alipay.tradeRefund({
         orderNo,
         refundAmount: amount,

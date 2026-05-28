@@ -27,6 +27,7 @@ import { RedeemModule } from './modules/redeem/redeem.module';
 import { HealthModule } from './modules/health/health.module';
 import { CaptchaModule } from './modules/captcha/captcha.module';
 import { RechargeModule } from './modules/recharge/recharge.module';
+import { VipModule } from './modules/vip/vip.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { RechargeModule } from './modules/recharge/recharge.module';
     HealthModule,
     CaptchaModule,
     RechargeModule,
+    VipModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

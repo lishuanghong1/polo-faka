@@ -10,6 +10,7 @@ import Redis from 'ioredis';
 import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
+import { VipService } from '../vip/vip.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class OrdersService {
   constructor(
     private prisma: PrismaService,
     @Inject(REDIS_CLIENT) private redis: Redis,
+    private vip: VipService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -51,17 +53,25 @@ export class OrdersService {
     );
     const total = +(unitPrice * dto.quantity).toFixed(2);
 
+    // VIP 折扣计算（兑换码/未登录场景 discount=1）
+    const vipResult = await this.vip.applyDiscount(
+      userId,
+      'LOCAL',
+      String(dto.productId),
+      total,
+    );
+    const discountAmount = vipResult.discountAmount;
+    const payAmount = vipResult.payAmount;
+
     const orderNo = this.makeOrderNo();
     const expireAt = dayjs().add(15, 'minute').toDate();
-
-    let payAmount = total;
 
     if (dto.payMethod === PayMethodDto.BALANCE) {
       if (!userId) throw new BadRequestException('余额支付需要登录');
       const u = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!u) throw new BadRequestException('未登录');
       if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
-      if (Number(u.balance) < total) throw new BadRequestException('余额不足');
+      if (Number(u.balance) < payAmount) throw new BadRequestException('余额不足');
     }
 
     const order = await this.prisma.order.create({
@@ -75,8 +85,10 @@ export class OrdersService {
         unitPrice,
         quantity: dto.quantity,
         totalAmount: total,
+        discountAmount,
         payAmount,
         payMethod: dto.payMethod as any,
+        vipTier: vipResult.tier,
         status: 'PENDING',
         contact: dto.contact,
         remark: dto.remark,

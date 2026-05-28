@@ -19,6 +19,16 @@ const alipayEnabled = ref(false);
 type PayMethod = 'ALIPAY' | 'BALANCE';
 const payMethod = ref<PayMethod>('ALIPAY');
 
+// VIP 折扣相关
+const vipMe = ref<{
+  tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+  tierName: string;
+  defaultDiscount: number;
+  tierColor: string | null;
+  tierIcon: string | null;
+} | null>(null);
+const vipOverrides = ref<Record<string, number>>({}); // tier -> discount
+
 const currentSku = computed(() => product.value?.skus?.find((s: any) => s.id === skuId.value));
 const bulk = computed<any[] | null>(() => product.value?.bulkPricing || null);
 const unitPrice = computed(() => {
@@ -29,7 +39,18 @@ const unitPrice = computed(() => {
   }
   return Number(currentSku.value.price);
 });
-const totalAmount = computed(() => +(unitPrice.value * qty.value).toFixed(2));
+const originalAmount = computed(() => +(unitPrice.value * qty.value).toFixed(2));
+const effectiveDiscount = computed(() => {
+  if (!vipMe.value || vipMe.value.tier === 'NONE') return 1;
+  const t = vipMe.value.tier;
+  if (vipOverrides.value[t] !== undefined) return vipOverrides.value[t];
+  return vipMe.value.defaultDiscount;
+});
+const discountAmount = computed(() => {
+  if (effectiveDiscount.value >= 1) return 0;
+  return +(originalAmount.value * (1 - effectiveDiscount.value)).toFixed(2);
+});
+const totalAmount = computed(() => +(originalAmount.value - discountAmount.value).toFixed(2));
 const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
 const balanceEnough = computed(() => userBalance.value >= totalAmount.value);
 
@@ -46,6 +67,24 @@ async function load() {
   }
   if (!alipayEnabled.value && userStore.isLoggedIn) {
     payMethod.value = 'BALANCE';
+  }
+  // VIP 折扣（登录才有 tier；商品 override 任何人都能取）
+  if (userStore.isLoggedIn) {
+    try {
+      vipMe.value = await api.vip.me() as any;
+    } catch {
+      vipMe.value = null;
+    }
+  }
+  try {
+    const overrides = await api.vip.productDiscounts('LOCAL', String(product.value.id));
+    const map: Record<string, number> = {};
+    for (const o of overrides) {
+      if (o.isOverride) map[o.tier] = o.discount;
+    }
+    vipOverrides.value = map;
+  } catch {
+    vipOverrides.value = {};
   }
 }
 
@@ -231,9 +270,23 @@ async function buy() {
         />
       </div>
 
-      <div class="mt-6 flex items-center justify-between border-t border-ink-100 pt-4">
+      <div class="mt-6 flex items-center justify-between border-t border-ink-100 pt-4 gap-3 flex-wrap">
         <div class="text-sm text-ink-500">
-          合计 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount }}</span>
+          <template v-if="discountAmount > 0">
+            <span class="text-ink-400 line-through text-xs mr-1">¥{{ originalAmount.toFixed(2) }}</span>
+            实付 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount.toFixed(2) }}</span>
+            <div class="mt-1 text-[11px]">
+              <span
+                class="inline-block px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded-md font-medium"
+              >
+                {{ vipMe?.tierIcon }} {{ vipMe?.tierName }}立省 ¥{{ discountAmount.toFixed(2) }}
+                <span class="text-rose-500/70">（{{ (effectiveDiscount * 10).toFixed(1) }} 折）</span>
+              </span>
+            </div>
+          </template>
+          <template v-else>
+            合计 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount.toFixed(2) }}</span>
+          </template>
         </div>
         <el-button
           type="primary"
