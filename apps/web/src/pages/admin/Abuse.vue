@@ -21,6 +21,12 @@ const form = ref({
   reason: '',
 });
 
+const profileOpen = ref(false);
+const profileLoading = ref(false);
+const profile = ref<any>(null);
+const profileIp = ref('');
+const profileDays = ref(30);
+
 async function load() {
   loading.value = true;
   try {
@@ -101,6 +107,52 @@ function reasonTag(reason: string) {
     return { label: '自动', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
   return { label: '手动', cls: 'bg-ink-50 text-ink-700 border-ink-200' };
 }
+
+async function openProfile(ip: string) {
+  profileIp.value = ip;
+  profileOpen.value = true;
+  await loadProfile();
+}
+async function loadProfile() {
+  profileLoading.value = true;
+  try {
+    profile.value = await api.admin.abuseProfile(profileIp.value, profileDays.value);
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载失败');
+    profile.value = null;
+  } finally {
+    profileLoading.value = false;
+  }
+}
+
+function fmtDateTime(s: string | null | undefined) {
+  if (!s) return '—';
+  return new Date(s).toLocaleString();
+}
+function fmtDetail(d: any) {
+  if (d == null) return '';
+  if (typeof d === 'string') return d;
+  try { return JSON.stringify(d); } catch { return String(d); }
+}
+
+/** 简单识别 UA：是否是脚本工具 */
+function uaCategory(ua: string) {
+  const s = ua.toLowerCase();
+  if (s.includes('sqlmap')) return { label: 'sqlmap', cls: 'text-rose-700' };
+  if (s.includes('nikto') || s.includes('nmap')) return { label: '安全扫描器', cls: 'text-rose-700' };
+  if (s.includes('python-requests') || s.includes('python/'))
+    return { label: 'Python 脚本', cls: 'text-amber-700' };
+  if (s.includes('curl/')) return { label: 'curl', cls: 'text-amber-700' };
+  if (s.includes('go-http-client')) return { label: 'Go 脚本', cls: 'text-amber-700' };
+  if (s.includes('node-fetch') || s.includes('axios/'))
+    return { label: 'Node 脚本', cls: 'text-amber-700' };
+  if (s.includes('postman')) return { label: 'Postman', cls: 'text-amber-700' };
+  if (s.includes('chrome') && s.includes('safari'))
+    return { label: '浏览器（真人）', cls: 'text-ink-600' };
+  if (s.includes('mozilla') || s.includes('webkit'))
+    return { label: '浏览器', cls: 'text-ink-600' };
+  return { label: '未知', cls: 'text-ink-500' };
+}
 </script>
 
 <template>
@@ -160,7 +212,11 @@ function reasonTag(reason: string) {
     </thead>
     <tbody>
       <tr v-for="row in list" :key="row.ip">
-        <td class="font-mono text-sm">{{ row.ip }}</td>
+        <td class="font-mono text-sm">
+          <button class="text-brand-700 hover:underline" @click="openProfile(row.ip)">
+            {{ row.ip }}
+          </button>
+        </td>
         <td>
           <span class="text-[11px] px-2 py-0.5 rounded border" :class="reasonTag(row.reason).cls">
             {{ reasonTag(row.reason).label }}
@@ -171,7 +227,13 @@ function reasonTag(reason: string) {
           {{ fmtCreatedAt(row.createdAt) }}
         </td>
         <td class="text-xs text-ink-600">{{ fmtTtl(row.ttl) }}</td>
-        <td>
+        <td class="space-x-1 whitespace-nowrap">
+          <button
+            class="text-xs px-2 py-1 rounded border border-ink-200 hover:bg-ink-50 text-ink-700"
+            @click="openProfile(row.ip)"
+          >
+            档案
+          </button>
           <button
             class="text-xs px-2 py-1 rounded border border-ink-200 hover:bg-ink-50 text-ink-700"
             @click="doUnblock(row)"
@@ -182,4 +244,138 @@ function reasonTag(reason: string) {
       </tr>
     </tbody>
   </DataTable>
+
+  <!-- IP 档案抽屉 -->
+  <el-drawer v-model="profileOpen" :title="`IP 档案 · ${profileIp}`" size="60%" :destroy-on-close="true">
+    <div v-if="profileLoading" class="py-16 text-center text-ink-400 text-sm">加载中...</div>
+    <div v-else-if="!profile" class="py-16 text-center text-ink-400 text-sm">无数据</div>
+    <div v-else class="space-y-4">
+      <div class="flex items-center gap-2 text-sm">
+        <span class="text-ink-500">查询范围</span>
+        <select v-model.number="profileDays" class="px-3 py-1 border border-ink-200 rounded-lg text-sm bg-white" @change="loadProfile">
+          <option :value="7">近 7 天</option>
+          <option :value="30">近 30 天</option>
+          <option :value="90">近 90 天</option>
+        </select>
+        <span v-if="profile.blocked" class="text-[11px] px-2 py-0.5 rounded border bg-rose-50 text-rose-700 border-rose-200">
+          已封禁中
+        </span>
+      </div>
+
+      <!-- 统计卡 -->
+      <div class="grid grid-cols-3 gap-3">
+        <div class="card p-3">
+          <div class="text-xs text-ink-500">总请求数</div>
+          <div class="text-2xl font-semibold mt-1">{{ profile.stats.totalRequests }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-ink-500">不同动作</div>
+          <div class="text-2xl font-semibold mt-1">{{ profile.stats.distinctActions }}</div>
+        </div>
+        <div class="card p-3">
+          <div class="text-xs text-ink-500">关联账号</div>
+          <div class="text-2xl font-semibold mt-1" :class="profile.stats.linkedAccounts > 0 ? 'text-rose-600' : ''">
+            {{ profile.stats.linkedAccounts }}
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-3 text-sm">
+        <div class="flex justify-between text-ink-500 mb-1">
+          <span>首次出现</span>
+          <span class="text-ink-700">{{ fmtDateTime(profile.stats.firstSeen) }}</span>
+        </div>
+        <div class="flex justify-between text-ink-500">
+          <span>最后出现</span>
+          <span class="text-ink-700">{{ fmtDateTime(profile.stats.lastSeen) }}</span>
+        </div>
+      </div>
+
+      <!-- 关联账号（关键信息：他登录/注册过哪些号） -->
+      <div v-if="profile.linkedUsers.length" class="card p-4">
+        <div class="text-sm font-medium text-rose-700 mb-3">⚠ 关联账号 · {{ profile.linkedUsers.length }} 个</div>
+        <div class="space-y-2">
+          <div v-for="u in profile.linkedUsers" :key="u.id" class="flex items-center justify-between text-sm border-b border-ink-100 pb-2 last:border-0">
+            <div>
+              <div class="font-medium">{{ u.username }} <span class="text-xs text-ink-400">#{{ u.id }}</span></div>
+              <div class="text-xs text-ink-500">{{ u.email || '—' }} · 注册于 {{ fmtDateTime(u.createdAt) }}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs">{{ u.role }}</div>
+              <div class="text-xs text-ink-500">余额 ¥{{ u.balance }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 关联订单 -->
+      <div v-if="profile.linkedOrders.local.length || profile.linkedOrders.forge.length" class="card p-4">
+        <div class="text-sm font-medium text-ink-700 mb-3">关联订单</div>
+        <div v-if="profile.linkedOrders.local.length" class="mb-3">
+          <div class="text-xs text-ink-500 mb-1">自建订单</div>
+          <div v-for="o in profile.linkedOrders.local" :key="o.orderNo" class="text-xs flex justify-between border-b border-ink-100 py-1 last:border-0">
+            <span class="font-mono">{{ o.orderNo }}</span>
+            <span class="text-ink-500">{{ o.productTitle }}</span>
+            <span>{{ o.status }} · ¥{{ o.payAmount }}</span>
+          </div>
+        </div>
+        <div v-if="profile.linkedOrders.forge.length">
+          <div class="text-xs text-ink-500 mb-1">代下订单</div>
+          <div v-for="o in profile.linkedOrders.forge" :key="o.orderNo" class="text-xs flex justify-between border-b border-ink-100 py-1 last:border-0">
+            <span class="font-mono">{{ o.orderNo }}</span>
+            <span class="text-ink-500">{{ o.typeName }}</span>
+            <span>{{ o.status }} · ¥{{ o.payAmount ?? o.totalAmount }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- UA 列表（识别脚本工具） -->
+      <div v-if="profile.userAgents.length" class="card p-4">
+        <div class="text-sm font-medium text-ink-700 mb-3">User-Agent · {{ profile.stats.distinctUserAgents }} 种</div>
+        <div class="space-y-2">
+          <div v-for="(u, i) in profile.userAgents" :key="i" class="text-xs">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-[11px] px-1.5 py-0.5 rounded border" :class="uaCategory(u.ua).cls">
+                {{ uaCategory(u.ua).label }}
+              </span>
+              <span class="text-ink-500">{{ u.count }} 次</span>
+            </div>
+            <div class="text-ink-400 font-mono break-all">{{ u.ua }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 动作分布 -->
+      <div v-if="profile.actions.length" class="card p-4">
+        <div class="text-sm font-medium text-ink-700 mb-3">动作分布</div>
+        <div class="space-y-1">
+          <div v-for="a in profile.actions" :key="a.action" class="flex items-center text-xs">
+            <span class="font-mono w-56 truncate" :title="a.action">{{ a.action }}</span>
+            <div class="flex-1 bg-ink-100 rounded-full h-2 mx-2 overflow-hidden">
+              <div
+                class="bg-brand-500 h-full"
+                :style="{ width: ((a.count / profile.stats.totalRequests) * 100) + '%' }"
+              ></div>
+            </div>
+            <span class="w-12 text-right text-ink-600">{{ a.count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近请求 -->
+      <div v-if="profile.recentLogs.length" class="card p-4">
+        <div class="text-sm font-medium text-ink-700 mb-3">最近请求（最多 30 条）</div>
+        <div class="space-y-2 max-h-80 overflow-y-auto">
+          <div v-for="r in profile.recentLogs" :key="r.id" class="text-xs border-b border-ink-100 pb-2 last:border-0">
+            <div class="flex justify-between text-ink-500">
+              <span class="font-mono">{{ r.action }}</span>
+              <span>{{ fmtDateTime(r.createdAt) }}</span>
+            </div>
+            <div v-if="r.target" class="text-ink-700 font-mono truncate">{{ r.target }}</div>
+            <div v-if="r.detail" class="text-ink-400 font-mono break-all">{{ fmtDetail(r.detail) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </el-drawer>
 </template>

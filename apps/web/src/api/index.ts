@@ -151,6 +151,41 @@ export const api = {
       http.post<{ ok: boolean }>('/admin/abuse/block', { ip, seconds, reason }),
     abuseUnblock: (ip: string) =>
       http.delete<{ ok: boolean }>(`/admin/abuse/block/${encodeURIComponent(ip)}`),
+    abuseProfile: (ip: string, days = 30) =>
+      http.get<{
+        ip: string;
+        days: number;
+        blocked: boolean;
+        stats: {
+          totalRequests: number;
+          firstSeen: string | null;
+          lastSeen: string | null;
+          distinctActions: number;
+          distinctUserAgents: number;
+          linkedAccounts: number;
+        };
+        actions: Array<{ action: string; count: number }>;
+        userAgents: Array<{ ua: string; count: number }>;
+        timeline: Array<{ t: string; count: number }>;
+        linkedUsers: Array<{
+          id: number;
+          username: string;
+          email: string | null;
+          createdAt: string;
+          balance: string | number;
+          role: string;
+        }>;
+        linkedOrders: { local: any[]; forge: any[] };
+        recentLogs: Array<{
+          id: number;
+          action: string;
+          target: string | null;
+          actor: string | null;
+          userAgent: string | null;
+          detail: any;
+          createdAt: string;
+        }>;
+      }>(`/admin/abuse/profile/${encodeURIComponent(ip)}`, { params: { days } }),
 
     alipayReload: () => http.post('/pay/alipay/reload'),
     alipayQuery: (orderNo: string) =>
