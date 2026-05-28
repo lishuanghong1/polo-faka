@@ -39,7 +39,8 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku = await this.computeStockBySku(p.id);
-        const skus = p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? s.stock }));
+        // 库存只看 CardKey AVAILABLE 数；sku.stock 字段已废弃（仅作为旧数据兼容字段保留）
+        const skus = p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? 0 }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
       }),
@@ -60,7 +61,7 @@ export class ProductsService {
     const stockBySku = await this.computeStockBySku(p.id);
     return {
       ...p,
-      skus: p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? s.stock })),
+      skus: p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? 0 })),
     };
   }
 
