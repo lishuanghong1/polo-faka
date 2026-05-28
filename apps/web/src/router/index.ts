@@ -85,6 +85,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'pool', name: 'admin-pool', component: () => import('@/pages/admin/Pool.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('@/pages/admin/Settings.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/pages/admin/Audit.vue') },
+      { path: 'abuse', name: 'admin-abuse', component: () => import('@/pages/admin/Abuse.vue') },
       { path: 'redeem-codes', name: 'admin-redeem', component: () => import('@/pages/admin/RedeemCodes.vue') },
       { path: 'forge-products', name: 'admin-forge-products', component: () => import('@/pages/admin/ForgeProducts.vue') },
       { path: 'forge-redeem-codes', name: 'admin-forge-redeem', component: () => import('@/pages/admin/ForgeRedeemCodes.vue') },

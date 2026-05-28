@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AdminIpAllowlistMiddleware } from './common/middleware/admin-ip-allowlist.middleware';
+import { AbuseModule } from './common/abuse/abuse.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -39,6 +40,7 @@ import { VipModule } from './modules/vip/vip.module';
     ]),
     PrismaModule,
     RedisModule,
+    AbuseModule,
     AuditModule,
     AuthModule,
     UsersModule,

@@ -21,6 +21,7 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../audit/audit.constants';
+import { AbuseGuardService } from '../../common/abuse/abuse-guard.service';
 
 /**
  * 我方订单号格式：P/F/R 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
@@ -99,6 +100,7 @@ export class AlipayController {
     private readonly recharge: RechargeService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly abuse: AbuseGuardService,
   ) {}
 
   @Public()
@@ -195,20 +197,40 @@ export class AlipayController {
 
     // ─── L1：入参格式白名单校验（早于 RSA 验签，省 CPU 同时把噪声挡在外面） ───
     // 任何 payload 不符合订单号 / 交易号格式的请求都不可能是合法的支付宝 notify，
-    // 直接当作可疑请求记录后丢弃。
+    // 直接当作可疑请求记录后丢弃，并对来源 IP 计数（5 次/5 分钟 → 自动拉黑 24h）。
     if (!isValidOrderNo(rawOrderNo) || (rawTradeNo && !isValidTradeNo(rawTradeNo))) {
-      await this.audit.record({
-        action: AuditActions.ALIPAY_SIGN_FAIL,
-        target: rawOrderNo ? `order:${safeTrunc(rawOrderNo, 48)}` : null,
-        detail: {
-          reason: 'malformed_input',
-          orderNoSample: safeTrunc(rawOrderNo, 48),
-          tradeNoSample: safeTrunc(rawTradeNo, 48),
-        },
-        ip: clientIp,
-      });
+      // 自动拉黑：相比单纯的 Throttle 60s/30 次，这是更强的"行为黑名单"
+      let blocked = false;
+      let abuseCount = 0;
+      if (clientIp) {
+        const r = await this.abuse.bumpAndCheck(clientIp, 'alipay_notify_malformed', {
+          window: 300,
+          threshold: 5,
+          blockSeconds: 24 * 3600,
+        });
+        blocked = r.blocked;
+        abuseCount = r.count;
+      }
+      // 审计去重：同一 IP 60s 内只记 1 条（或触发拉黑那次必记），避免日志被淹
+      const shouldRecord = !clientIp
+        || blocked
+        || (await this.abuse.shouldRecord(clientIp, 'alipay_notify_malformed', 60));
+      if (shouldRecord) {
+        await this.audit.record({
+          action: AuditActions.ALIPAY_SIGN_FAIL,
+          target: rawOrderNo ? `order:${safeTrunc(rawOrderNo, 48)}` : null,
+          detail: {
+            reason: 'malformed_input',
+            orderNoSample: safeTrunc(rawOrderNo, 48),
+            tradeNoSample: safeTrunc(rawTradeNo, 48),
+            abuseCount,
+            blocked,
+          },
+          ip: clientIp,
+        });
+      }
       this.logger.warn(
-        `alipay notify malformed input from ${clientIp}: out=${safeTrunc(rawOrderNo, 48)}`,
+        `alipay notify malformed input from ${clientIp} (count=${abuseCount} blocked=${blocked}): out=${safeTrunc(rawOrderNo, 48)}`,
       );
       return res.status(200).send('success'); // 不让支付宝重推；攻击者也不要返回详细信息
     }
@@ -216,17 +238,37 @@ export class AlipayController {
     try {
       const ok = await this.alipay.verifyNotify(postData);
       if (!ok) {
-        // 验签或 seller_id/app_id 校验失败：高危事件，写审计
-        await this.audit.record({
-          action: AuditActions.ALIPAY_SIGN_FAIL,
-          target: `order:${safeTrunc(rawOrderNo, 48)}`,
-          detail: {
-            sellerId: safeTrunc(postData?.seller_id, 32),
-            appId: safeTrunc(postData?.app_id, 32),
-            tradeNo: safeTrunc(rawTradeNo, 48),
-          },
-          ip: clientIp,
-        });
+        // 验签或 seller_id/app_id 校验失败：高危事件
+        // 触发 IP 计数（3 次/10 分钟 → 拉黑 24h，比 malformed 更严，因为成本更高）
+        let blocked = false;
+        let abuseCount = 0;
+        if (clientIp) {
+          const r = await this.abuse.bumpAndCheck(clientIp, 'alipay_notify_signfail', {
+            window: 600,
+            threshold: 3,
+            blockSeconds: 24 * 3600,
+          });
+          blocked = r.blocked;
+          abuseCount = r.count;
+        }
+        const shouldRecord = !clientIp
+          || blocked
+          || (await this.abuse.shouldRecord(clientIp, 'alipay_notify_signfail', 60));
+        if (shouldRecord) {
+          await this.audit.record({
+            action: AuditActions.ALIPAY_SIGN_FAIL,
+            target: `order:${safeTrunc(rawOrderNo, 48)}`,
+            detail: {
+              reason: 'sign_fail',
+              sellerId: safeTrunc(postData?.seller_id, 32),
+              appId: safeTrunc(postData?.app_id, 32),
+              tradeNo: safeTrunc(rawTradeNo, 48),
+              abuseCount,
+              blocked,
+            },
+            ip: clientIp,
+          });
+        }
         // 验签失败不让支付宝重推（重推也不会通过）
         return res.status(200).send('success');
       }

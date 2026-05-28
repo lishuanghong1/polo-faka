@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AdminIpAllowlistMiddleware } from './common/middleware/admin-ip-allowlist.middleware';
+import { IpBlacklistMiddleware } from './common/abuse/ip-blacklist.middleware';
 
 async function bootstrap() {
   // ── 启动前安全自检 ──
@@ -46,6 +47,10 @@ async function bootstrap() {
   // 支付宝异步通知是 application/x-www-form-urlencoded
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
+
+  // IP 黑名单 - 全局生效，命中即 403（必须在其它处理之前）
+  const ipBlacklist = app.get(IpBlacklistMiddleware);
+  app.use((req: any, res: any, next: any) => ipBlacklist.use(req, res, next));
 
   // Admin IP 白名单 - 注册为全局中间件，中间件内部按 path 过滤
   const allowlist = app.get(AdminIpAllowlistMiddleware);

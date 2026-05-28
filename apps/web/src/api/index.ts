@@ -142,6 +142,16 @@ export const api = {
     auditList: (params: any) => http.get('/admin/audit', { params }),
     auditActions: () => http.get<string[]>('/admin/audit/actions'),
 
+    // IP 黑名单（自动 / 手动 拉黑可疑来源）
+    abuseList: () =>
+      http.get<Array<{ ip: string; reason: string; createdAt: number; ttl: number }>>(
+        '/admin/abuse/blocked',
+      ),
+    abuseBlock: (ip: string, seconds?: number, reason?: string) =>
+      http.post<{ ok: boolean }>('/admin/abuse/block', { ip, seconds, reason }),
+    abuseUnblock: (ip: string) =>
+      http.delete<{ ok: boolean }>(`/admin/abuse/block/${encodeURIComponent(ip)}`),
+
     alipayReload: () => http.post('/pay/alipay/reload'),
     alipayQuery: (orderNo: string) =>
       http.get<{ tradeStatus: string | null; tradeNo?: string; totalAmount?: number; buyerLogonId?: string }>(
