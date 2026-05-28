@@ -56,15 +56,15 @@ watch(
       :value="modelValue.code"
       @input="set({ code: ($event.target as HTMLInputElement).value })"
       @keydown.enter="onEnter && onEnter()"
-      class="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm tracking-widest"
-      placeholder="图形验证码"
+      class="flex-1 px-4 py-2.5 border border-ink-200 rounded-lg text-sm tracking-widest focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition placeholder:text-ink-300"
+      placeholder="请输入图中字符"
       maxlength="8"
       autocomplete="off"
       inputmode="text"
     />
     <button
       type="button"
-      class="relative w-[130px] h-[42px] rounded-lg border border-gray-200 overflow-hidden bg-gray-50 flex-shrink-0 hover:border-brand-400 transition"
+      class="relative w-[130px] h-[42px] rounded-lg border border-ink-200 overflow-hidden bg-ink-50/60 flex-shrink-0 hover:border-brand-400 hover:bg-brand-50/40 transition cursor-pointer"
       :title="loading ? '加载中…' : '点击刷新验证码'"
       :disabled="loading"
       @click="refresh"
@@ -74,9 +74,11 @@ watch(
         class="absolute inset-0 flex items-center justify-center [&_svg]:w-full [&_svg]:h-full"
         v-html="svg"
       />
-      <div v-else class="absolute inset-0 flex items-center justify-center text-xs text-gray-400">
+      <div v-else class="absolute inset-0 flex items-center justify-center text-xs text-ink-400">
         {{ loading ? '加载中…' : '点击获取' }}
       </div>
+      <!-- 刷新提示 -->
+      <div v-if="svg && !loading" class="absolute top-0.5 right-1 text-[9px] text-ink-400 opacity-60">↻</div>
     </button>
   </div>
 </template>

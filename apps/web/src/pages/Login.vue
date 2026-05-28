@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/stores/user';
 import Captcha from '@/components/Captcha.vue';
+import BrandButton from '@/components/BrandButton.vue';
 
 const user = useUserStore();
 const route = useRoute();
@@ -15,14 +16,8 @@ const captchaRef = ref<InstanceType<typeof Captcha> | null>(null);
 const loading = ref(false);
 
 async function submit() {
-  if (!form.value.username || !form.value.password) {
-    ElMessage.warning('请填写账号和密码');
-    return;
-  }
-  if (!captcha.value.id || !captcha.value.code) {
-    ElMessage.warning('请输入图形验证码');
-    return;
-  }
+  if (!form.value.username || !form.value.password) return ElMessage.warning('请填写账号和密码');
+  if (!captcha.value.id || !captcha.value.code) return ElMessage.warning('请输入图形验证码');
   loading.value = true;
   try {
     await user.login({
@@ -31,9 +26,7 @@ async function submit() {
       captchaId: captcha.value.id,
       captchaCode: captcha.value.code,
     });
-    if (!user.profile) {
-      await user.restore();
-    }
+    if (!user.profile) await user.restore();
     ElMessage.success('登录成功');
     const redirect = (route.query.redirect as string) || '/';
     const target = user.profile?.role === 'ADMIN' && redirect === '/' ? '/admin' : redirect;
@@ -47,31 +40,55 @@ async function submit() {
 </script>
 
 <template>
-  <div class="max-w-md mx-auto px-4 py-16">
-    <div class="card p-8">
-      <h1 class="text-xl font-semibold">登录</h1>
-      <input
-        v-model="form.username"
-        class="mt-5 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
-        placeholder="账号 / 邮箱"
-        autocomplete="username"
-      />
-      <input
-        v-model="form.password"
-        type="password"
-        class="mt-3 w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm"
-        placeholder="密码"
-        autocomplete="current-password"
-        @keydown.enter="submit"
-      />
-      <div class="mt-3">
-        <Captcha ref="captchaRef" v-model="captcha" :on-enter="submit" />
+  <div class="max-w-md mx-auto px-4 py-12 md:py-16">
+    <div class="text-center mb-6">
+      <div class="w-14 h-14 rounded-2xl bg-brand-600 text-white mx-auto mb-3 flex items-center justify-center text-xl font-bold shadow-sm">P</div>
+      <h1 class="text-2xl font-semibold tracking-tight text-ink-900">欢迎回来</h1>
+      <p class="text-sm text-ink-500 mt-1.5">登录后管理订单、查看余额、接收验证码</p>
+    </div>
+
+    <div class="card p-6 md:p-8">
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-medium text-ink-700 block mb-1.5">账号</label>
+          <input
+            v-model="form.username"
+            class="w-full px-4 py-2.5 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition placeholder:text-ink-300"
+            placeholder="账号 / 邮箱"
+            autocomplete="username"
+            autofocus
+          />
+        </div>
+        <div>
+          <label class="text-xs font-medium text-ink-700 block mb-1.5">密码</label>
+          <input
+            v-model="form.password"
+            type="password"
+            class="w-full px-4 py-2.5 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition placeholder:text-ink-300"
+            placeholder="请输入密码"
+            autocomplete="current-password"
+            @keydown.enter="submit"
+          />
+        </div>
+        <div>
+          <label class="text-xs font-medium text-ink-700 block mb-1.5">图形验证码</label>
+          <Captcha ref="captchaRef" v-model="captcha" :on-enter="submit" />
+        </div>
       </div>
-      <button class="mt-5 w-full py-2.5 rounded-lg brand-gradient text-white" :disabled="loading" @click="submit">
-        {{ loading ? '登录中...' : '登录' }}
-      </button>
-      <p class="text-xs text-gray-500 mt-4 text-center">
-        没有账号？<router-link to="/register" class="text-brand-600 hover:underline">去注册</router-link>
+
+      <BrandButton
+        class="mt-5"
+        variant="primary"
+        size="md"
+        block
+        :loading="loading"
+        @click="submit"
+      >
+        {{ loading ? '登录中…' : '登录' }}
+      </BrandButton>
+
+      <p class="text-xs text-ink-500 mt-4 text-center">
+        没有账号？<router-link to="/register" class="text-brand-600 hover:text-brand-700 hover:underline">立即注册</router-link>
       </p>
     </div>
   </div>
