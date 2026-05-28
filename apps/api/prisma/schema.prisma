@@ -64,6 +64,9 @@ model BalanceLog {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // 数据库层幂等：同一订单同一类型流水只能有一条（MySQL 中多个 NULL 不冲突，
+  // 因此 ADJUST 等无 refOrder 的流水不受影响）
+  @@unique([refOrder, type], map: "uniq_balance_log_ref_type")
   @@index([userId, createdAt])
   @@map("balance_logs")
 }

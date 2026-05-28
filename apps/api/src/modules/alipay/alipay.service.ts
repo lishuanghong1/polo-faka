@@ -197,13 +197,31 @@ export class AlipayService {
       const ok = r.sdk.checkNotifySignV2(postData);
       if (!ok) return false;
 
-      // seller_id 强校验（只有配置了才校验，方便老订阅渐进迁移）
-      if (r.cfg.sellerId && postData?.seller_id) {
-        if (String(postData.seller_id).trim() !== r.cfg.sellerId.trim()) {
+      // seller_id 强校验。
+      // - 本地配了 sellerId：notify 必须带 seller_id 且必须一致；任一不满足都视为伪造
+      // - 本地未配：每次打 warn 提醒运维去 settings 里补上（强烈建议配置）
+      if (r.cfg.sellerId) {
+        const fromNotify = postData?.seller_id ? String(postData.seller_id).trim() : '';
+        if (!fromNotify) {
           this.logger.error(
-            `alipay notify seller_id mismatch: got=${postData.seller_id} expected=${r.cfg.sellerId}`,
+            `alipay notify missing seller_id while local sellerId is configured (out_trade_no=${postData?.out_trade_no})`,
           );
           return false;
+        }
+        if (fromNotify !== r.cfg.sellerId.trim()) {
+          this.logger.error(
+            `alipay notify seller_id mismatch: got=${fromNotify} expected=${r.cfg.sellerId}`,
+          );
+          return false;
+        }
+      } else {
+        // 未配置 sellerId 时打 warn，但每个 notify 都打太吵；用纳秒级节流：5 分钟一次
+        const now = Date.now();
+        if (!this.lastSellerIdWarn || now - this.lastSellerIdWarn > 5 * 60_000) {
+          this.lastSellerIdWarn = now;
+          this.logger.warn(
+            'alipay notify accepted WITHOUT seller_id check. Please configure alipay_seller_id in admin settings to harden against fake notifies.',
+          );
         }
       }
       // app_id 同源校验（防多商户串号）
@@ -219,6 +237,9 @@ export class AlipayService {
       return false;
     }
   }
+
+  /** 用于 seller_id 未配置时的 warn 日志节流，单进程足够 */
+  private lastSellerIdWarn = 0;
 
   /**
    * 主动查询订单状态（用于 notify 丢失兜底）。

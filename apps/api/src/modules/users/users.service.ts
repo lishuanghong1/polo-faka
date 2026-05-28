@@ -74,21 +74,39 @@ export class UsersService {
     if (Math.abs(amount) > 1_000_000) {
       throw new BadRequestException('单次调整金额超过上限（¥1,000,000）');
     }
-    // 保留 2 位小数，避免浮点尾巴
     const safeAmount = Math.round(amount * 100) / 100;
     return this.prisma.$transaction(async (tx) => {
-      const u = await tx.user.findUnique({ where: { id: userId } });
-      if (!u) throw new NotFoundException('用户不存在');
-      const newBalance = +(Number(u.balance) + safeAmount).toFixed(2);
-      if (newBalance < 0) {
-        throw new BadRequestException(`调整后余额会变成负数（${newBalance}），已拒绝`);
+      const exists = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!exists) throw new NotFoundException('用户不存在');
+
+      if (safeAmount < 0) {
+        // 扣减：CAS 守卫，避免并发把余额扣成负数
+        const need = new Prisma.Decimal(-safeAmount);
+        const r = await tx.user.updateMany({
+          where: { id: userId, balance: { gte: need } },
+          data: { balance: { decrement: need } },
+        });
+        if (r.count === 0) {
+          throw new BadRequestException('调整后余额会变成负数，已拒绝');
+        }
+      } else {
+        // 加余额：原子 increment 杜绝 lost-update
+        await tx.user.update({
+          where: { id: userId },
+          data: { balance: { increment: new Prisma.Decimal(safeAmount) } },
+        });
       }
-      await tx.user.update({ where: { id: userId }, data: { balance: newBalance } });
+
+      const after = await tx.user.findUnique({
+        where: { id: userId },
+        select: { balance: true },
+      });
+      const newBalance = Number(after?.balance ?? 0);
       await tx.balanceLog.create({
         data: {
           userId,
           amount: new Prisma.Decimal(safeAmount),
-          balance: newBalance,
+          balance: new Prisma.Decimal(newBalance),
           type: 'ADJUST',
           note: note?.slice(0, 255),
         },

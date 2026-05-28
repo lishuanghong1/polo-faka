@@ -12,6 +12,18 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { AdminIpAllowlistMiddleware } from './common/middleware/admin-ip-allowlist.middleware';
 
 async function bootstrap() {
+  // ── 启动前安全自检 ──
+  // 生产环境绝不允许开启 MockPay（会导致 0 元购）
+  if (
+    process.env.NODE_ENV === 'production'
+    && String(process.env.ENABLE_MOCK_PAY).toLowerCase() === 'true'
+  ) {
+    // 用 console 而不是 Logger，因为 Logger 还没初始化
+    // eslint-disable-next-line no-console
+    console.error('[FATAL] ENABLE_MOCK_PAY must NOT be true in production. Aborting.');
+    process.exit(1);
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');

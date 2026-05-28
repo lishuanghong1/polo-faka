@@ -198,11 +198,14 @@ export class OrdersService {
   /** 标记已支付并自动分配卡密 */
   async markPaidAndDeliver(orderNo: string) {
     const lockKey = `lock:order:${orderNo}`;
+    // Redis 异常时返回字符串 'OK' 走降级（不加锁仍可正常执行），
+    // 正常情况下 set NX：第一次拿到锁返回 'OK'；已有锁返回 null。
     const got = await this.redis
       .set(lockKey, '1', 'EX', 30, 'NX')
-      .catch(() => 'OK'); // Redis 异常时降级为不加锁
-    if (got !== 'OK' && got !== null && got !== undefined) {
-      // 已被占用，直接返回
+      .catch(() => 'OK');
+    // 没拿到锁 → 其它实例正在处理，直接放弃，避免重复分配卡密
+    if (got !== 'OK') {
+      return;
     }
 
     try {
@@ -218,7 +221,7 @@ export class OrdersService {
         });
       }
 
-      // 取出 quantity 张可用卡密（用事务 + 行锁逻辑）
+      // 取出 quantity 张可用卡密（用事务 + CAS 守卫，防并发抢占）
       const need = order.quantity;
       const picked = await this.prisma.$transaction(async (tx) => {
         const list = await tx.cardKey.findMany({
@@ -228,15 +231,23 @@ export class OrdersService {
         });
         if (list.length < need) return [];
         const ids = list.map((c) => c.id);
-        await tx.cardKey.updateMany({
-          where: { id: { in: ids } },
+        // 仅当卡密仍是 AVAILABLE 时才标 SOLD；count 不足说明被并发抢占了
+        const r = await tx.cardKey.updateMany({
+          where: { id: { in: ids }, status: 'AVAILABLE' },
           data: {
             status: 'SOLD',
             soldAt: new Date(),
             orderNo,
           },
         });
+        if (r.count < need) {
+          // 让事务回滚，外层会进入「库存不足」分支，订单卡在 PAID 待人工
+          throw new Error('卡密被并发抢占，事务回滚');
+        }
         return list;
+      }).catch((e) => {
+        if ((e as Error).message?.includes('并发抢占')) return [];
+        throw e;
       });
 
       if (picked.length === 0) {
@@ -458,20 +469,23 @@ export class OrdersService {
         where: { id: order.productId },
         data: { sales: { decrement: order.quantity } },
       });
-      // 余额支付：退还余额
+      // 余额支付：退还余额（原子 increment + 流水幂等去重，防并发 lost-update）
       if (order.payMethod === 'BALANCE' && order.userId) {
-        const user = await tx.user.findUnique({ where: { id: order.userId } });
-        if (user) {
-          const newBalance = +(Number(user.balance) + Number(order.payAmount)).toFixed(2);
-          await tx.user.update({
+        const dup = await tx.balanceLog.findFirst({
+          where: { refOrder: orderNo, type: 'REFUND' },
+          select: { id: true },
+        });
+        if (!dup) {
+          const amountDec = new Prisma.Decimal(Number(order.payAmount));
+          const u = await tx.user.update({
             where: { id: order.userId },
-            data: { balance: newBalance },
+            data: { balance: { increment: amountDec } },
           });
           await tx.balanceLog.create({
             data: {
               userId: order.userId,
-              amount: new Prisma.Decimal(Number(order.payAmount)),
-              balance: newBalance,
+              amount: amountDec,
+              balance: new Prisma.Decimal(Number(u.balance)),
               type: 'REFUND',
               note: `退款 ${orderNo}`,
               refOrder: orderNo,

@@ -113,39 +113,48 @@ export class RechargeService {
     }
 
     // 入账：原子事务（订单 PAID + balance increment + BalanceLog）
-    const newBalance = await this.prisma.$transaction(async (tx) => {
-      // 二次校验状态（防并发）
-      const updated = await tx.rechargeOrder.updateMany({
-        where: { orderNo, status: RechargeStatus.PENDING },
-        data: {
-          status: RechargeStatus.PAID,
-          thirdTradeNo: tradeNo,
-          buyerLogonId: buyerLogonId?.slice(0, 128),
-          paidAt: new Date(),
-        },
+    let newBalance: number | null;
+    try {
+      newBalance = await this.prisma.$transaction(async (tx) => {
+        // 二次校验状态（防并发）
+        const updated = await tx.rechargeOrder.updateMany({
+          where: { orderNo, status: RechargeStatus.PENDING },
+          data: {
+            status: RechargeStatus.PAID,
+            thirdTradeNo: tradeNo,
+            buyerLogonId: buyerLogonId?.slice(0, 128),
+            paidAt: new Date(),
+          },
+        });
+        if (updated.count === 0) {
+          // 已经被其他并发请求改掉了 → 当作幂等命中
+          return null;
+        }
+        const u = await tx.user.update({
+          where: { id: order.userId },
+          data: { balance: { increment: new Prisma.Decimal(Number(order.amount)) } },
+        });
+        const after = Number(u.balance);
+        await tx.balanceLog.create({
+          data: {
+            userId: order.userId,
+            amount: new Prisma.Decimal(Number(order.amount)),
+            balance: new Prisma.Decimal(after),
+            type: 'RECHARGE',
+            note: `充值 ${orderNo}`,
+            refOrder: orderNo,
+          },
+        });
+        return after;
       });
-      if (updated.count === 0) {
-        // 已经被其他并发请求改掉了 → 当作幂等命中
-        return null;
+    } catch (e: any) {
+      // DB 唯一约束 (refOrder, type=RECHARGE) 命中：说明已经入过账了，幂等命中
+      if (e?.code === 'P2002') {
+        this.logger.warn(`recharge ${orderNo}: duplicate RECHARGE log blocked by DB unique`);
+        return 'already';
       }
-      // increment 余额
-      const u = await tx.user.update({
-        where: { id: order.userId },
-        data: { balance: { increment: new Prisma.Decimal(Number(order.amount)) } },
-      });
-      const after = Number(u.balance);
-      await tx.balanceLog.create({
-        data: {
-          userId: order.userId,
-          amount: new Prisma.Decimal(Number(order.amount)),
-          balance: new Prisma.Decimal(after),
-          type: 'RECHARGE',
-          note: `充值 ${orderNo}`,
-          refOrder: orderNo,
-        },
-      });
-      return after;
-    });
+      throw e;
+    }
 
     if (newBalance === null) return 'already';
 
