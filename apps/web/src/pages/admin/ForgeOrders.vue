@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
-import { statusOf } from '@/utils/order-status';
+import DataTable from '@/components/admin/DataTable.vue';
+import StatusTag from '@/components/admin/StatusTag.vue';
+import ForgeOrderDetailDrawer from '@/components/admin/ForgeOrderDetailDrawer.vue';
+import BrandButton from '@/components/BrandButton.vue';
+import { formatRelative, formatMoneyRaw } from '@/utils/format';
 
+const route = useRoute();
 const items = ref<any[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -15,56 +20,42 @@ const typeKey = ref('');
 const keyword = ref('');
 const loading = ref(false);
 
-const detailVisible = ref(false);
-const detail = ref<any>(null);
-const retrying = ref<string | null>(null);
+const currentOrderNo = ref<string | null>(
+  typeof route.query.orderNo === 'string' ? route.query.orderNo : null,
+);
 
-const statusBadge = statusOf;
+const statusOptions = [
+  { value: '',          label: '全部' },
+  { value: 'PENDING',   label: '待支付' },
+  { value: 'PAID',      label: '已付款' },
+  { value: 'DELIVERED', label: '已发货' },
+  { value: 'FAILED',    label: '失败' },
+  { value: 'EXPIRED',   label: '已过期' },
+  { value: 'CANCELLED', label: '已取消' },
+];
 
-async function alipayQuery(orderNo: string) {
-  try {
-    const r = await api.admin.alipayQuery(orderNo);
-    if (!r.tradeStatus) {
-      ElMessage.info('支付宝侧暂无此订单（未支付或已关闭）');
-    } else {
-      ElMessage.success(
-        `支付宝状态：${r.tradeStatus}${r.totalAmount ? ` 金额 ¥${r.totalAmount}` : ''}`,
-      );
-    }
-    await load();
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || '查询失败');
-  }
-}
+const paymentOptions = [
+  { value: '',        label: '全部支付' },
+  { value: 'ALIPAY',  label: '支付宝' },
+  { value: 'BALANCE', label: '余额' },
+  { value: 'REDEEM',  label: '兑换码' },
+];
 
-async function alipayRefund(orderNo: string) {
-  try {
-    const { value } = await ElMessageBox.prompt(
-      '支付宝原路退款（不可撤销）',
-      '确认原路退款',
-      {
-        inputType: 'text',
-        inputPlaceholder: '退款原因（必填）',
-        confirmButtonText: '确认退款',
-        confirmButtonClass: 'el-button--danger',
-        inputValidator: (v) => (v && v.trim().length >= 2 ? true : '原因至少 2 个字'),
-      },
-    );
-    const r = await api.admin.alipayRefund(orderNo, value);
-    ElMessage.success(`已退款 ¥${r.amount}`);
-    await load();
-  } catch (e: any) {
-    if (e === 'cancel') return;
-    ElMessage.error(e?.response?.data?.error?.message || '退款失败');
-  }
-}
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
-function payMethodBadge(m: string) {
+const summary = computed(() => {
+  // 本页快照统计（不是全量；全量统计由 Dashboard 提供）
+  const list = items.value;
+  const paid = list.filter((o) => o.status === 'PAID' || o.status === 'DELIVERED');
+  const revenue = paid.reduce((acc, o) => acc + Number(o.totalAmount || 0), 0);
+  const cost = paid.reduce((acc, o) => acc + Number(o.upstreamAmount || 0), 0);
   return {
-    ALIPAY: { text: '支付宝', cls: 'bg-blue-50 text-blue-700' },
-    REDEEM: { text: '兑换码', cls: 'bg-purple-50 text-purple-700' },
-  }[m] || { text: m, cls: 'bg-gray-50 text-gray-600' };
-}
+    paidCount: paid.length,
+    revenue: revenue.toFixed(2),
+    cost: cost.toFixed(2),
+    profit: (revenue - cost).toFixed(2),
+  };
+});
 
 async function load() {
   loading.value = true;
@@ -84,241 +75,261 @@ async function load() {
   }
 }
 
-async function view(orderNo: string) {
-  try {
-    detail.value = await api.forge.admin.orderDetail(orderNo);
-    detailVisible.value = true;
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || '加载失败');
-  }
+function applyFilter() {
+  page.value = 1;
+  load();
 }
 
-async function retry(orderNo: string) {
-  retrying.value = orderNo;
-  try {
-    await api.forge.admin.retryFulfill(orderNo);
-    ElMessage.success('重发成功');
-    await load();
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || '重发失败');
-  } finally {
-    retrying.value = null;
-  }
+function clearFilter() {
+  keyword.value = '';
+  typeKey.value = '';
+  status.value = '';
+  paymentMethod.value = '';
+  page.value = 1;
+  load();
 }
 
-async function deleteOrder(orderNo: string) {
-  try {
-    await ElMessageBox.confirm(
-      `将永久删除三方订单 ${orderNo}，已支付/已发货订单需先退款。是否继续？`,
-      '危险操作',
-      {
-        type: 'warning',
-        confirmButtonText: '删除',
-        confirmButtonClass: 'el-button--danger',
-      },
-    );
-  } catch {
-    return;
-  }
-  try {
-    await api.forge.admin.deleteOrder(orderNo);
-    ElMessage.success('已删除');
-    await load();
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || '删除失败');
-  }
+function setStatus(s: string) {
+  status.value = s;
+  page.value = 1;
+  load();
 }
 
-function copy(text: string, label = '已复制') {
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(() => ElMessage.success(label));
+function setPayment(p: string) {
+  paymentMethod.value = p;
+  page.value = 1;
+  load();
+}
+
+function nextPage() { if (page.value < totalPages.value) { page.value++; load(); } }
+function prevPage() { if (page.value > 1) { page.value--; load(); } }
+
+function openDetail(orderNo: string) {
+  currentOrderNo.value = orderNo;
+}
+
+function payMethodChip(m: string) {
+  switch ((m || '').toUpperCase()) {
+    case 'ALIPAY':  return { text: '支付宝',   cls: 'bg-sky-50 text-sky-700 border-sky-200' };
+    case 'BALANCE': return { text: '余额',     cls: 'bg-brand-50 text-brand-700 border-brand-200' };
+    case 'REDEEM':  return { text: '兑换码',   cls: 'bg-violet-50 text-violet-700 border-violet-200' };
+    default:        return { text: m || '-',  cls: 'bg-ink-100 text-ink-600 border-ink-200' };
+  }
 }
 
 onMounted(load);
 </script>
 
 <template>
-  <AdminPageHeader title="Cursorforge 订单" subtitle="所有通过兑换码下单的三方订单流水" />
+  <AdminPageHeader title="Cursorforge 订单" :subtitle="`共 ${total} 条·当前页 ${items.length}`" />
 
-  <div class="card p-3 mb-4 flex flex-wrap gap-2 items-center">
-    <input
-      v-model="keyword"
-      placeholder="本站订单号 / 上游订单号"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm w-64"
-      @keydown.enter="page = 1; load()"
-    />
-    <input
-      v-model="typeKey"
-      placeholder="商品 type_key"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm w-48 font-mono text-xs"
-      @keydown.enter="page = 1; load()"
-    />
-    <select v-model="status" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white">
-      <option value="">全部状态</option>
-      <option value="PENDING">待支付</option>
-      <option value="PAID">已付款</option>
-      <option value="DELIVERED">已发货</option>
-      <option value="FAILED">失败</option>
-      <option value="EXPIRED">已过期</option>
-      <option value="CANCELLED">已取消</option>
-    </select>
-    <select v-model="paymentMethod" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white">
-      <option value="">全部支付方式</option>
-      <option value="ALIPAY">支付宝</option>
-      <option value="REDEEM">兑换码</option>
-    </select>
-    <button
-      class="px-3.5 py-1.5 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm"
-      @click="page = 1; load()"
-    >筛选</button>
+  <!-- ────── 本页快照 ────── -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="card p-3">
+      <div class="text-[11px] text-ink-500 uppercase tracking-wider">本页已成交</div>
+      <div class="text-xl font-semibold text-ink-900 mt-1">{{ summary.paidCount }}</div>
+    </div>
+    <div class="card p-3">
+      <div class="text-[11px] text-ink-500 uppercase tracking-wider">本页营收</div>
+      <div class="text-xl font-semibold text-ink-900 mt-1">¥{{ summary.revenue }}</div>
+    </div>
+    <div class="card p-3">
+      <div class="text-[11px] text-ink-500 uppercase tracking-wider">本页成本</div>
+      <div class="text-xl font-semibold text-ink-700 mt-1">¥{{ summary.cost }}</div>
+    </div>
+    <div class="card p-3">
+      <div class="text-[11px] text-ink-500 uppercase tracking-wider">本页毛利</div>
+      <div
+        class="text-xl font-semibold mt-1"
+        :class="Number(summary.profit) >= 0 ? 'text-emerald-700' : 'text-rose-600'"
+      >
+        ¥{{ summary.profit }}
+      </div>
+    </div>
   </div>
 
-  <div class="card p-0 overflow-hidden">
-    <table class="w-full text-sm">
-      <thead class="bg-ink-50 text-ink-600">
-        <tr>
-          <th class="px-4 py-2.5 text-left font-medium">订单号</th>
-          <th class="px-4 py-2.5 text-left font-medium">商品</th>
-          <th class="px-4 py-2.5 text-center font-medium">支付方式</th>
-          <th class="px-4 py-2.5 text-left font-medium">联系方式</th>
-          <th class="px-4 py-2.5 text-center font-medium">数量</th>
-          <th class="px-4 py-2.5 text-right font-medium">售价</th>
-          <th class="px-4 py-2.5 text-right font-medium">三方成本</th>
-          <th class="px-4 py-2.5 text-center font-medium">状态</th>
-          <th class="px-4 py-2.5 text-left font-medium">时间</th>
-          <th class="px-4 py-2.5 text-center font-medium">操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="it in items" :key="it.orderNo" class="border-t border-ink-100">
-          <td class="px-4 py-3">
-            <code class="font-mono text-xs text-ink-900 break-all">{{ it.orderNo }}</code>
-            <div v-if="it.upstreamOrderNo" class="text-[11px] text-ink-400 mt-0.5">
-              上游 <code class="font-mono">{{ it.upstreamOrderNo }}</code>
-            </div>
-            <div v-if="it.redeemCode" class="text-[11px] text-ink-400 mt-0.5">
-              code <code class="font-mono">{{ it.redeemCode }}</code>
-            </div>
-            <div v-if="it.thirdTradeNo" class="text-[11px] text-ink-400 mt-0.5">
-              支付 <code class="font-mono">{{ it.thirdTradeNo }}</code>
-            </div>
-          </td>
-          <td class="px-4 py-3">
-            <div class="text-ink-900">{{ it.typeName }}</div>
-            <div class="text-[11px] text-ink-400 font-mono">{{ it.typeKey }}</div>
-          </td>
-          <td class="px-4 py-3 text-center">
-            <span :class="['px-2 py-0.5 text-xs rounded', payMethodBadge(it.paymentMethod).cls]">
-              {{ payMethodBadge(it.paymentMethod).text }}
-            </span>
-          </td>
-          <td class="px-4 py-3 text-xs text-ink-700 max-w-[160px] truncate" :title="it.contact || ''">
-            {{ it.contact || '—' }}
-          </td>
-          <td class="px-4 py-3 text-center">× {{ it.quantity }}</td>
-          <td class="px-4 py-3 text-right">¥{{ Number(it.totalAmount).toFixed(2) }}</td>
-          <td class="px-4 py-3 text-right text-ink-500">
-            {{ it.upstreamAmount !== null ? '¥' + Number(it.upstreamAmount).toFixed(2) : '—' }}
-          </td>
-          <td class="px-4 py-3 text-center">
-            <span :class="['px-2 py-0.5 text-xs rounded-full', statusBadge(it.status).cls]">
-              {{ statusBadge(it.status).text }}
-            </span>
-            <div v-if="it.failReason" class="text-[10px] text-rose-600 mt-1 max-w-[160px] mx-auto truncate" :title="it.failReason">
-              {{ it.failReason }}
-            </div>
-          </td>
-          <td class="px-4 py-3 text-xs text-ink-500">
-            {{ new Date(it.createdAt).toLocaleString() }}
-          </td>
-          <td class="px-4 py-3 text-center whitespace-nowrap">
-            <button class="text-xs text-brand-600 hover:underline mx-1" @click="view(it.orderNo)">查看</button>
-            <button
-              v-if="['FAILED', 'PAID'].includes(it.status)"
-              class="text-xs text-emerald-600 hover:underline mx-1 disabled:opacity-50"
-              :disabled="retrying === it.orderNo"
-              @click="retry(it.orderNo)"
-            >{{ retrying === it.orderNo ? '重发中…' : '重发' }}</button>
-            <button
-              v-if="it.paymentMethod === 'ALIPAY' && ['PENDING','PAID','DELIVERED'].includes(it.status)"
-              class="text-xs text-sky-600 hover:underline mx-1"
-              @click="alipayQuery(it.orderNo)"
-            >查支付</button>
-            <button
-              v-if="it.paymentMethod === 'ALIPAY' && ['PAID','DELIVERED'].includes(it.status)"
-              class="text-xs text-rose-600 hover:underline mx-1"
-              @click="alipayRefund(it.orderNo)"
-            >退款</button>
-            <button
-              v-if="!['PAID','DELIVERED'].includes(it.status)"
-              class="text-xs text-rose-700 hover:underline mx-1"
-              @click="deleteOrder(it.orderNo)"
-            >删除</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-if="!items.length && !loading" class="py-12 text-center text-ink-400 text-sm">暂无数据</div>
+  <!-- ────── 筛选区 ────── -->
+  <div class="card p-4 mb-4 space-y-3">
+    <!-- 搜索 -->
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="relative">
+        <svg
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400"
+        >
+          <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          v-model="keyword"
+          placeholder="本站订单号 / 上游单号 / 支付单号"
+          class="pl-9 pr-3 py-2 border border-ink-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
+          @keydown.enter="applyFilter"
+        />
+      </div>
+      <input
+        v-model="typeKey"
+        placeholder="商品 type_key"
+        class="px-3 py-2 border border-ink-200 rounded-lg text-sm w-48 font-mono text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
+        @keydown.enter="applyFilter"
+      />
+      <BrandButton variant="primary" size="sm" @click="applyFilter">
+        筛选
+      </BrandButton>
+      <BrandButton variant="ghost" size="sm" @click="clearFilter">
+        重置
+      </BrandButton>
+    </div>
+
+    <!-- 状态过滤芯片 -->
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-[11px] text-ink-400 mr-1">状态</span>
+      <button
+        v-for="s in statusOptions"
+        :key="`s-${s.value}`"
+        class="px-2.5 py-1 text-xs rounded-md border transition"
+        :class="status === s.value
+          ? 'bg-brand-50 text-brand-700 border-brand-300 font-medium'
+          : 'bg-white text-ink-600 border-ink-200 hover:border-brand-300 hover:text-brand-700'"
+        @click="setStatus(s.value)"
+      >
+        {{ s.label }}
+      </button>
+    </div>
+
+    <!-- 支付方式过滤芯片 -->
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-[11px] text-ink-400 mr-1">支付</span>
+      <button
+        v-for="p in paymentOptions"
+        :key="`p-${p.value}`"
+        class="px-2.5 py-1 text-xs rounded-md border transition"
+        :class="paymentMethod === p.value
+          ? 'bg-brand-50 text-brand-700 border-brand-300 font-medium'
+          : 'bg-white text-ink-600 border-ink-200 hover:border-brand-300 hover:text-brand-700'"
+        @click="setPayment(p.value)"
+      >
+        {{ p.label }}
+      </button>
+    </div>
   </div>
 
-  <div class="mt-4 flex items-center justify-between text-sm text-ink-500">
-    <div>共 {{ total }} 条</div>
+  <!-- ────── 列表 ────── -->
+  <DataTable :loading="loading" :is-empty="!items.length" empty="暂无三方订单">
+    <thead>
+      <tr>
+        <th>订单号</th>
+        <th>商品 / 联系方式</th>
+        <th>支付</th>
+        <th class="!text-right">数量 · 售价</th>
+        <th class="!text-right">三方成本</th>
+        <th>状态</th>
+        <th class="!text-right">时间</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr
+        v-for="it in items"
+        :key="it.orderNo"
+        class="cursor-pointer"
+        @click="openDetail(it.orderNo)"
+      >
+        <!-- 订单号 -->
+        <td>
+          <div class="font-mono text-xs text-brand-700">{{ it.orderNo }}</div>
+          <div v-if="it.upstreamOrderNo" class="text-[11px] text-ink-400 mt-0.5 font-mono truncate max-w-[180px]" :title="it.upstreamOrderNo">
+            上游 {{ it.upstreamOrderNo }}
+          </div>
+        </td>
+
+        <!-- 商品 + 联系方式 -->
+        <td class="max-w-[260px]">
+          <div class="text-ink-900 truncate" :title="it.typeName">{{ it.typeName }}</div>
+          <div class="text-[11px] text-ink-400 font-mono truncate flex items-center gap-1.5" :title="it.typeKey">
+            <span>{{ it.typeKey }}</span>
+            <template v-if="it.contact">
+              <span class="w-1 h-1 rounded-full bg-ink-300" />
+              <span class="text-ink-500 truncate" :title="it.contact">{{ it.contact }}</span>
+            </template>
+          </div>
+        </td>
+
+        <!-- 支付方式 -->
+        <td>
+          <span
+            class="inline-flex h-5 px-1.5 items-center text-[11px] rounded border whitespace-nowrap"
+            :class="payMethodChip(it.paymentMethod).cls"
+          >
+            {{ payMethodChip(it.paymentMethod).text }}
+          </span>
+        </td>
+
+        <!-- 数量 · 售价 -->
+        <td class="!text-right">
+          <div class="text-ink-500 text-[11px]">×{{ it.quantity }}</div>
+          <div class="font-medium text-price">¥{{ formatMoneyRaw(it.totalAmount) }}</div>
+        </td>
+
+        <!-- 三方成本 -->
+        <td class="!text-right text-ink-500 text-xs">
+          {{
+            it.upstreamAmount !== null && it.upstreamAmount !== undefined
+              ? '¥' + formatMoneyRaw(it.upstreamAmount)
+              : '—'
+          }}
+        </td>
+
+        <!-- 状态 -->
+        <td>
+          <StatusTag :status="it.status" />
+          <div
+            v-if="it.failReason"
+            class="text-[10px] text-rose-600 mt-1 max-w-[180px] truncate"
+            :title="it.failReason"
+          >{{ it.failReason }}</div>
+        </td>
+
+        <!-- 时间 -->
+        <td class="!text-right text-ink-400 text-xs whitespace-nowrap" :title="new Date(it.createdAt).toLocaleString()">
+          {{ formatRelative(it.createdAt) }}
+        </td>
+      </tr>
+    </tbody>
+  </DataTable>
+
+  <!-- ────── 分页 ────── -->
+  <div v-if="total > pageSize" class="mt-4 flex items-center justify-between gap-3 flex-wrap">
+    <div class="text-xs text-ink-500">
+      共 <span class="font-medium text-ink-700">{{ total }}</span> 条
+      · 第 <span class="font-medium text-ink-700">{{ page }}</span> / {{ totalPages }} 页
+    </div>
     <div class="flex items-center gap-2">
       <button
-        class="px-3 py-1 rounded border border-ink-200 disabled:opacity-50"
+        class="h-8 px-3 rounded-lg border border-ink-200 text-sm text-ink-700 hover:bg-ink-50 hover:border-brand-300 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
         :disabled="page <= 1"
-        @click="page--; load()"
-      >上一页</button>
-      <span>第 {{ page }} 页</span>
+        @click="prevPage"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+        上一页
+      </button>
       <button
-        class="px-3 py-1 rounded border border-ink-200 disabled:opacity-50"
-        :disabled="page * pageSize >= total"
-        @click="page++; load()"
-      >下一页</button>
+        class="h-8 px-3 rounded-lg border border-ink-200 text-sm text-ink-700 hover:bg-ink-50 hover:border-brand-300 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-1"
+        :disabled="page >= totalPages"
+        @click="nextPage"
+      >
+        下一页
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
     </div>
   </div>
 
-  <!-- 详情对话框 -->
-  <div v-if="detailVisible" class="fixed inset-0 bg-black/40 z-40 flex items-center justify-center p-4" @click.self="detailVisible = false">
-    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-      <div class="px-6 py-4 border-b border-ink-100 flex items-center justify-between">
-        <h3 class="font-semibold text-ink-900">订单详情</h3>
-        <button class="text-ink-400 hover:text-ink-700" @click="detailVisible = false">✕</button>
-      </div>
-      <div v-if="detail" class="p-6 space-y-4 text-sm">
-        <dl class="grid grid-cols-2 gap-y-2">
-          <dt class="text-ink-500">订单号</dt><dd class="font-mono text-xs break-all">{{ detail.orderNo }}</dd>
-          <dt class="text-ink-500">商品</dt><dd>{{ detail.typeName }}</dd>
-          <dt class="text-ink-500">数量</dt><dd>× {{ detail.quantity }}</dd>
-          <dt class="text-ink-500">单价</dt><dd>¥{{ Number(detail.displayPrice).toFixed(2) }}</dd>
-          <dt class="text-ink-500">合计</dt><dd>¥{{ Number(detail.totalAmount).toFixed(2) }}</dd>
-          <dt class="text-ink-500">状态</dt><dd>{{ statusBadge(detail.status).text }}</dd>
-          <dt v-if="detail.upstreamOrderNo" class="text-ink-500">上游单号</dt>
-          <dd v-if="detail.upstreamOrderNo" class="font-mono text-xs">{{ detail.upstreamOrderNo }}</dd>
-        </dl>
-
-        <div v-if="detail.failReason" class="p-3 bg-rose-50 border border-rose-200 rounded text-rose-800 text-sm">
-          {{ detail.failReason }}
-        </div>
-
-        <div v-if="detail.accounts?.length">
-          <div class="text-sm font-medium text-ink-800 mb-2">账号列表</div>
-          <ul class="space-y-2">
-            <li v-for="(a, i) in detail.accounts" :key="i" class="p-3 bg-ink-50 rounded-lg space-y-1.5">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-ink-500 w-12 shrink-0">邮箱</span>
-                <code class="text-xs flex-1 break-all">{{ a.account_json?.email || a.email }}</code>
-                <button class="text-xs text-brand-600 hover:underline" @click="copy(a.account_json?.email || a.email, '邮箱已复制')">复制</button>
-              </div>
-              <div v-if="a.account_json?.access_token" class="flex items-start gap-2">
-                <span class="text-xs text-ink-500 w-12 shrink-0 mt-1">Token</span>
-                <code class="text-[10px] flex-1 break-all font-mono leading-relaxed">{{ a.account_json.access_token }}</code>
-                <button class="text-xs text-brand-600 hover:underline mt-1" @click="copy(a.account_json!.access_token, 'Token 已复制')">复制</button>
-              </div>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- ────── Drawer ────── -->
+  <ForgeOrderDetailDrawer
+    :order-no="currentOrderNo"
+    @close="currentOrderNo = null"
+    @changed="load()"
+  />
 </template>
