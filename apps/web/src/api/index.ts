@@ -24,9 +24,25 @@ export const api = {
     ),
 
   // 认证
-  register: (body: any) => http.post('/website-auth/register', body),
-  login: (body: any) => http.post('/website-auth/login', body),
+  register: (body: {
+    username: string;
+    password: string;
+    email?: string;
+    nickname?: string;
+    captchaId: string;
+    captchaCode: string;
+  }) => http.post('/website-auth/register', body),
+  login: (body: {
+    username: string;
+    password: string;
+    captchaId: string;
+    captchaCode: string;
+  }) => http.post('/website-auth/login', body),
   profile: () => http.get('/website-auth/profile'),
+
+  // 图形验证码
+  captcha: () =>
+    http.get<{ id: string; svg: string; expiresIn: number }>('/captcha'),
 
   // 用户
   balanceLogs: (params: any) => http.get('/users/my/balance-logs', { params }),

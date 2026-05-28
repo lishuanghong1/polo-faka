@@ -8,9 +8,11 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
+import { CaptchaModule } from '../captcha/captcha.module';
 
 @Module({
   imports: [
+    CaptchaModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

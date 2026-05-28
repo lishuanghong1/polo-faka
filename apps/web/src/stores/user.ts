@@ -34,13 +34,25 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function login(username: string, password: string) {
-    const r = await api.login({ username, password });
+  async function login(payload: {
+    username: string;
+    password: string;
+    captchaId: string;
+    captchaCode: string;
+  }) {
+    const r = await api.login(payload);
     setToken(r.token);
     await restore();
   }
 
-  async function register(payload: { username: string; password: string; email?: string; nickname?: string }) {
+  async function register(payload: {
+    username: string;
+    password: string;
+    email?: string;
+    nickname?: string;
+    captchaId: string;
+    captchaCode: string;
+  }) {
     const r = await api.register(payload);
     setToken(r.token);
     await restore();

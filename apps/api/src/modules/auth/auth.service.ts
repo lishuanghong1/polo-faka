@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CaptchaService } from '../captcha/captcha.service';
 import { LoginDto, RegisterDto } from './dto';
 
 @Injectable()
@@ -9,9 +10,11 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private captcha: CaptchaService,
   ) {}
 
   async register(dto: RegisterDto) {
+    await this.captcha.verifyOrThrow(dto.captchaId, dto.captchaCode);
     const exists = await this.prisma.user.findUnique({ where: { username: dto.username } });
     if (exists) throw new BadRequestException('用户名已被占用');
     if (dto.email) {
@@ -32,6 +35,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    await this.captcha.verifyOrThrow(dto.captchaId, dto.captchaCode);
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ username: dto.username }, { email: dto.username }] },
     });

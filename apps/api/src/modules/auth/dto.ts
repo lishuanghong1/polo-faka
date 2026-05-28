@@ -1,6 +1,25 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
-export class RegisterDto {
+class CaptchaFields {
+  @IsString()
+  @MaxLength(32)
+  captchaId: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(8)
+  @Matches(/^[a-zA-Z0-9]+$/, { message: '验证码格式错误' })
+  captchaCode: string;
+}
+
+export class RegisterDto extends CaptchaFields {
   @IsString()
   @MinLength(3)
   @MaxLength(32)
@@ -21,7 +40,7 @@ export class RegisterDto {
   nickname?: string;
 }
 
-export class LoginDto {
+export class LoginDto extends CaptchaFields {
   @IsString()
   username: string;
 
