@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import EmailCodeBox from '@/components/EmailCodeBox.vue';
+import { statusOf } from '@/utils/order-status';
 
 const route = useRoute();
 const router = useRouter();
@@ -26,28 +27,30 @@ function isMobile() {
   return /Mobi|Android|iPhone/i.test(navigator.userAgent);
 }
 
-function statusBadge(s: string) {
-  return {
-    PENDING: { text: '待支付', cls: 'bg-amber-100 text-amber-700' },
-    PAID: { text: '已付款（发货中）', cls: 'bg-blue-100 text-blue-700' },
-    DELIVERED: { text: '已发货', cls: 'bg-emerald-100 text-emerald-700' },
-    FAILED: { text: '失败', cls: 'bg-rose-100 text-rose-700' },
-    CANCELLED: { text: '已取消', cls: 'bg-gray-100 text-gray-600' },
-    EXPIRED: { text: '已过期', cls: 'bg-gray-100 text-gray-600' },
-  }[s] || { text: s, cls: 'bg-gray-100 text-gray-600' };
-}
+const statusBadge = statusOf;
 
 async function load(contact?: string) {
   try {
-    order.value = await api.forge.orderDetail(orderNo.value, contact);
-    needContact.value = false;
-    errorMsg.value = '';
+    const r: any = await api.forge.orderDetail(orderNo.value, contact);
+    if (r && r.requireContact) {
+      order.value = null;
+      needContact.value = true;
+      errorMsg.value = '';
+    } else {
+      order.value = r;
+      needContact.value = false;
+      errorMsg.value = '';
+    }
   } catch (e: any) {
     const msg = e?.response?.data?.error?.message || e?.message || '订单不存在';
-    if (e?.response?.status === 404 && !contact) {
+    order.value = null;
+    if (e?.response?.status === 404 && contact) {
+      // 传了 contact 但服务器 404，说明联系方式不匹配（防爆破响应）
       needContact.value = true;
+      errorMsg.value = '联系方式不匹配，请重试';
+    } else {
+      errorMsg.value = msg;
     }
-    errorMsg.value = msg;
   } finally {
     loading.value = false;
   }
@@ -127,7 +130,14 @@ watch(
   },
 );
 
-onMounted(() => load());
+onMounted(() => {
+  const fromQuery = (route.query.contact as string | undefined)?.trim();
+  if (fromQuery) {
+    contactPrompt.value = fromQuery;
+    return load(fromQuery);
+  }
+  return load();
+});
 onBeforeUnmount(stopPolling);
 </script>
 

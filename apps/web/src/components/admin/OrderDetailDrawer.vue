@@ -62,14 +62,25 @@ async function redeliver() {
 }
 
 async function refund() {
-  const { value } = await ElMessageBox.prompt('退款原因（可选）', '确认退款', {
+  const isAlipay = order.value?.payMethod === 'ALIPAY';
+  await ElMessageBox.confirm(
+    isAlipay
+      ? '账面退款仅会把订单状态改为「已退款」并回收卡密，不会真的把钱退给买家。如需把支付宝款项退回买家，请使用「支付宝原路退款」。是否继续仅做账面退款？'
+      : '账面退款会把订单状态改为「已退款」并回收卡密，不涉及真实款项。是否继续？',
+    isAlipay ? '账面退款（不退实际款项）' : '账面退款',
+    {
+      type: 'warning',
+      confirmButtonText: '继续账面退款',
+      cancelButtonText: '取消',
+    },
+  );
+  const { value } = await ElMessageBox.prompt('退款原因（可选）', '账面退款原因', {
     inputType: 'text',
-    inputPlaceholder: '如：用户协商退款',
+    inputPlaceholder: '如：协商退款 / 库存补不上',
     confirmButtonText: '确认退款',
-    confirmButtonClass: 'el-button--danger',
   });
   await api.admin.orderRefund(order.value.orderNo, value);
-  ElMessage.success('已退款');
+  ElMessage.success('已账面退款');
   await load();
   emit('changed');
 }
@@ -111,6 +122,30 @@ async function cancel() {
   ElMessage.success('已取消');
   await load();
   emit('changed');
+}
+
+async function deleteOrder() {
+  try {
+    await ElMessageBox.confirm(
+      '将永久删除此订单，订单上锁定的可用卡密会回滚到库存。确定继续？',
+      '危险操作',
+      {
+        type: 'warning',
+        confirmButtonText: '删除订单',
+        confirmButtonClass: 'el-button--danger',
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await api.admin.orderDelete(order.value.orderNo);
+    ElMessage.success('已删除');
+    emit('changed');
+    close();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '删除失败');
+  }
 }
 
 function openManual() {
@@ -263,15 +298,23 @@ function close() {
 
         <button
           v-if="order.payMethod === 'ALIPAY' && ['PAID', 'DELIVERED'].includes(order.status)"
-          class="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm"
+          class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium shadow-sm"
+          title="真实退款：会把钱原路退回买家支付宝"
           @click="alipayRefund"
         >支付宝原路退款</button>
 
         <button
           v-if="['PAID', 'DELIVERED'].includes(order.status)"
           class="ml-auto px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 text-sm"
+          title="仅改账面状态，不退实际款项"
           @click="refund"
         >账面退款</button>
+
+        <button
+          v-if="!['PAID', 'DELIVERED'].includes(order.status)"
+          class="ml-auto px-3 py-1.5 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm"
+          @click="deleteOrder"
+        >删除订单</button>
       </div>
     </div>
   </el-drawer>

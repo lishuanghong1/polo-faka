@@ -72,9 +72,9 @@ async function buy() {
 </script>
 
 <template>
-  <div v-if="!product" class="text-center py-20 text-gray-400">加载中...</div>
+  <div v-if="!product" class="text-center py-20 text-ink-400">加载中...</div>
   <div v-else class="max-w-4xl mx-auto px-4 py-8">
-    <button class="text-sm text-gray-500 hover:text-brand-600 mb-3" @click="router.back()">
+    <button class="text-sm text-ink-500 hover:text-brand-600 mb-3" @click="router.back()">
       ← 返回
     </button>
 
@@ -86,19 +86,19 @@ async function buy() {
           class="tag-chip"
         >{{ t }}</span>
       </div>
-      <h1 class="text-xl md:text-2xl font-bold leading-snug">{{ product.title }}</h1>
-      <p v-if="product.subtitle" class="mt-2 text-sm text-gray-500">{{ product.subtitle }}</p>
+      <h1 class="text-xl md:text-2xl font-bold leading-snug text-ink-900">{{ product.title }}</h1>
+      <p v-if="product.subtitle" class="mt-2 text-sm text-ink-500">{{ product.subtitle }}</p>
 
-      <div v-if="product.description" class="mt-4 text-sm text-gray-600 whitespace-pre-wrap">
+      <div v-if="product.description" class="mt-4 text-sm text-ink-600 whitespace-pre-wrap">
         {{ product.description }}
       </div>
 
-      <div class="mt-5 text-xs text-gray-400 flex gap-4">
+      <div class="mt-5 text-xs text-ink-400 flex gap-4">
         <span>已售 {{ product.sales }}</span>
       </div>
 
       <div class="mt-6">
-        <div class="text-sm text-gray-700 mb-2">规格</div>
+        <div class="text-sm text-ink-700 mb-2">规格</div>
         <el-radio-group v-model="skuId">
           <el-radio
             v-for="s in product.skus"
@@ -110,7 +110,7 @@ async function buy() {
             <span class="ml-1 text-rose-600 font-medium">¥{{ s.price }}</span>
             <span
               class="ml-1 text-xs"
-              :class="s.stock <= 0 ? 'text-amber-600' : 'text-gray-400'"
+              :class="s.stock <= 0 ? 'text-amber-600' : 'text-ink-400'"
             >({{ s.stock <= 0 ? '需联系客服' : s.stock }})</span>
           </el-radio>
         </el-radio-group>
@@ -123,7 +123,7 @@ async function buy() {
         当前规格暂无库存，可正常下单并完成支付，付款后我们会人工尽快为您发货；如急需可在订单页联系客服。
       </div>
 
-      <div v-if="bulk && bulk.length" class="mt-4 text-xs text-gray-500">
+      <div v-if="bulk && bulk.length" class="mt-4 text-xs text-ink-500">
         批量优惠：
         <span v-for="(b, i) in bulk" :key="i" class="mr-3">
           {{ b.min }}-{{ b.max }} 个 ¥{{ b.price }}
@@ -131,12 +131,12 @@ async function buy() {
       </div>
 
       <div class="mt-4 flex items-center gap-3">
-        <span class="text-sm text-gray-700">数量</span>
+        <span class="text-sm text-ink-700">数量</span>
         <el-input-number v-model="qty" :min="1" :max="1000" />
       </div>
 
       <div class="mt-4">
-        <div class="text-sm text-gray-700 mb-2">支付方式</div>
+        <div class="text-sm text-ink-700 mb-2">支付方式</div>
         <div
           v-if="alipayEnabled"
           class="inline-flex items-center px-3 py-2 rounded-lg border border-brand-200 bg-brand-50/50 text-sm"
@@ -154,16 +154,19 @@ async function buy() {
       </div>
 
       <div class="mt-4">
-        <div class="text-sm text-gray-700 mb-2">联系方式（可选）</div>
+        <div class="text-sm text-ink-700 mb-2 flex items-center gap-2">
+          联系方式（可选）
+          <span class="text-[11px] text-ink-400 font-normal">支付后凭它+订单号可查发货内容</span>
+        </div>
         <input
           v-model="contact"
-          class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-500"
-          placeholder="留 QQ / 邮箱，便于售后联系"
+          class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500"
+          placeholder="留 QQ / 邮箱 / 手机，便于售后联系"
         />
       </div>
 
-      <div class="mt-6 flex items-center justify-between border-t pt-4">
-        <div class="text-sm text-gray-500">
+      <div class="mt-6 flex items-center justify-between border-t border-ink-100 pt-4">
+        <div class="text-sm text-ink-500">
           合计 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount }}</span>
         </div>
         <el-button

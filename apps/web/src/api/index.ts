@@ -13,9 +13,15 @@ export const api = {
 
   // 订单
   createOrder: (body: any) => http.post('/orders', body),
-  orderQuery: (orderNo: string) => http.get(`/orders/query/${orderNo}`),
+  orderQuery: (orderNo: string, contact?: string) =>
+    http.get(`/orders/query/${orderNo}`, contact ? { params: { contact } } : undefined),
   mockPay: (orderNo: string) => http.post(`/orders/${orderNo}/mock-pay`),
   myOrders: (params: any) => http.get('/orders/mine', { params }),
+  myForgeOrders: (params: any) =>
+    http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
+      '/forge-redeem/orders/mine',
+      { params },
+    ),
 
   // 认证
   register: (body: any) => http.post('/website-auth/register', body),
@@ -46,6 +52,7 @@ export const api = {
     orderRefund: (orderNo: string, reason?: string) =>
       http.post(`/admin/orders/${orderNo}/refund`, { reason }),
     orderCancel: (orderNo: string) => http.post(`/admin/orders/${orderNo}/cancel`),
+    orderDelete: (orderNo: string) => http.delete(`/admin/orders/${orderNo}`),
     revenueTrend: (days = 14) => http.get(`/admin/trend/revenue`, { params: { days } }),
     stockAlerts: (threshold = 5) => http.get(`/admin/stock/alerts`, { params: { threshold } }),
 
@@ -242,6 +249,8 @@ export const api = {
         http.get(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
       retryFulfill: (orderNo: string) =>
         http.post(`/admin/forge/orders/${encodeURIComponent(orderNo)}/retry`),
+      deleteOrder: (orderNo: string) =>
+        http.delete(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
     },
   },
 

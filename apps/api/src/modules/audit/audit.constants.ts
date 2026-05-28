@@ -17,6 +17,8 @@ export const AuditActions = {
   ORDER_MANUAL_DELIVER: 'ORDER_MANUAL_DELIVER',
   ORDER_REFUND: 'ORDER_REFUND',
   ORDER_CANCEL: 'ORDER_CANCEL',
+  ORDER_DELETE: 'ORDER_DELETE',
+  FORGE_ORDER_DELETE: 'FORGE_ORDER_DELETE',
 
   // 支付（高危事件）
   ALIPAY_AMOUNT_MISMATCH: 'ALIPAY_AMOUNT_MISMATCH', // 金额不一致（攻击 / bug 警报）
@@ -60,6 +62,8 @@ export const AuditActionLabels: Record<string, string> = {
   ORDER_MANUAL_DELIVER: '手动发货',
   ORDER_REFUND: '订单退款',
   ORDER_CANCEL: '订单取消',
+  ORDER_DELETE: '删除订单',
+  FORGE_ORDER_DELETE: '删除三方订单',
   ALIPAY_AMOUNT_MISMATCH: '支付宝金额不一致',
   ALIPAY_SIGN_FAIL: '支付宝验签失败',
   ALIPAY_SELLER_MISMATCH: '支付宝商户号不一致',

@@ -1,16 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { statusOf as orderStatusOf } from '@/utils/order-status';
 
 const props = defineProps<{ status: string }>();
 
-const map: Record<string, { text: string; cls: string }> = {
-  // Order
-  PENDING: { text: '待支付', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  PAID: { text: '已支付', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
-  DELIVERED: { text: '已发货', cls: 'bg-brand-50 text-brand-700 border-brand-200' },
-  CANCELLED: { text: '已取消', cls: 'bg-ink-100 text-ink-500 border-ink-200' },
-  EXPIRED: { text: '已超时', cls: 'bg-ink-100 text-ink-500 border-ink-200' },
-  REFUNDED: { text: '已退款', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+// 非订单状态（卡密/商品/用户/号池）单独维护
+const otherMap: Record<string, { text: string; cls: string }> = {
   // Card Key
   AVAILABLE: { text: '可售', cls: 'bg-brand-50 text-brand-700 border-brand-200' },
   LOCKED: { text: '锁定', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -31,7 +26,18 @@ const map: Record<string, { text: string; cls: string }> = {
   UNKNOWN: { text: '未知', cls: 'bg-ink-100 text-ink-500 border-ink-200' },
 };
 
-const cfg = computed(() => map[props.status] || { text: props.status, cls: 'bg-ink-100 text-ink-500 border-ink-200' });
+// 订单状态枚举（含 FAILED）
+const orderStatuses = new Set([
+  'PENDING', 'PAID', 'DELIVERED', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED',
+]);
+
+const cfg = computed(() => {
+  if (orderStatuses.has(props.status)) {
+    const info = orderStatusOf(props.status);
+    return { text: info.text, cls: info.borderCls };
+  }
+  return otherMap[props.status] || { text: props.status, cls: 'bg-ink-100 text-ink-500 border-ink-200' };
+});
 </script>
 
 <template>

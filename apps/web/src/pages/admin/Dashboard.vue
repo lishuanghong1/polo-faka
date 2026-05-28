@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/api';
+import { statusOf as statusInfo } from '@/utils/order-status';
 
 const router = useRouter();
 const data = ref<any>(null);
@@ -32,23 +33,26 @@ function openOrder(orderNo: string) {
 const kpis = computed(() => {
   if (!data.value) return [];
   const d = data.value;
+  const b = d.order.breakdown || { local: {}, forge: {} };
   return [
     {
       label: '今日营收',
       value: `¥${Number(d.order.todayRevenue || 0).toLocaleString()}`,
-      hint: `近 7 日 ¥${Number(d.order.weekRevenue || 0).toLocaleString()}`,
+      hint: `本站 ¥${Number(b.local.todayRevenue || 0).toFixed(0)} · 三方 ¥${Number(b.forge.todayRevenue || 0).toFixed(0)} · 近 7 日 ¥${Number(d.order.weekRevenue || 0).toLocaleString()}`,
       tone: 'brand',
     },
     {
       label: '今日订单',
       value: d.order.today,
-      hint: `已支付 ${d.order.todayPaid}`,
+      hint: `已支付 ${d.order.todayPaid}（本站 ${b.local.today || 0} · 三方 ${b.forge.today || 0}）`,
       tone: 'ink',
     },
     {
-      label: '待发货',
+      label: '待处理',
       value: d.order.pendingDeliver,
-      hint: d.order.pendingDeliver > 0 ? '需人工处理' : '已清空',
+      hint: d.order.pendingDeliver > 0
+        ? `本站 ${b.local.pendingDeliver || 0} · 三方 ${b.forge.pendingDeliver || 0}`
+        : '已清空',
       tone: d.order.pendingDeliver > 0 ? 'warn' : 'ink',
     },
     {
@@ -70,17 +74,9 @@ const meta = computed(() => {
   ];
 });
 
-const statusMap: Record<string, { text: string; cls: string }> = {
-  PENDING: { text: '待支付', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  PAID: { text: '已支付', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
-  DELIVERED: { text: '已发货', cls: 'bg-brand-50 text-brand-700 border-brand-200' },
-  CANCELLED: { text: '已取消', cls: 'bg-ink-100 text-ink-500 border-ink-200' },
-  EXPIRED: { text: '已超时', cls: 'bg-ink-100 text-ink-500 border-ink-200' },
-  REFUNDED: { text: '已退款', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
-};
-
 function statusOf(s: string) {
-  return statusMap[s] || { text: s, cls: 'bg-ink-100 text-ink-500' };
+  const info = statusInfo(s);
+  return { text: info.text, cls: info.borderCls };
 }
 
 function fmtTime(t: string | Date) {
@@ -151,7 +147,7 @@ function fmtTime(t: string | Date) {
         <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="font-semibold text-ink-900">近 14 日营收</h2>
-            <p class="text-xs text-ink-400 mt-0.5">仅统计已支付 / 已发货订单</p>
+            <p class="text-xs text-ink-400 mt-0.5">本站 + 三方合计，仅含已支付 / 已发货</p>
           </div>
           <div class="text-right text-xs text-ink-500">
             合计 <span class="text-ink-900 font-semibold">¥{{ trend.reduce((s, t) => s + t.revenue, 0).toLocaleString() }}</span>
@@ -237,7 +233,10 @@ function fmtTime(t: string | Date) {
             class="border-t border-ink-100 hover:bg-ink-50/60 transition-colors cursor-pointer"
             @click="openOrder(o.orderNo)"
           >
-            <td class="py-2.5 px-2 font-mono text-xs text-ink-600">{{ o.orderNo.slice(-10) }}</td>
+            <td class="py-2.5 px-2 font-mono text-xs text-ink-600" :title="o.orderNo">
+              <span class="hidden xl:inline">{{ o.orderNo }}</span>
+              <span class="xl:hidden">…{{ o.orderNo.slice(-12) }}</span>
+            </td>
             <td class="py-2.5 px-2 max-w-[280px] truncate text-ink-800">{{ o.productTitle }}</td>
             <td class="py-2.5 px-2 text-ink-500">{{ o.skuName }}</td>
             <td class="py-2.5 px-2 text-right font-medium text-ink-900">¥{{ o.totalAmount }}</td>

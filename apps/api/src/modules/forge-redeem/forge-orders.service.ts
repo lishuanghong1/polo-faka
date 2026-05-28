@@ -335,24 +335,81 @@ export class ForgeOrdersService {
   }
 
   /**
-   * 公开查单：强制 contact 校验防订单号被猜中。
-   * - 订单建单时录入了 contact → 必须传同样的 contact
-   * - 订单没 contact（理论上前端必填，不应存在） → 仅返回基础状态，不返回 accounts
+   * 公开查单：
+   * - 订单本身没 contact：订单号本身带 12 位强随机，可防爆破，直接返回完整数据
+   * - 订单本身有 contact：
+   *   · 未传 contact → 200 返回 `{ requireContact: true, orderNo, status, paymentMethod }`
+   *   · 传错 contact → 404（防爆破）
    */
   async query(orderNo: string, contact?: string) {
     const order = await this.detail(orderNo);
     if (order.contact) {
-      if (!contact || contact.trim() !== order.contact) {
+      const provided = contact?.trim();
+      if (!provided) {
+        return {
+          requireContact: true,
+          orderNo: order.orderNo,
+          status: order.status,
+          paymentMethod: order.paymentMethod,
+        };
+      }
+      if (provided !== order.contact) {
         throw new NotFoundException('订单不存在');
       }
-      return order;
     }
-    // 没有 contact 的订单：隐藏发货内容（防爆破订单号）
+    return order;
+  }
+
+  /** 用户中心：登录用户的三方订单（按 userId） */
+  async listMine(userId: number, page = 1, pageSize = 20) {
+    if (!userId || typeof userId !== 'number') {
+      throw new BadRequestException('未登录');
+    }
+    const where: Prisma.ForgeOrderWhereInput = { userId };
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.forgeOrder.count({ where }),
+      this.prisma.forgeOrder.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
     return {
-      ...order,
-      accounts: [],
-      contact: null,
+      total,
+      page,
+      pageSize,
+      items: items.map((it) => ({
+        orderNo: it.orderNo,
+        typeKey: it.typeKey,
+        typeName: it.typeName,
+        quantity: it.quantity,
+        displayPrice: Number(it.displayPrice),
+        totalAmount: Number(it.totalAmount),
+        contact: it.contact,
+        paymentMethod: it.paymentMethod,
+        status: it.status,
+        paidAt: it.paidAt,
+        deliveredAt: it.deliveredAt,
+        createdAt: it.createdAt,
+      })),
     };
+  }
+
+  /** 管理员：删除三方订单（已发货/已支付订单需先退款） */
+  async adminDelete(orderNo: string) {
+    const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (
+      order.status === ForgeOrderStatus.PAID ||
+      order.status === ForgeOrderStatus.DELIVERED
+    ) {
+      throw new BadRequestException(
+        '已支付/已发货的订单不可直接删除，请先退款再删除',
+      );
+    }
+    await this.prisma.forgeOrder.delete({ where: { orderNo } });
+    return { ok: true };
   }
 
   /** Admin 列表 */
@@ -382,7 +439,7 @@ export class ForgeOrdersService {
       this.prisma.forgeOrder.count({ where }),
       this.prisma.forgeOrder.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: { redeemCode: { select: { code: true } } },

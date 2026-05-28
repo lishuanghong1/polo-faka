@@ -15,11 +15,16 @@ export class AdminService {
       productCount,
       onSale,
       userCount,
-      todayOrders,
-      todayPaid,
-      todayRevenue,
-      weekRevenue,
-      pendingCount,
+      todayOrdersLocal,
+      todayOrdersForge,
+      todayPaidLocal,
+      todayPaidForge,
+      todayRevenueLocal,
+      todayRevenueForge,
+      weekRevenueLocal,
+      weekRevenueForge,
+      pendingLocal,
+      pendingForge,
       cardKeyTotal,
       cardKeyAvail,
       poolAccounts,
@@ -27,34 +32,96 @@ export class AdminService {
       this.prisma.product.count(),
       this.prisma.product.count({ where: { status: 'ON_SALE' } }),
       this.prisma.user.count(),
+      // 今日订单数（含全部状态）
       this.prisma.order.count({ where: { createdAt: { gte: startOfDay } } }),
+      this.prisma.forgeOrder.count({ where: { createdAt: { gte: startOfDay } } }),
+      // 今日成交订单数（已支付/已发货，排除退款）
       this.prisma.order.count({
-        where: { createdAt: { gte: startOfDay }, status: { in: ['PAID', 'DELIVERED'] } },
+        where: {
+          createdAt: { gte: startOfDay },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
       }),
+      this.prisma.forgeOrder.count({
+        where: {
+          createdAt: { gte: startOfDay },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
+      }),
+      // 今日营收（按支付时间，排除退款）
       this.prisma.order.aggregate({
         _sum: { totalAmount: true },
-        where: { paidAt: { gte: startOfDay, not: null } },
+        where: {
+          paidAt: { gte: startOfDay, not: null },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
       }),
+      this.prisma.forgeOrder.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          paidAt: { gte: startOfDay, not: null },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
+      }),
+      // 7 日营收（同上）
       this.prisma.order.aggregate({
         _sum: { totalAmount: true },
-        where: { paidAt: { gte: startOf7d, not: null } },
+        where: {
+          paidAt: { gte: startOf7d, not: null },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
       }),
+      this.prisma.forgeOrder.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          paidAt: { gte: startOf7d, not: null },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
+      }),
+      // 待处理：本地 PAID（卡密尚未发出）；Forge PAID + FAILED（需人工重发）
       this.prisma.order.count({ where: { status: 'PAID' } }),
+      this.prisma.forgeOrder.count({
+        where: { status: { in: ['PAID', 'FAILED'] } },
+      }),
       this.prisma.cardKey.count(),
       this.prisma.cardKey.count({ where: { status: 'AVAILABLE' } }),
       this.prisma.poolAccount.count(),
     ]);
+
+    const todayRevenue =
+      Number(todayRevenueLocal._sum.totalAmount ?? 0) +
+      Number(todayRevenueForge._sum.totalAmount ?? 0);
+    const weekRevenue =
+      Number(weekRevenueLocal._sum.totalAmount ?? 0) +
+      Number(weekRevenueForge._sum.totalAmount ?? 0);
 
     return {
       now,
       product: { total: productCount, onSale },
       user: { total: userCount },
       order: {
-        today: todayOrders,
-        todayPaid,
-        todayRevenue: todayRevenue._sum.totalAmount ?? 0,
-        weekRevenue: weekRevenue._sum.totalAmount ?? 0,
-        pendingDeliver: pendingCount,
+        today: todayOrdersLocal + todayOrdersForge,
+        todayPaid: todayPaidLocal + todayPaidForge,
+        todayRevenue: +todayRevenue.toFixed(2),
+        weekRevenue: +weekRevenue.toFixed(2),
+        pendingDeliver: pendingLocal + pendingForge,
+        // 拆分便于审计
+        breakdown: {
+          local: {
+            today: todayOrdersLocal,
+            todayPaid: todayPaidLocal,
+            todayRevenue: Number(todayRevenueLocal._sum.totalAmount ?? 0),
+            weekRevenue: Number(weekRevenueLocal._sum.totalAmount ?? 0),
+            pendingDeliver: pendingLocal,
+          },
+          forge: {
+            today: todayOrdersForge,
+            todayPaid: todayPaidForge,
+            todayRevenue: Number(todayRevenueForge._sum.totalAmount ?? 0),
+            weekRevenue: Number(weekRevenueForge._sum.totalAmount ?? 0),
+            pendingDeliver: pendingForge,
+          },
+        },
       },
       cardKey: { total: cardKeyTotal, available: cardKeyAvail },
       pool: { accounts: poolAccounts },
@@ -63,7 +130,7 @@ export class AdminService {
 
   recentOrders(limit = 20) {
     return this.prisma.order.findMany({
-      orderBy: { id: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
         id: true,
@@ -86,45 +153,61 @@ export class AdminService {
     const where: any = {};
     if (query.status) where.status = query.status;
     if (query.keyword) {
-      where.OR = [
-        { orderNo: { contains: query.keyword } },
-        { productTitle: { contains: query.keyword } },
-      ];
+      const kw = String(query.keyword).trim();
+      if (kw) {
+        where.OR = [
+          { orderNo: { contains: kw } },
+          { productTitle: { contains: kw } },
+          { contact: { contains: kw } },
+        ];
+      }
     }
     return this.prisma.$transaction([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
     ]).then(([total, items]) => ({ total, page, pageSize, items }));
   }
 
-  /** N 天内每日营收 / 订单数 */
+  /** N 天内每日营收 / 订单数（本地 + 三方合并） */
   async revenueTrend(days = 14) {
     const since = dayjs().subtract(days - 1, 'day').startOf('day');
-    const rows = await this.prisma.order.findMany({
-      where: {
-        paidAt: { not: null, gte: since.toDate() },
-        status: { in: ['PAID', 'DELIVERED'] },
-      },
-      select: { paidAt: true, totalAmount: true },
-    });
+    const [localRows, forgeRows] = await Promise.all([
+      this.prisma.order.findMany({
+        where: {
+          paidAt: { not: null, gte: since.toDate() },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
+        select: { paidAt: true, totalAmount: true },
+      }),
+      this.prisma.forgeOrder.findMany({
+        where: {
+          paidAt: { not: null, gte: since.toDate() },
+          status: { in: ['PAID', 'DELIVERED'] },
+        },
+        select: { paidAt: true, totalAmount: true },
+      }),
+    ]);
 
     const buckets: Record<string, { date: string; revenue: number; orders: number }> = {};
     for (let i = 0; i < days; i++) {
       const d = since.add(i, 'day').format('YYYY-MM-DD');
       buckets[d] = { date: d, revenue: 0, orders: 0 };
     }
-    for (const r of rows) {
+    for (const r of [...localRows, ...forgeRows]) {
       const d = dayjs(r.paidAt!).format('YYYY-MM-DD');
       if (!buckets[d]) continue;
       buckets[d].revenue += Number(r.totalAmount);
       buckets[d].orders += 1;
     }
-    return Object.values(buckets);
+    return Object.values(buckets).map((b) => ({
+      ...b,
+      revenue: +b.revenue.toFixed(2),
+    }));
   }
 
   /** 库存预警：可售卡密 < threshold 的 SKU */

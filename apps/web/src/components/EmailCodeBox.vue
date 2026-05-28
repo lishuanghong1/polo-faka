@@ -194,14 +194,23 @@ function formatTime(ts?: number) {
         </button>
       </div>
 
-      <div v-if="polling" class="mt-4 p-3 bg-brand-50/40 border border-brand-100 rounded-lg flex items-center gap-3">
-        <div class="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
-        <div class="flex-1 text-sm text-ink-700">
-          <div>正在轮询邮箱 <code class="font-mono text-ink-900 break-all">{{ email }}</code></div>
-          <div class="text-xs text-ink-500 mt-0.5">
-            已等待 {{ elapsedSec }}s
-            <template v-if="lastStatus"> · {{ lastStatus }}</template>
+      <div v-if="polling" class="mt-4 p-3 bg-brand-50/40 border border-brand-100 rounded-lg">
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin shrink-0"></div>
+          <div class="flex-1 text-sm text-ink-700 min-w-0">
+            <div class="truncate">正在轮询邮箱 <code class="font-mono text-ink-900">{{ email }}</code></div>
+            <div class="text-xs text-ink-500 mt-0.5">
+              <span class="font-medium">{{ elapsedSec }}s</span> / 120s
+              <template v-if="lastStatus"> · {{ lastStatus }}</template>
+            </div>
           </div>
+        </div>
+        <!-- 进度条 -->
+        <div class="mt-2.5 h-1.5 bg-white/70 rounded-full overflow-hidden">
+          <div
+            class="h-full bg-brand-500 rounded-full transition-all duration-1000 ease-linear"
+            :style="{ width: `${Math.min(100, (elapsedSec / 120) * 100)}%` }"
+          ></div>
         </div>
       </div>
 

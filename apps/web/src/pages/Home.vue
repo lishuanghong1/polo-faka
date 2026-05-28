@@ -336,19 +336,27 @@ onMounted(() => load(false));
               <div class="text-right">
                 <div
                   :class="[
-                    'text-xs',
+                    'text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
                     p.stock <= 0
                       ? p.source === 'local'
-                        ? 'text-amber-600'
-                        : 'text-rose-500'
+                        ? 'text-amber-700 bg-amber-50'
+                        : 'text-rose-600 bg-rose-50'
                       : p.stock <= 5
-                        ? 'text-amber-600'
-                        : 'text-ink-400',
+                        ? 'text-amber-700 bg-amber-50'
+                        : 'text-ink-500 bg-ink-50',
                   ]"
+                  :title="p.stock <= 0
+                    ? (p.source === 'local' ? '可下单付款，由客服人工发货' : '三方暂时缺货，请稍后再来')
+                    : `当前库存 ${p.stock} 件`"
                 >
+                  <span
+                    v-if="p.stock <= 0"
+                    class="w-1.5 h-1.5 rounded-full"
+                    :class="p.source === 'local' ? 'bg-amber-500' : 'bg-rose-500'"
+                  ></span>
                   {{
                     p.stock <= 0
-                      ? p.source === 'local' ? '可下单 · 联系客服' : '缺货'
+                      ? p.source === 'local' ? '缺货 · 可代发' : '暂时缺货'
                       : `库存 ${p.stock}`
                   }}
                 </div>

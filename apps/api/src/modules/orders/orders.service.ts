@@ -277,7 +277,7 @@ export class OrdersService {
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
-        orderBy: { id: 'desc' },
+        orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: { cardKeys: { select: { content: true } } },
@@ -287,24 +287,54 @@ export class OrdersService {
   }
 
   /**
-   * 公开订单查询（订单号 + contact 校验）。
-   * - 有 contact 的订单：必须提供匹配的 contact
-   * - 没 contact 的订单：仅返回基础状态，不返回卡密内容（避免订单号被爆破）
-   * 登录用户走 /orders/mine 拿完整数据。
+   * 公开订单查询（订单号 + 可选 contact 校验）。
+   * - 订单本身没有 contact：订单号 16 位随机串足够防爆破，直接返回完整数据（含卡密）
+   * - 订单本身有 contact：必须传匹配的 contact 才能拿到完整数据
+   *   · 未传 contact → 200 返回 `{ requireContact: true, orderNo, status }`，让前端弹联系方式输入
+   *   · 传错 contact → 抛 404（防爆破）
+   * 登录用户也可直接走 /orders/mine 拿完整数据。
    */
   async query(orderNo: string, contact?: string) {
     const order = await this.detail(orderNo);
     if (order.contact) {
-      if (!contact || contact.trim() !== order.contact) {
+      const provided = contact?.trim();
+      if (!provided) {
+        return {
+          requireContact: true,
+          orderNo: order.orderNo,
+          status: order.status,
+        };
+      }
+      if (provided !== order.contact) {
         throw new NotFoundException('订单不存在');
       }
-      return order;
     }
-    return {
-      ...order,
-      cardKeys: [],
-      contact: null,
-    };
+    return order;
+  }
+
+  /** 管理员：删除订单（仅未支付/已退款/已取消/已过期的订单，已支付订单先退款再删） */
+  async adminDelete(orderNo: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: { cardKeys: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (['PAID', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException(
+        '已支付/已发货的订单不可直接删除，请先退款再删除',
+      );
+    }
+    // 回收卡密：未发货的订单上若有锁定的卡密，回到 AVAILABLE
+    await this.prisma.$transaction(async (tx) => {
+      for (const c of order.cardKeys) {
+        await tx.cardKey.update({
+          where: { id: c.id },
+          data: { status: 'AVAILABLE', soldAt: null, orderNo: null },
+        });
+      }
+      await tx.order.delete({ where: { orderNo } });
+    });
+    return { ok: true };
   }
 
   /** 管理员：标记订单为已支付，并尝试发货 */

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AdminService } from './admin.service';
@@ -84,6 +84,13 @@ export class AdminController {
   async cancel(@Param('orderNo') orderNo: string, @Req() req: Request) {
     const r = await this.orders.adminCancel(orderNo);
     this.audit.fromReq(req, AuditActions.ORDER_CANCEL, { target: `order:${orderNo}` });
+    return r;
+  }
+
+  @Delete('orders/:orderNo')
+  async deleteOrder(@Param('orderNo') orderNo: string, @Req() req: Request) {
+    const r = await this.orders.adminDelete(orderNo);
+    this.audit.fromReq(req, AuditActions.ORDER_DELETE, { target: `order:${orderNo}` });
     return r;
   }
 

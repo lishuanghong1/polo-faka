@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/stores/user';
 
 const routes: RouteRecordRaw[] = [
@@ -13,7 +14,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/ProductDetail.vue'),
       },
       { path: 'order/:orderNo', name: 'order', component: () => import('@/pages/OrderResult.vue') },
-      { path: 'mock-pay', name: 'mock-pay', component: () => import('@/pages/MockPay.vue') },
+      // mock-pay 仅在开发环境暴露
+      ...(import.meta.env.DEV
+        ? [
+            {
+              path: 'mock-pay',
+              name: 'mock-pay',
+              component: () => import('@/pages/MockPay.vue'),
+            },
+          ]
+        : []),
       { path: 'query', name: 'query', component: () => import('@/pages/Query.vue') },
       { path: 'login', name: 'login', component: () => import('@/pages/Login.vue') },
       { path: 'register', name: 'register', component: () => import('@/pages/Register.vue') },
@@ -22,11 +32,6 @@ const routes: RouteRecordRaw[] = [
         name: 'me',
         component: () => import('@/pages/UserCenter.vue'),
         meta: { auth: true },
-      },
-      {
-        path: 'tools/activate',
-        name: 'activate',
-        component: () => import('@/pages/ActivateTool.vue'),
       },
       {
         path: 'tools/cursor-login',
@@ -95,9 +100,11 @@ router.beforeEach(async (to) => {
     await user.restore();
   }
   if (to.meta.auth && !user.isLoggedIn) {
+    ElMessage.info('请先登录');
     return { name: 'login', query: { redirect: to.fullPath } };
   }
   if (to.meta.admin && user.profile?.role !== 'ADMIN') {
+    ElMessage.error('需要管理员权限');
     return { name: 'home' };
   }
   return true;

@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import { statusOf } from '@/utils/order-status';
 
 const items = ref<any[]>([]);
 const total = ref(0);
@@ -18,17 +19,7 @@ const detailVisible = ref(false);
 const detail = ref<any>(null);
 const retrying = ref<string | null>(null);
 
-function statusBadge(s: string) {
-  return {
-    PENDING: { text: '待支付', cls: 'bg-amber-100 text-amber-700' },
-    PAID: { text: '已付款', cls: 'bg-blue-100 text-blue-700' },
-    DELIVERED: { text: '已发货', cls: 'bg-emerald-100 text-emerald-700' },
-    FAILED: { text: '失败', cls: 'bg-rose-100 text-rose-700' },
-    CANCELLED: { text: '已取消', cls: 'bg-gray-100 text-gray-600' },
-    EXPIRED: { text: '已过期', cls: 'bg-gray-100 text-gray-600' },
-    REFUNDED: { text: '已退款', cls: 'bg-rose-100 text-rose-700' },
-  }[s] || { text: s, cls: 'bg-gray-100 text-gray-600' };
-}
+const statusBadge = statusOf;
 
 async function alipayQuery(orderNo: string) {
   try {
@@ -112,6 +103,29 @@ async function retry(orderNo: string) {
     ElMessage.error(e?.response?.data?.error?.message || '重发失败');
   } finally {
     retrying.value = null;
+  }
+}
+
+async function deleteOrder(orderNo: string) {
+  try {
+    await ElMessageBox.confirm(
+      `将永久删除三方订单 ${orderNo}，已支付/已发货订单需先退款。是否继续？`,
+      '危险操作',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        confirmButtonClass: 'el-button--danger',
+      },
+    );
+  } catch {
+    return;
+  }
+  try {
+    await api.forge.admin.deleteOrder(orderNo);
+    ElMessage.success('已删除');
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '删除失败');
   }
 }
 
@@ -235,6 +249,11 @@ onMounted(load);
               class="text-xs text-rose-600 hover:underline mx-1"
               @click="alipayRefund(it.orderNo)"
             >退款</button>
+            <button
+              v-if="!['PAID','DELIVERED'].includes(it.status)"
+              class="text-xs text-rose-700 hover:underline mx-1"
+              @click="deleteOrder(it.orderNo)"
+            >删除</button>
           </td>
         </tr>
       </tbody>

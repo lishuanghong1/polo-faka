@@ -10,6 +10,9 @@ const route = useRoute();
 const site = useSiteStore();
 const order = ref<any>(null);
 const loading = ref(true);
+const notFound = ref(false);
+const needContact = ref(false);
+const contactInput = ref('');
 let timer: any = null;
 
 const wechat = computed(() => site.settings.cs_wechat || 'ymw_polo');
@@ -23,9 +26,50 @@ const needContactSupport = computed(() => {
   return !order.value.cardKeys?.length;
 });
 
-async function load() {
+async function load(contact?: string) {
   try {
-    order.value = await api.orderQuery(route.params.orderNo as string);
+    const r: any = await api.orderQuery(
+      route.params.orderNo as string,
+      contact,
+    );
+    if (r && r.requireContact) {
+      // 后端明确告知：该订单需联系方式校验
+      order.value = null;
+      needContact.value = true;
+      notFound.value = false;
+    } else {
+      order.value = r;
+      notFound.value = false;
+      needContact.value = false;
+    }
+  } catch {
+    order.value = null;
+    needContact.value = false;
+    notFound.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function submitContact() {
+  const c = contactInput.value.trim();
+  if (!c) {
+    ElMessage.warning('请输入下单时填写的联系方式');
+    return;
+  }
+  loading.value = true;
+  try {
+    await load(c);
+    if (needContact.value) {
+      // 后端在 contact 错误时返回 404，前端走 catch → notFound=true
+      // 如果还是 needContact=true，说明传错了仍触发了 requireContact 分支（不应发生）
+      ElMessage.error('联系方式不匹配');
+    } else if (notFound.value) {
+      ElMessage.error('联系方式不匹配');
+      // 回到 contact 输入态以便重试
+      notFound.value = false;
+      needContact.value = true;
+    }
   } finally {
     loading.value = false;
   }
@@ -47,8 +91,9 @@ async function goPay() {
 
 async function poll() {
   if (!order.value) return;
-  if (order.value.status === 'DELIVERED' || order.value.status === 'REFUNDED') return;
-  await load();
+  if (!shouldKeepPolling(order.value.status)) return;
+  // 轮询时把已校验过的 contact 带回
+  await load(order.value?.contact || contactInput.value.trim() || undefined);
 }
 
 function copy(text: string) {
@@ -61,45 +106,55 @@ function copyAll() {
 }
 
 onMounted(async () => {
-  await load();
-  timer = setInterval(poll, 2000);
+  // 来自 Query 页时可能带 ?contact=...，直接用它
+  const fromQuery = (route.query.contact as string | undefined)?.trim();
+  if (fromQuery) {
+    contactInput.value = fromQuery;
+    await load(fromQuery);
+  } else {
+    await load();
+  }
+  timer = setInterval(poll, 3000);
 });
 
 onBeforeUnmount(() => clearInterval(timer));
 
-function statusText(s: string) {
-  return {
-    PENDING: '待支付',
-    PAID: '已支付（分配中）',
-    DELIVERED: '已发货',
-    CANCELLED: '已取消',
-    EXPIRED: '已超时',
-    REFUNDED: '已退款',
-  }[s] || s;
-}
-
-function statusColor(s: string) {
-  return {
-    PENDING: 'text-amber-600 bg-amber-50',
-    PAID: 'text-blue-600 bg-blue-50',
-    DELIVERED: 'text-emerald-600 bg-emerald-50',
-    CANCELLED: 'text-gray-500 bg-gray-100',
-    EXPIRED: 'text-gray-500 bg-gray-100',
-    REFUNDED: 'text-rose-600 bg-rose-50',
-  }[s] || 'text-gray-500 bg-gray-100';
-}
+import { statusOf, shouldKeepPolling } from '@/utils/order-status';
 </script>
 
 <template>
   <div class="max-w-3xl mx-auto px-4 py-8">
     <div v-if="loading" class="text-center text-gray-400 py-12">加载中...</div>
-    <div v-else-if="!order" class="text-center text-gray-400 py-12">订单不存在</div>
+
+    <!-- 需要 contact 校验 -->
+    <div
+      v-else-if="needContact"
+      class="card p-6 max-w-md mx-auto"
+    >
+      <h2 class="text-lg font-semibold">输入联系方式</h2>
+      <p class="text-sm text-gray-500 mt-1 leading-relaxed">
+        该订单下单时填写了联系方式（手机号/邮箱/QQ 等），请输入相同的联系方式以查看订单详情和发货内容。
+      </p>
+      <input
+        v-model="contactInput"
+        class="mt-4 w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-brand-500"
+        placeholder="下单时填写的联系方式"
+        @keydown.enter="submitContact"
+      />
+      <button
+        class="mt-3 w-full py-2.5 rounded-lg brand-gradient text-white"
+        @click="submitContact"
+      >查看订单</button>
+    </div>
+
+    <div v-else-if="notFound || !order" class="text-center text-gray-400 py-12">订单不存在</div>
+
     <template v-else>
       <div class="card p-6">
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">订单详情</h2>
-          <span class="px-2.5 py-1 text-xs rounded-full" :class="statusColor(order.status)">
-            {{ statusText(order.status) }}
+          <span class="px-2.5 py-1 text-xs rounded-full" :class="statusOf(order.status).cls">
+            {{ statusOf(order.status).text }}
           </span>
         </div>
 
@@ -110,6 +165,7 @@ function statusColor(s: string) {
           <div class="flex justify-between"><dt class="text-gray-500">数量</dt><dd>×{{ order.quantity }}</dd></div>
           <div class="flex justify-between"><dt class="text-gray-500">单价</dt><dd>¥{{ order.unitPrice }}</dd></div>
           <div class="flex justify-between"><dt class="text-gray-500">合计</dt><dd class="font-semibold text-rose-600">¥{{ order.totalAmount }}</dd></div>
+          <div v-if="order.contact" class="flex justify-between"><dt class="text-gray-500">联系方式</dt><dd>{{ order.contact }}</dd></div>
           <div class="flex justify-between"><dt class="text-gray-500">下单时间</dt><dd>{{ new Date(order.createdAt).toLocaleString() }}</dd></div>
         </dl>
 

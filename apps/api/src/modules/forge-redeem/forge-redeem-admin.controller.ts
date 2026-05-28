@@ -8,14 +8,18 @@ import {
   Post,
   Put,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Request } from 'express';
 import { ForgeOrderStatus, ForgePaymentMethod } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ForgeProductsService } from './forge-products.service';
 import { ForgeRedeemCodesService } from './forge-redeem-codes.service';
 import { ForgeOrdersService } from './forge-orders.service';
 import { GenerateForgeCodesDto, UpdateForgeProductDto } from './dto';
+import { AuditService } from '../audit/audit.service';
+import { AuditActions } from '../audit/audit.constants';
 
 @ApiTags('admin-forge')
 @ApiBearerAuth()
@@ -26,6 +30,7 @@ export class ForgeRedeemAdminController {
     private products: ForgeProductsService,
     private codes: ForgeRedeemCodesService,
     private orders: ForgeOrdersService,
+    private audit: AuditService,
   ) {}
 
   // ── 商品 ───────────────────────────────────────
@@ -120,5 +125,14 @@ export class ForgeRedeemAdminController {
   @Post('orders/:orderNo/retry')
   retryFulfill(@Param('orderNo') orderNo: string) {
     return this.orders.adminRetryFulfill(orderNo);
+  }
+
+  @Delete('orders/:orderNo')
+  async deleteOrder(@Param('orderNo') orderNo: string, @Req() req: Request) {
+    const r = await this.orders.adminDelete(orderNo);
+    this.audit.fromReq(req, AuditActions.FORGE_ORDER_DELETE, {
+      target: `forge-order:${orderNo}`,
+    });
+    return r;
   }
 }
