@@ -27,11 +27,18 @@ async function submit() {
       captchaCode: captcha.value.code,
     });
     if (!user.profile) await user.restore();
+    // 登录接口已通过，但用户资料没拉到 → token 已被清掉，视为登录未成功（避免假“登录成功”后被弹回）
+    if (!user.profile) {
+      ElMessage.error('登录态校验失败，请稍后重试或联系客服');
+      captchaRef.value?.refresh();
+      return;
+    }
     ElMessage.success('登录成功');
     const redirect = (route.query.redirect as string) || '/';
     const target = user.profile?.role === 'ADMIN' && redirect === '/' ? '/admin' : redirect;
     router.replace(target);
   } catch {
+    // api.login 的 HTTP 错误已由响应拦截器统一 toast，这里只需刷新验证码
     captchaRef.value?.refresh();
   } finally {
     loading.value = false;

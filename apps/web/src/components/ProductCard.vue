@@ -66,20 +66,20 @@ function onImgError(e: Event) {
     <div class="flex items-start justify-between gap-2 mb-3">
       <div class="flex items-start gap-3 min-w-0">
         <div
-          v-if="product.coverImage"
           class="w-12 h-12 rounded-lg overflow-hidden bg-ink-50 shrink-0 relative"
         >
+          <span class="absolute inset-0 flex items-center justify-center font-bold text-ink-400 text-lg select-none">
+            {{ product.typeName.slice(0, 1) }}
+          </span>
           <img
+            v-if="product.coverImage"
             :src="product.coverImage"
             alt=""
             referrerpolicy="no-referrer"
             loading="lazy"
-            class="w-full h-full object-cover"
+            class="w-full h-full object-cover relative"
             @error="onImgError"
           />
-          <span class="absolute inset-0 flex items-center justify-center font-bold text-ink-400 text-lg select-none -z-10">
-            {{ product.typeName.slice(0, 1) }}
-          </span>
         </div>
         <div class="min-w-0">
           <div

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
+import RichContent from '@/components/RichContent.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -230,7 +231,7 @@ onMounted(load);
         <!-- 详细描述 -->
         <div v-if="product.description" class="mt-5 pb-5 border-b border-ink-100">
           <div class="text-xs font-semibold tracking-widest uppercase text-ink-500 mb-2">商品介绍</div>
-          <div class="text-sm text-ink-700 leading-relaxed whitespace-pre-wrap break-words">{{ product.description }}</div>
+          <RichContent :html="product.description" />
         </div>
 
         <!-- 数量 -->

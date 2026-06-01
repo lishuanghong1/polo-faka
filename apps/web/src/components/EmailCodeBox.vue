@@ -24,9 +24,8 @@ const elapsedSec = ref(0);
 const lastStatus = ref<string>('');
 const code = ref<string | null>(null);
 const detail = ref<any>(null);
-const errorCode = ref<string>('');
 const errorMsg = ref<string>('');
-const upstreamMsg = ref<string>('');
+const errorHint = ref<string>('');
 const enabled = ref(true);
 
 const MAX_RETRIES = 40; // 40 * 3s = 120s
@@ -64,9 +63,8 @@ onBeforeUnmount(() => {
 function reset() {
   code.value = null;
   detail.value = null;
-  errorCode.value = '';
   errorMsg.value = '';
-  upstreamMsg.value = '';
+  errorHint.value = '';
   lastStatus.value = '';
   elapsedSec.value = 0;
 }
@@ -92,28 +90,30 @@ async function start() {
         clear_cache: i === 0,
         time_range: 300,
       });
-      lastStatus.value = r.status || '';
+      // 拿到验证码 → 完成
       if (r.found && r.verification_code) {
         code.value = r.verification_code;
         detail.value = r;
         stopPolling();
         return;
       }
-    } catch (e: any) {
-      const resp = e?.response?.data;
-      const bizCode = resp?.error?.code || resp?.code || resp?.error || '';
-      const bizMsg = resp?.error?.message || resp?.message || e?.message || '请求失败';
-      const upstream = resp?.error?.upstream_message || resp?.upstream_message;
-      if (
-        typeof bizCode === 'string' &&
-        (bizCode.startsWith('EMAIL_') || bizCode.startsWith('AUTH_') || bizCode === 'FORBIDDEN_SCOPE')
-      ) {
-        errorCode.value = bizCode;
-        errorMsg.value = bizMsg;
-        upstreamMsg.value = upstream || '';
-        stopPolling();
-        return;
+      // 业务错误（已统一为 200 + 结构化结果）
+      if (r.ok === false) {
+        if (r.terminal) {
+          errorMsg.value = r.message || '获取失败，请稍后重试';
+          errorHint.value = r.hint || '';
+          stopPolling();
+          return;
+        }
+        // 可重试：把友好文案放到状态行，继续轮询
+        lastStatus.value = r.message || '正在重试…';
+      } else {
+        lastStatus.value = r.status || '正在查收邮件…';
       }
+    } catch (e: any) {
+      // 走到这里说明是我方接口的真·HTTP 错误（如本机限流 429 / 参数 400）
+      const resp = e?.response?.data;
+      const bizMsg = resp?.error?.message || resp?.message || '网络异常，正在重试';
       lastStatus.value = bizMsg;
     }
     await new Promise((res) => {
@@ -121,7 +121,8 @@ async function start() {
     });
   }
   if (!cancelled && !code.value) {
-    errorMsg.value = '超时未收到验证码，请确认验证码已发送并重试';
+    errorMsg.value = '在规定时间内没有收到验证码';
+    errorHint.value = '请确认验证码确实已发送到该邮箱，然后再次点击「获取验证码」重试。';
   }
   stopPolling();
 }
@@ -242,13 +243,13 @@ function formatTime(ts?: number) {
         </button>
       </div>
 
-      <div v-if="errorMsg && !polling && !code" class="mt-4 p-3 bg-rose-50/60 border border-rose-200 rounded-lg">
-        <div class="text-xs text-rose-700 mb-1">
-          获取失败<template v-if="errorCode"> · {{ errorCode }}</template>
-        </div>
-        <div class="text-sm text-rose-900">{{ errorMsg }}</div>
-        <div v-if="upstreamMsg && upstreamMsg !== errorMsg" class="text-xs text-rose-700 mt-2 font-mono break-all bg-white/60 rounded px-2 py-1">
-          上游：{{ upstreamMsg }}
+      <div v-if="errorMsg && !polling && !code" class="mt-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-lg flex items-start gap-2.5">
+        <svg class="w-4.5 h-4.5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        </svg>
+        <div class="min-w-0">
+          <div class="text-sm font-medium text-amber-900">{{ errorMsg }}</div>
+          <div v-if="errorHint" class="text-xs text-amber-700/90 mt-1 leading-relaxed">{{ errorHint }}</div>
         </div>
       </div>
     </template>

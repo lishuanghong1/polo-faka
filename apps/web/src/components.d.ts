@@ -9,13 +9,22 @@ declare module 'vue' {
   export interface GlobalComponents {
     AdminPageHeader: typeof import('./components/admin/AdminPageHeader.vue')['default']
     AnnouncementDialog: typeof import('./components/AnnouncementDialog.vue')['default']
+    BrandButton: typeof import('./components/BrandButton.vue')['default']
+    Captcha: typeof import('./components/Captcha.vue')['default']
     DataTable: typeof import('./components/admin/DataTable.vue')['default']
     ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElDrawer: typeof import('element-plus/es')['ElDrawer']
     EmailCodeBox: typeof import('./components/EmailCodeBox.vue')['default']
+    EmptyState: typeof import('./components/EmptyState.vue')['default']
+    ForgeOrderDetailDrawer: typeof import('./components/admin/ForgeOrderDetailDrawer.vue')['default']
     OrderDetailDrawer: typeof import('./components/admin/OrderDetailDrawer.vue')['default']
+    OrderStatusBadge: typeof import('./components/OrderStatusBadge.vue')['default']
     ProductCard: typeof import('./components/ProductCard.vue')['default']
+    RichContent: typeof import('./components/RichContent.vue')['default']
+    RichTextEditor: typeof import('./components/RichTextEditor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    Skeleton: typeof import('./components/Skeleton.vue')['default']
     StatusTag: typeof import('./components/admin/StatusTag.vue')['default']
   }
 }

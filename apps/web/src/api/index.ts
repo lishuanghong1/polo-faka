@@ -38,7 +38,8 @@ export const api = {
     captchaId: string;
     captchaCode: string;
   }) => http.post('/website-auth/login', body),
-  profile: () => http.get('/website-auth/profile'),
+  // silent：后台鉴权检查，401 由 restore()/路由守卫兜底处理，不直接弹错误
+  profile: () => http.get('/website-auth/profile', { silent: true } as any),
 
   // 图形验证码
   captcha: () =>
@@ -400,7 +401,8 @@ export const api = {
           remain: number;
           progress: number;
         };
-      }>('/vip/me'),
+        // silent：UI 增强用，token 过期时静默失败，不打扰浏览
+      }>('/vip/me', { silent: true } as any),
     /** 管理员：等级配置列表 */
     adminConfigs: () => http.get('/vip/admin/configs'),
     /** 管理员：修改等级配置 */
@@ -469,10 +471,14 @@ export const api = {
       mail_id?: string;
     }) =>
       http.post<{
+        ok?: boolean;
         code: string;
         found?: boolean;
         verification_code?: string | null;
         status?: string;
+        message?: string;
+        hint?: string;
+        terminal?: boolean;
         mail_id?: string;
         mail_time?: number;
         from_cache?: boolean;
@@ -482,6 +488,7 @@ export const api = {
         type_name?: string;
         expire_at?: string;
         order_no?: string;
+        request_id?: string;
       }>('/email-code/fetch', body, { silent: true } as any),
   },
 };

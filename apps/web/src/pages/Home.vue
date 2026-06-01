@@ -97,6 +97,9 @@ function normalizeLocal(p: any): UnifiedProduct {
     .filter((n: number) => Number.isFinite(n) && n > 0);
   const minPrice = prices.length ? Math.min(...prices) : 0;
   const categoryName = p.category?.name || '其它';
+  // 缩略图：优先 cover，兜底取第一张 images
+  const cover =
+    p.cover || (Array.isArray(p.images) && p.images.length ? p.images[0] : null) || null;
   return {
     source: 'local',
     key: `local:${p.id}`,
@@ -109,6 +112,8 @@ function normalizeLocal(p: any): UnifiedProduct {
     categoryKey: normCategoryKey(categoryName),
     categoryName,
     emailCodeEnabled: false,
+    subtitle: p.subtitle ?? null,
+    coverImage: cover,
   };
 }
 

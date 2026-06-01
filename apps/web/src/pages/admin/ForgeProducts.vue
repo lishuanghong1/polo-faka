@@ -3,6 +3,8 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { ElDrawer, ElMessage } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import RichTextEditor from '@/components/RichTextEditor.vue';
+import RichContent from '@/components/RichContent.vue';
 
 interface ForgeProductRow {
   typeKey: string;
@@ -415,14 +417,9 @@ onMounted(load);
       </div>
 
       <div>
-        <label class="text-xs font-medium text-ink-700 block mb-1">详细描述</label>
-        <textarea
-          v-model="drawerForm.description"
-          rows="6"
-          placeholder="支持普通文本 / 简单 HTML。可介绍商品特性、使用步骤、限制等。"
-          class="w-full px-2.5 py-2 text-sm border border-ink-200 rounded"
-        />
-        <p class="text-[11px] text-ink-400 mt-1">详情页中段渲染。换行自动保留。</p>
+        <label class="text-xs font-medium text-ink-700 block mb-1">详细描述（支持富文本）</label>
+        <RichTextEditor v-model="drawerForm.description" height="280px" />
+        <p class="text-[11px] text-ink-400 mt-1">详情页中段渲染。支持标题、加粗、颜色、列表、图片、链接等。</p>
       </div>
 
       <div>
@@ -458,6 +455,7 @@ onMounted(load);
               <span class="text-emerald-500">✓</span><span>{{ h }}</span>
             </li>
           </ul>
+          <RichContent v-if="drawerForm.description" :html="drawerForm.description" class="mt-3 pt-3 border-t border-ink-100" />
         </div>
       </div>
 

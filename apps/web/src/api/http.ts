@@ -30,10 +30,16 @@ instance.interceptors.response.use(
     return res;
   },
   (err) => {
-    const msg = err?.response?.data?.error || err.message;
     const silent = (err?.config as any)?.silent;
-    if (err?.response?.status !== 401 && !silent) {
-      ElMessage.error(msg);
+    if (!silent) {
+      const status = err?.response?.status;
+      const serverMsg = err?.response?.data?.error;
+      if (status === 401) {
+        // 登录失败 / 凭证失效等：优先用后端的友好提示（如"账号或密码错误"）
+        ElMessage.error(serverMsg || '登录状态已失效，请重新登录');
+      } else {
+        ElMessage.error(serverMsg || err.message || '请求失败');
+      }
     }
     return Promise.reject(err);
   },

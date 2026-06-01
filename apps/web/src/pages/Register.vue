@@ -27,9 +27,16 @@ async function submit() {
       captchaId: captcha.value.id,
       captchaCode: captcha.value.code,
     });
+    if (!user.profile) await user.restore();
+    if (!user.profile) {
+      ElMessage.error('注册成功但登录态校验失败，请前往登录页手动登录');
+      router.replace('/login');
+      return;
+    }
     ElMessage.success('注册成功');
     router.replace('/');
   } catch {
+    // api.register 的 HTTP 错误已由响应拦截器统一 toast，这里只刷新验证码
     captchaRef.value?.refresh();
   } finally {
     loading.value = false;

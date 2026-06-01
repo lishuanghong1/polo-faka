@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import RichTextEditor from '@/components/RichTextEditor.vue';
 
 const list = ref<any[]>([]);
 const cats = ref<any[]>([]);
@@ -228,8 +229,8 @@ function removeSku(i: number) {
         </div>
       </div>
       <div>
-        <label class="block text-xs text-ink-500 mb-1">描述（前台商品详情显示）</label>
-        <textarea v-model="editing.description" rows="3" class="w-full px-3 py-2 border border-ink-200 rounded-lg"></textarea>
+        <label class="block text-xs text-ink-500 mb-1">详细描述（前台商品详情显示，支持富文本）</label>
+        <RichTextEditor v-model="editing.description" height="280px" />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>

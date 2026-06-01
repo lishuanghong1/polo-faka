@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElRadioGroup, ElRadio, ElInputNumber, ElButton } from 'element-plus';
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
+import RichContent from '@/components/RichContent.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -156,9 +157,7 @@ async function buy() {
       <h1 class="text-xl md:text-2xl font-bold leading-snug text-ink-900">{{ product.title }}</h1>
       <p v-if="product.subtitle" class="mt-2 text-sm text-ink-500">{{ product.subtitle }}</p>
 
-      <div v-if="product.description" class="mt-4 text-sm text-ink-600 whitespace-pre-wrap">
-        {{ product.description }}
-      </div>
+      <RichContent v-if="product.description" :html="product.description" class="mt-4" />
 
       <div class="mt-5 text-xs text-ink-400 flex gap-4">
         <span>已售 {{ product.sales }}</span>
