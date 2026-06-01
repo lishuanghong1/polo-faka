@@ -31,6 +31,19 @@ const enabled = ref(true);
 const MAX_RETRIES = 40; // 40 * 3s = 120s
 const INTERVAL_MS = 3000;
 
+// 终止类错误码：命中即停止轮询并提示（与后端 EMAIL_CODE_ERROR_MAP 对齐）
+const TERMINAL_CODES = new Set([
+  'EMAIL_INACTIVE',
+  'EMAIL_EXPIRED',
+  'EMAIL_NOT_OWNED',
+  'EMAIL_CODE_NOT_ENABLED',
+  'SERVICE_DISABLED',
+  'AUTH_KEY_INVALID',
+  'AUTH_AGENT_REVOKED',
+  'AUTH_BAD_SIGNATURE',
+  'FORBIDDEN_SCOPE',
+]);
+
 let cancelled = false;
 let timer: number | undefined;
 let elapsedTimer: number | undefined;
@@ -97,9 +110,14 @@ async function start() {
         stopPolling();
         return;
       }
-      // 业务错误（已统一为 200 + 结构化结果）
-      if (r.ok === false) {
-        if (r.terminal) {
+      // 业务错误（已统一为 200 + 结构化结果）。
+      // 双重判定：ok===false 或 code 非 OK 都视为错误；terminal 或已知终止码都立即停止。
+      const isBizError = r.ok === false || (typeof r.code === 'string' && r.code !== 'OK');
+      if (isBizError) {
+        const terminal =
+          r.terminal === true ||
+          (typeof r.code === 'string' && TERMINAL_CODES.has(r.code));
+        if (terminal) {
           errorMsg.value = r.message || '获取失败，请稍后重试';
           errorHint.value = r.hint || '';
           stopPolling();
