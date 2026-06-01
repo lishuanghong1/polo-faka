@@ -262,12 +262,18 @@ function formatTime(ts?: number) {
       </div>
 
       <div v-if="errorMsg && !polling && !code" class="mt-4 p-3.5 bg-amber-50/70 border border-amber-200 rounded-lg flex items-start gap-2.5">
-        <svg class="w-4.5 h-4.5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
         </svg>
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <div class="text-sm font-medium text-amber-900">{{ errorMsg }}</div>
           <div v-if="errorHint" class="text-xs text-amber-700/90 mt-1 leading-relaxed">{{ errorHint }}</div>
+          <button
+            class="mt-2.5 text-xs px-3 py-1.5 rounded-md border border-amber-300 text-amber-800 hover:bg-amber-100/60 transition"
+            @click="start"
+          >
+            重新获取
+          </button>
         </div>
       </div>
     </template>
