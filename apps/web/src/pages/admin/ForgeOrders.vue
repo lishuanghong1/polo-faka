@@ -152,7 +152,7 @@ onMounted(load);
   <div class="card p-4 mb-4 space-y-3">
     <!-- 搜索 -->
     <div class="flex flex-wrap items-center gap-2">
-      <div class="relative">
+      <div class="relative flex-1 min-w-40 sm:flex-none sm:w-72">
         <svg
           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400"
@@ -162,14 +162,14 @@ onMounted(load);
         <input
           v-model="keyword"
           placeholder="本站订单号 / 上游单号 / 支付单号"
-          class="pl-9 pr-3 py-2 border border-ink-200 rounded-lg text-sm w-72 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
+          class="w-full pl-9 pr-3 py-2 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
           @keydown.enter="applyFilter"
         />
       </div>
       <input
         v-model="typeKey"
         placeholder="商品 type_key"
-        class="px-3 py-2 border border-ink-200 rounded-lg text-sm w-48 font-mono text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
+        class="px-3 py-2 border border-ink-200 rounded-lg text-sm flex-1 min-w-40 sm:flex-none sm:w-48 font-mono text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition"
         @keydown.enter="applyFilter"
       />
       <BrandButton variant="primary" size="sm" @click="applyFilter">

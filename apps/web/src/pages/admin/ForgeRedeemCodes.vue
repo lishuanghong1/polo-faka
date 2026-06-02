@@ -125,16 +125,16 @@ onMounted(load);
     <input
       v-model="keyword"
       placeholder="搜索兑换码"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm w-56"
+      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm flex-1 min-w-40 sm:flex-none sm:w-56"
       @keydown.enter="page = 1; load()"
     />
     <input
       v-model="batchTag"
       placeholder="批次号"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm w-48 font-mono text-xs"
+      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm flex-1 min-w-40 sm:flex-none sm:w-48 font-mono text-xs"
       @keydown.enter="page = 1; load()"
     />
-    <select v-model="status" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white">
+    <select v-model="status" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white flex-1 sm:flex-none">
       <option value="">全部状态</option>
       <option value="ACTIVE">可用</option>
       <option value="DISABLED">禁用</option>
@@ -142,14 +142,15 @@ onMounted(load);
       <option value="EXPIRED">已过期</option>
     </select>
     <button
-      class="px-3.5 py-1.5 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm"
+      class="px-3.5 py-1.5 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm shrink-0"
       @click="page = 1; load()"
     >筛选</button>
   </div>
 
   <!-- 列表 -->
   <div class="card p-0 overflow-hidden">
-    <table class="w-full text-sm">
+   <div class="overflow-x-auto">
+    <table class="w-full text-sm min-w-[760px]">
       <thead class="bg-ink-50 text-ink-600">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">兑换码</th>
@@ -201,6 +202,7 @@ onMounted(load);
         </tr>
       </tbody>
     </table>
+   </div>
     <div v-if="!items.length && !loading" class="py-12 text-center text-ink-400 text-sm">暂无数据</div>
   </div>
 

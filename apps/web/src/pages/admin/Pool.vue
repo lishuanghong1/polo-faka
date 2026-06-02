@@ -104,24 +104,24 @@ const summary = computed(() => {
   </AdminPageHeader>
 
   <!-- Summary -->
-  <div class="card p-4 mb-4 flex items-center divide-x divide-ink-100">
-    <div class="flex-1 px-4 first:pl-2">
+  <div class="card p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-y-3 sm:divide-x sm:divide-ink-100">
+    <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">账号总数</div>
       <div class="mt-1 text-lg font-medium text-ink-900">{{ summary.totalAccounts }}</div>
     </div>
-    <div class="flex-1 px-4">
+    <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">健康账号</div>
       <div class="mt-1 text-lg font-medium text-brand-700">{{ summary.healthy }}</div>
     </div>
-    <div class="flex-1 px-4">
+    <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">总额度</div>
       <div class="mt-1 text-lg font-medium text-ink-900">${{ summary.totalQuota.toFixed(2) }}</div>
     </div>
-    <div class="flex-1 px-4">
+    <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">已用</div>
       <div class="mt-1 text-lg font-medium text-ink-700">${{ summary.usedQuota.toFixed(2) }}</div>
     </div>
-    <div class="flex-1 px-4 last:pr-2">
+    <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">剩余</div>
       <div class="mt-1 text-lg font-semibold text-price">${{ summary.remain.toFixed(2) }}</div>
     </div>

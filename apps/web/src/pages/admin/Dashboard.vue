@@ -129,11 +129,11 @@ function fmtTime(t: string | Date) {
     </div>
 
     <!-- Side stats -->
-    <div class="mt-3 card p-4 flex items-center divide-x divide-ink-100">
+    <div class="mt-3 card p-4 grid grid-cols-3 gap-y-2 sm:divide-x sm:divide-ink-100">
       <div
         v-for="m in meta"
         :key="m.label"
-        class="flex-1 px-4 first:pl-2 last:pr-2"
+        class="px-2 sm:px-4 sm:first:pl-2 sm:last:pr-2"
       >
         <div class="text-xs text-ink-500">{{ m.label }}</div>
         <div class="mt-1 text-lg font-medium text-ink-900">{{ m.value }}</div>
@@ -215,7 +215,8 @@ function fmtTime(t: string | Date) {
 
       <div v-if="!recent.length" class="text-center py-10 text-sm text-ink-400">暂无订单</div>
 
-      <table v-else class="w-full text-sm">
+      <div v-else class="overflow-x-auto -mx-1 px-1">
+      <table class="w-full text-sm min-w-[720px]">
         <thead>
           <tr class="text-ink-400 text-[11px] uppercase tracking-wider">
             <th class="text-left font-medium py-2 px-2">订单号</th>
@@ -249,6 +250,7 @@ function fmtTime(t: string | Date) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   </template>
 </template>

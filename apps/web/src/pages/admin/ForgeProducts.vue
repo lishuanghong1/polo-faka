@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElDrawer, ElMessage } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import RichContent from '@/components/RichContent.vue';
+
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+onMounted(() => window.addEventListener('resize', onResize));
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+const forgeProductDrawerSize = computed(() => (viewportWidth.value < 768 ? '100%' : '640px'));
 
 interface ForgeProductRow {
   typeKey: string;
@@ -231,7 +237,8 @@ onMounted(load);
   </div>
 
   <div v-else class="card p-0 overflow-hidden">
-    <table class="w-full text-sm">
+   <div class="overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
       <thead class="bg-ink-50 text-ink-600">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">商品</th>
@@ -333,6 +340,7 @@ onMounted(load);
         </tr>
       </tbody>
     </table>
+   </div>
   </div>
 
   <!-- 详情编辑抽屉 -->
@@ -340,7 +348,7 @@ onMounted(load);
     v-model="drawerVisible"
     title="编辑商品详情"
     direction="rtl"
-    size="640px"
+    :size="forgeProductDrawerSize"
     :destroy-on-close="true"
   >
     <div v-if="drawerTarget" class="space-y-5">
@@ -350,7 +358,7 @@ onMounted(load);
         <p class="mt-1 text-ink-400">所有字段留空则前台回退到三方原始信息。</p>
       </div>
 
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="text-xs font-medium text-ink-700 block mb-1">自定义商品名</label>
           <input

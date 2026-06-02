@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+onMounted(() => window.addEventListener('resize', onResize));
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+const profileDrawerSize = computed(() => (viewportWidth.value < 768 ? '100%' : '60%'));
 
 interface BlockedItem {
   ip: string;
@@ -170,7 +176,7 @@ function uaCategory(ua: string) {
       <input
         v-model="form.ip"
         placeholder="IP 地址（如 59.64.129.233）"
-        class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-64 font-mono"
+        class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm flex-1 min-w-40 sm:flex-none sm:w-64 font-mono"
       />
       <div class="flex items-center gap-1 text-sm">
         <span class="text-ink-500">时长</span>
@@ -246,7 +252,7 @@ function uaCategory(ua: string) {
   </DataTable>
 
   <!-- IP 档案抽屉 -->
-  <el-drawer v-model="profileOpen" :title="`IP 档案 · ${profileIp}`" size="60%" :destroy-on-close="true">
+  <el-drawer v-model="profileOpen" :title="`IP 档案 · ${profileIp}`" :size="profileDrawerSize" :destroy-on-close="true">
     <div v-if="profileLoading" class="py-16 text-center text-ink-400 text-sm">加载中...</div>
     <div v-else-if="!profile" class="py-16 text-center text-ink-400 text-sm">无数据</div>
     <div v-else class="space-y-4">

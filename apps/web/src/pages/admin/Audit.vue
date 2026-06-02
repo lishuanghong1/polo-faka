@@ -111,28 +111,28 @@ function reset() {
   </AdminPageHeader>
 
   <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <select v-model="filter.action" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white">
+    <select v-model="filter.action" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white w-full sm:w-auto">
       <option :value="undefined">所有动作</option>
       <option v-for="a in actions" :key="a" :value="a">{{ actionLabel(a) }} ({{ a }})</option>
     </select>
     <input
       v-model="filter.actor"
       placeholder="操作者用户名"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-40"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm flex-1 min-w-32 sm:flex-none sm:w-40"
       @keydown.enter="load"
     />
     <input
       v-model="filter.target"
       placeholder="目标资源（如 order:Pxxx）"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-60"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm flex-1 min-w-40 sm:flex-none sm:w-60"
       @keydown.enter="load"
     />
     <input
       v-model="filter.since"
       type="datetime-local"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm flex-1 sm:flex-none"
     />
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm" @click="load">查询</button>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
   <DataTable :loading="loading" :is-empty="!list.length">

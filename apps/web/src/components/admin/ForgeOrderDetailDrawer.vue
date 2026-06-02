@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch, computed } from 'vue';
 import { ElDrawer, ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import StatusTag from '@/components/admin/StatusTag.vue';
 import BrandButton from '@/components/BrandButton.vue';
 import { formatDateTime, formatMoneyRaw, copyText } from '@/utils/format';
+
+// 响应式抽屉宽度：移动端全屏、桌面端定宽
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024);
+const onResize = () => { viewportWidth.value = window.innerWidth; };
+onMounted(() => window.addEventListener('resize', onResize));
+onBeforeUnmount(() => window.removeEventListener('resize', onResize));
+const drawerSize = computed(() => (viewportWidth.value < 768 ? '100%' : '600px'));
 
 const props = defineProps<{ orderNo: string | null }>();
 const emit = defineEmits<{
@@ -208,7 +215,7 @@ const statusHeroClass = computed(() => {
     :model-value="open"
     :show-close="false"
     direction="rtl"
-    size="600px"
+    :size="drawerSize"
     :with-header="false"
     @update:model-value="(v: boolean) => !v && close()"
   >

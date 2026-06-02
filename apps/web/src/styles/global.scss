@@ -123,3 +123,29 @@ a { color: inherit; text-decoration: none; }
   .skeleton { animation: none; }
   .card-hover { transition: none; }
 }
+
+/* ──────────────────────────────────────────────
+   移动端：Element Plus 弹窗与抽屉 兜底自适应
+   各业务弹窗均传入固定 px 宽度（如 width="720px"）。
+   在 <640px 屏宽下强制按视口宽度收窄，避免横向溢出。
+   抽屉同理；具体抽屉若组件内已用 viewportWidth 计算 size
+   也不会冲突，因为这里只覆盖 px 写死的场景。
+   ────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .el-overlay-dialog {
+    padding: 0 8px;
+  }
+  .el-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    margin-top: 4vh !important;
+    margin-bottom: 4vh !important;
+  }
+  .el-dialog__body {
+    padding: 14px 16px !important;
+  }
+  .el-message-box {
+    width: calc(100vw - 32px) !important;
+    max-width: 360px;
+  }
+}

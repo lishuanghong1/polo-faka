@@ -42,14 +42,14 @@ async function adjust(u: any) {
 <template>
   <AdminPageHeader title="用户" :subtitle="`${total} 个注册用户`" />
 
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm">
+  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
     <input
       v-model="keyword"
       placeholder="搜索账号 / 邮箱 / 昵称"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-64"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
       @keydown.enter="load"
     />
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm" @click="load">查询</button>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
   <DataTable :loading="loading" :is-empty="!list.length">

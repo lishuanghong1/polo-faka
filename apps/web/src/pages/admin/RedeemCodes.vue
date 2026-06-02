@@ -237,7 +237,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 50)));
 
   <!-- 过滤 + 批量动作 -->
   <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg bg-white">
+    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg bg-white flex-1 sm:flex-none">
       <option :value="undefined">所有状态</option>
       <option value="ACTIVE">可用</option>
       <option value="DISABLED">已禁用</option>
@@ -247,19 +247,19 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 50)));
     <input
       v-model="filter.keyword"
       placeholder="码内容（支持模糊）"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg w-52"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg flex-1 min-w-40 sm:flex-none sm:w-52"
       @keydown.enter="page = 1; loadList()"
     />
     <input
       v-model="filter.batchTag"
       placeholder="批次号"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg w-48 font-mono"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg flex-1 min-w-40 sm:flex-none sm:w-48 font-mono"
       @keydown.enter="page = 1; loadList()"
     />
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg" @click="page = 1; loadList()">查询</button>
-    <button class="px-3 py-1.5 border border-ink-200 hover:bg-ink-50 rounded-lg" @click="filter = {}; page = 1; loadList()">重置</button>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg shrink-0" @click="page = 1; loadList()">查询</button>
+    <button class="px-3 py-1.5 border border-ink-200 hover:bg-ink-50 rounded-lg shrink-0" @click="filter = {}; page = 1; loadList()">重置</button>
 
-    <div v-if="selected.size > 0" class="ml-auto flex items-center gap-2 text-xs">
+    <div v-if="selected.size > 0" class="sm:ml-auto flex items-center gap-2 text-xs flex-wrap w-full sm:w-auto">
       <span class="text-ink-500">已选 {{ selected.size }} 个</span>
       <button class="px-3 py-1.5 border border-emerald-200 text-emerald-700 hover:bg-emerald-50 rounded-lg" @click="batchSetStatus('ACTIVE')">启用</button>
       <button class="px-3 py-1.5 border border-amber-200 text-amber-700 hover:bg-amber-50 rounded-lg" @click="batchSetStatus('DISABLED')">禁用</button>

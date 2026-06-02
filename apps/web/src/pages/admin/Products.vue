@@ -188,7 +188,7 @@ function removeSku(i: number) {
     @close="editing = null"
   >
     <div v-if="editing" class="space-y-4 text-sm">
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-ink-500 mb-1">分类</label>
           <select v-model="editing.categoryId" class="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white">
@@ -232,7 +232,7 @@ function removeSku(i: number) {
         <label class="block text-xs text-ink-500 mb-1">详细描述（前台商品详情显示，支持富文本）</label>
         <RichTextEditor v-model="editing.description" height="280px" />
       </div>
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-ink-500 mb-1">起价（列表展示用）</label>
           <input v-model.number="editing.basePrice" type="number" step="0.01" class="w-full px-3 py-2 border border-ink-200 rounded-lg" />

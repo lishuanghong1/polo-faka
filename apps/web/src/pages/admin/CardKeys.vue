@@ -182,7 +182,8 @@ function quickFilter(skuId: number) {
     <div v-if="!overview.length" class="py-10 text-center text-sm text-ink-400">
       还没有任何卡密，<button class="text-brand-700 hover:underline" @click="openImport()">立即导入</button>
     </div>
-    <table v-else class="w-full text-sm">
+    <div v-else class="overflow-x-auto -mx-1 px-1">
+    <table class="w-full text-sm min-w-[680px]">
       <thead>
         <tr class="text-ink-400 text-[11px] uppercase tracking-wider">
           <th class="text-left font-medium py-2">商品 / 规格</th>
@@ -229,15 +230,16 @@ function quickFilter(skuId: number) {
         </tr>
       </tbody>
     </table>
+    </div>
   </div>
 
   <!-- 明细列表 -->
-  <div class="card p-3 mb-3 flex items-center gap-2 text-sm">
-    <select v-model="filter.productId" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white w-56" @change="filter.skuId = undefined">
+  <div class="card p-3 mb-3 flex items-center gap-2 text-sm flex-wrap">
+    <select v-model="filter.productId" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white w-full sm:w-56" @change="filter.skuId = undefined">
       <option :value="undefined">全部商品</option>
       <option v-for="p in products" :key="p.id" :value="p.id">{{ p.title }}</option>
     </select>
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white">
+    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none">
       <option :value="undefined">全部状态</option>
       <option value="AVAILABLE">可售</option>
       <option value="SOLD">已售</option>
@@ -245,12 +247,12 @@ function quickFilter(skuId: number) {
       <option value="EXPIRED">失效</option>
       <option value="REFUNDED">退款</option>
     </select>
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm" @click="load">查询</button>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
     <span v-if="filter.skuId" class="text-xs text-ink-500">
       已按 SKU #{{ filter.skuId }} 筛选
       <button class="ml-1 text-brand-700 hover:underline" @click="filter.skuId = undefined; load()">×清除</button>
     </span>
-    <span class="ml-auto flex items-center gap-3">
+    <span class="sm:ml-auto flex items-center gap-3 flex-wrap">
       <span v-if="selected.size" class="text-xs text-ink-500">已选 {{ selected.size }} 条</span>
       <button
         :disabled="!selected.size"

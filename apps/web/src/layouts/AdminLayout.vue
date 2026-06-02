@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 
@@ -67,18 +67,41 @@ function logout() {
   user.logout();
   router.push('/');
 }
+
+// 移动端抽屉
+const sidebarOpen = ref(false);
+function closeSidebar() {
+  sidebarOpen.value = false;
+}
+// 路由变更自动关闭抽屉
+watch(() => route.fullPath, () => {
+  sidebarOpen.value = false;
+});
 </script>
 
 <template>
   <div class="min-h-screen flex bg-ink-50">
     <!-- Sidebar -->
-    <aside class="w-60 bg-white border-r border-ink-100 flex flex-col">
+    <aside
+      class="bg-white border-r border-ink-100 flex flex-col w-60 shrink-0 z-40 transition-transform duration-200
+             fixed inset-y-0 left-0 lg:static lg:translate-x-0"
+      :class="sidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'"
+    >
       <!-- Brand -->
-      <div class="h-14 flex items-center px-4 border-b border-ink-100">
+      <div class="h-14 flex items-center px-4 border-b border-ink-100 shrink-0">
         <div class="w-8 h-8 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold mr-2.5 text-sm">
           P
         </div>
         <div class="font-semibold text-ink-900">Polo Admin</div>
+        <button
+          class="ml-auto lg:hidden w-8 h-8 rounded-md text-ink-400 hover:text-ink-900 hover:bg-ink-50 flex items-center justify-center"
+          aria-label="关闭菜单"
+          @click="closeSidebar"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
       </div>
 
       <!-- Nav groups -->
@@ -106,7 +129,7 @@ function logout() {
       </nav>
 
       <!-- User -->
-      <div class="px-3 py-3 border-t border-ink-100 flex items-center gap-2">
+      <div class="px-3 py-3 border-t border-ink-100 flex items-center gap-2 shrink-0">
         <div class="w-8 h-8 rounded-full bg-ink-100 text-ink-700 flex items-center justify-center text-xs font-semibold">
           {{ user.profile?.username?.[0]?.toUpperCase() }}
         </div>
@@ -122,26 +145,50 @@ function logout() {
       </div>
     </aside>
 
+    <!-- 移动端遮罩 -->
+    <div
+      v-if="sidebarOpen"
+      class="lg:hidden fixed inset-0 bg-ink-900/40 z-30 backdrop-blur-[1px]"
+      @click="closeSidebar"
+    />
+
     <!-- Main -->
-    <main class="flex-1 flex flex-col overflow-hidden">
+    <main class="flex-1 flex flex-col overflow-hidden min-w-0">
       <!-- Top bar -->
-      <header class="h-14 bg-white border-b border-ink-100 flex items-center justify-between px-6 shrink-0">
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-ink-400">Polo</span>
-          <span class="text-ink-300">/</span>
-          <span class="font-medium text-ink-900">{{ currentLabel }}</span>
+      <header class="h-14 bg-white border-b border-ink-100 flex items-center justify-between px-3 md:px-6 shrink-0 gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <button
+            class="lg:hidden w-9 h-9 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-ink-50 flex items-center justify-center -ml-1 shrink-0"
+            aria-label="打开菜单"
+            @click="sidebarOpen = true"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+          <div class="flex items-center gap-2 text-sm min-w-0">
+            <span class="text-ink-400 hidden sm:inline">Polo</span>
+            <span class="text-ink-300 hidden sm:inline">/</span>
+            <span class="font-medium text-ink-900 truncate">{{ currentLabel }}</span>
+          </div>
         </div>
-        <div class="flex items-center gap-3 text-sm">
-          <router-link to="/" class="text-ink-500 hover:text-ink-900" target="_blank">
-            <svg class="w-4 h-4 inline mr-1 -mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7m0-7L10 14M5 5h6V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-6h-2v6H5V5z"/></svg>
-            访问前台
+        <div class="flex items-center gap-3 text-sm shrink-0">
+          <router-link
+            to="/"
+            class="text-ink-500 hover:text-ink-900 inline-flex items-center gap-1"
+            target="_blank"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7m0-7L10 14M5 5h6V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-6h-2v6H5V5z"/></svg>
+            <span class="hidden sm:inline">访问前台</span>
           </router-link>
         </div>
       </header>
 
       <!-- Page -->
       <div class="flex-1 overflow-auto">
-        <div class="max-w-7xl mx-auto p-6">
+        <div class="max-w-7xl mx-auto p-3 md:p-6">
           <router-view />
         </div>
       </div>

@@ -50,17 +50,17 @@ function openDetail(orderNo: string) {
 <template>
   <AdminPageHeader title="订单" :subtitle="`共 ${total} 条订单`" />
 
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm">
+  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
     <input
       v-model="filter.keyword"
       placeholder="搜索订单号 / 商品名"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-64"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
       @keydown.enter="load"
     />
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white">
+    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none">
       <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
     </select>
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm" @click="load">查询</button>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
   <DataTable :loading="loading" :is-empty="!list.length">
