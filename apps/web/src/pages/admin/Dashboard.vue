@@ -154,11 +154,11 @@ function fmtTime(t: string | Date) {
           </div>
         </div>
         <div v-if="!trend.length" class="text-center py-10 text-sm text-ink-400">暂无数据</div>
-        <div v-else class="flex items-end justify-between gap-1 h-40 px-1">
+        <div v-else class="flex items-stretch justify-between gap-1 h-40 px-1">
           <div
             v-for="(t, i) in trend"
             :key="i"
-            class="flex-1 flex flex-col items-center justify-end group"
+            class="flex-1 flex flex-col items-center justify-end group h-full"
           >
             <div
               :title="`${t.date}：¥${t.revenue.toFixed(2)} / ${t.orders} 单`"
@@ -166,9 +166,9 @@ function fmtTime(t: string | Date) {
                 'w-full rounded-t transition-colors',
                 t.revenue > 0 ? 'bg-brand-500 group-hover:bg-brand-600' : 'bg-ink-100',
               ]"
-              :style="{ height: `${Math.max(2, (t.revenue / maxRevenue) * 100)}%` }"
+              :style="{ height: `${Math.max(2, (t.revenue / maxRevenue) * 90)}%` }"
             />
-            <div class="text-[9px] text-ink-400 mt-1">{{ t.date.slice(5) }}</div>
+            <div class="text-[9px] text-ink-400 mt-1 leading-none">{{ t.date.slice(5) }}</div>
           </div>
         </div>
       </div>
