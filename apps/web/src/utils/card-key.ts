@@ -1,10 +1,8 @@
-const EXTRA_LOGIN_LINE = 'https://youxiang.buyudazuozhan.com/         验证码登录';
-
-/** 客户侧展示/复制卡密时附加邮箱验证码登录入口，保留为单独一行。 */
+/** 卡密展示/复制：直接输出原始内容，不做任何追加。 */
 export function formatCardKeyContent(content: string) {
-  return `${content}\n${EXTRA_LOGIN_LINE}`;
+  return content;
 }
 
 export function formatCardKeysForCopy(items: Array<{ content: string }>) {
-  return items.map((item) => formatCardKeyContent(item.content)).join('\n\n');
+  return items.map((item) => item.content).join('\n\n');
 }
