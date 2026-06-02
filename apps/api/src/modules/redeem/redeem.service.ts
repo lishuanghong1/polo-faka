@@ -228,7 +228,7 @@ export class RedeemService {
 
   // ─────────────────────────── 客户兑换 ───────────────────────────
 
-  /** 查询单个码状态（不消耗） */
+  /** 查询单个码状态（不消耗）+ 历史兑换订单 */
   async info(rawCode: string) {
     const code = await this.prisma.redeemCode.findUnique({
       where: { code: rawCode.trim() },
@@ -238,6 +238,55 @@ export class RedeemService {
       where: { id: code.skuId },
       include: { product: { select: { title: true, cover: true } } },
     });
+
+    // 历史兑换订单（按 RedeemRecord 关联 orderNo 查 Order）
+    // 注：RedeemRecord 与 Order 之间没有 schema relation，用 orderNo 字符串关联即可
+    const records = await this.prisma.redeemRecord.findMany({
+      where: { codeId: code.id },
+      orderBy: { id: 'desc' },
+      take: 50,
+      select: { orderNo: true, createdAt: true },
+    });
+    const orderNos = records.map((r) => r.orderNo);
+    const orderRows = orderNos.length
+      ? await this.prisma.order.findMany({
+          where: { orderNo: { in: orderNos } },
+          select: {
+            orderNo: true,
+            productTitle: true,
+            skuName: true,
+            quantity: true,
+            totalAmount: true,
+            payMethod: true,
+            status: true,
+            contact: true,
+            createdAt: true,
+            deliveredAt: true,
+          },
+        })
+      : [];
+    const orderMap = new Map(orderRows.map((o) => [o.orderNo, o]));
+    // 按 records 顺序对齐；列表里不下发 contact，只用作前端判断要不要带 contact 跳转
+    const orders = records
+      .map((r) => {
+        const o = orderMap.get(r.orderNo);
+        if (!o) return null;
+        return {
+          orderNo: o.orderNo,
+          productTitle: o.productTitle,
+          skuName: o.skuName,
+          quantity: o.quantity,
+          totalAmount: Number(o.totalAmount),
+          payMethod: o.payMethod,
+          status: o.status,
+          hasContact: !!o.contact,
+          createdAt: o.createdAt,
+          deliveredAt: o.deliveredAt,
+          redeemedAt: r.createdAt,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
     return {
       code: code.code,
       status: code.status,
@@ -249,6 +298,7 @@ export class RedeemService {
       productTitle: sku?.product?.title ?? '',
       productCover: sku?.product?.cover ?? '',
       skuName: sku?.name ?? '',
+      orders,
     };
   }
 

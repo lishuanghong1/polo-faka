@@ -456,7 +456,10 @@ export class ForgeOrdersService {
 
   /** 订单详情 + accounts 解密（用户/管理员都用） */
   async detail(orderNo: string) {
-    const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
+    const order = await this.prisma.forgeOrder.findUnique({
+      where: { orderNo },
+      include: { redeemCode: { select: { code: true } } },
+    });
     if (!order) throw new NotFoundException('订单不存在');
 
     let accounts: any[] = [];
@@ -494,6 +497,7 @@ export class ForgeOrdersService {
       deliveredAt: order.deliveredAt,
       failReason: order.failReason,
       createdAt: order.createdAt,
+      redeemCode: order.redeemCode?.code ?? null,
       accounts,
     };
   }

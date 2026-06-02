@@ -239,6 +239,16 @@ const statusHeroClass = computed(() => {
             <dt class="text-ink-500 shrink-0">单价</dt>
             <dd class="text-ink-900">¥{{ formatMoneyRaw(order.unitPrice) }}</dd>
           </div>
+          <div v-if="order.redeemCode" class="flex justify-between gap-3 items-center">
+            <dt class="text-ink-500 shrink-0">兑换码</dt>
+            <dd class="flex items-center gap-2 min-w-0 justify-end">
+              <code class="text-ink-900 font-mono text-xs truncate">{{ order.redeemCode }}</code>
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-0.5 rounded shrink-0 transition"
+                @click="copy(order.redeemCode, '兑换码已复制')"
+              >复制</button>
+            </dd>
+          </div>
           <div v-if="order.contact" class="flex justify-between gap-3">
             <dt class="text-ink-500 shrink-0">联系方式</dt>
             <dd class="text-ink-900 truncate">{{ order.contact }}</dd>

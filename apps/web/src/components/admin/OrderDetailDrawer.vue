@@ -233,6 +233,7 @@ function close() {
             <div v-else class="flex justify-between"><dt class="text-ink-500">用户</dt><dd class="text-ink-400">游客订单</dd></div>
             <div v-if="order.ip" class="flex justify-between"><dt class="text-ink-500">IP</dt><dd class="font-mono text-xs">{{ order.ip }}</dd></div>
             <div v-if="order.thirdTradeNo" class="flex justify-between"><dt class="text-ink-500">支付宝单号</dt><dd class="font-mono text-xs">{{ order.thirdTradeNo }}</dd></div>
+            <div v-if="order.redeemCode" class="flex justify-between"><dt class="text-ink-500">兑换码</dt><dd class="font-mono text-xs">{{ order.redeemCode }}</dd></div>
             <div v-if="order.buyerLogonId" class="flex justify-between"><dt class="text-ink-500">买家</dt><dd class="text-xs">{{ order.buyerLogonId }}</dd></div>
             <div v-if="order.refundedAt" class="flex justify-between"><dt class="text-ink-500">退款时间</dt><dd class="text-xs">{{ new Date(order.refundedAt).toLocaleString() }}</dd></div>
             <div v-if="order.refundReason" class="flex justify-between"><dt class="text-ink-500">退款原因</dt><dd class="text-xs">{{ order.refundReason }}</dd></div>

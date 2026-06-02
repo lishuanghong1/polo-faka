@@ -302,7 +302,19 @@ export class OrdersService {
       },
     });
     if (!order) throw new NotFoundException('订单不存在');
-    return order;
+
+    // 兑换码支付：附带兑换码（仅用于详情页展示，便于客户在「再次输入兑换码」时识别）
+    let redeemCode: string | null = null;
+    if (order.payMethod === 'REDEEM') {
+      const rec = await this.prisma.redeemRecord.findFirst({
+        where: { orderNo },
+        orderBy: { id: 'desc' },
+        include: { code: { select: { code: true } } },
+      });
+      redeemCode = rec?.code?.code ?? null;
+    }
+
+    return { ...order, redeemCode };
   }
 
   async listMine(userId: number, page = 1, pageSize = 20) {

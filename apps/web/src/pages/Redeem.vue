@@ -60,6 +60,20 @@ const statusLabels: Record<string, string> = {
   EXPIRED: '已过期',
 };
 
+const orderStatusLabels: Record<string, { text: string; cls: string }> = {
+  PENDING:   { text: '待支付',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+  PAID:      { text: '已支付',  cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  DELIVERED: { text: '已发货',  cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  FAILED:    { text: '发货失败', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  EXPIRED:   { text: '已超时',  cls: 'bg-ink-100 text-ink-500 border-ink-200' },
+  CANCELLED: { text: '已取消',  cls: 'bg-ink-100 text-ink-500 border-ink-200' },
+  REFUNDED:  { text: '已退款',  cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+};
+
+function goCardHistory(orderNo: string) {
+  router.push(`/order/${encodeURIComponent(orderNo)}`);
+}
+
 function reset() {
   cardInfo.value = null;
   cardResult.value = null;
@@ -241,7 +255,47 @@ function goCardOrder() {
           </div>
         </div>
 
-        <div>
+        <!-- 该兑换码的历史订单（再次输入兑换码可继续查看已兑换过的订单） -->
+        <div v-if="cardInfo.orders?.length" class="bg-white border border-ink-100 rounded-lg p-4">
+          <div class="text-sm font-medium text-ink-800 mb-3 flex items-center justify-between">
+            <span>兑换记录</span>
+            <span class="text-xs text-ink-400 font-normal">共 {{ cardInfo.orders.length }} 笔</span>
+          </div>
+          <ul class="space-y-2">
+            <li
+              v-for="o in cardInfo.orders"
+              :key="o.orderNo"
+              class="flex items-center justify-between gap-3 p-3 bg-ink-50/60 rounded-lg cursor-pointer hover:bg-ink-100 transition"
+              @click="goCardHistory(o.orderNo)"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="text-sm text-ink-900 truncate">
+                  {{ o.productTitle }}<span v-if="o.skuName"> · {{ o.skuName }}</span> × {{ o.quantity }}
+                </div>
+                <div class="text-xs text-ink-500 mt-0.5 font-mono truncate">
+                  {{ o.orderNo }}
+                </div>
+                <div class="text-[11px] text-ink-400 mt-0.5">
+                  {{ new Date(o.redeemedAt || o.createdAt).toLocaleString() }}
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <span
+                  class="text-[11px] px-2 py-0.5 rounded border whitespace-nowrap"
+                  :class="(orderStatusLabels[o.status] || { cls: 'bg-ink-100 text-ink-500 border-ink-200' }).cls"
+                >
+                  {{ (orderStatusLabels[o.status] || { text: o.status }).text }}
+                </span>
+                <div v-if="o.hasContact" class="text-[10px] text-amber-600 mt-1">需联系方式</div>
+              </div>
+            </li>
+          </ul>
+          <p v-if="cardInfo.remaining > 0" class="mt-2 text-[11px] text-ink-400">
+            仍可再兑换 {{ cardInfo.remaining }} 次。
+          </p>
+        </div>
+
+        <div v-if="cardInfo.status === 'ACTIVE'">
           <label class="text-sm font-medium text-ink-700 block mb-1">联系方式（可选）</label>
           <input
             v-model="contact"
@@ -251,12 +305,25 @@ function goCardOrder() {
         </div>
 
         <button
+          v-if="cardInfo.status === 'ACTIVE'"
           class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium shadow-sm disabled:opacity-50"
-          :disabled="loading || !code.trim() || cardInfo.status !== 'ACTIVE'"
+          :disabled="loading || !code.trim()"
           @click="doRedeemCard"
         >
           {{ loading ? '兑换中…' : '立即兑换' }}
         </button>
+        <div
+          v-else-if="cardInfo.orders?.length"
+          class="text-xs text-ink-500 bg-ink-50 border border-ink-100 rounded-lg p-3 text-center"
+        >
+          该兑换码已 <b>{{ statusLabels[cardInfo.status] }}</b>，点击上方记录可查看已兑换订单。
+        </div>
+        <div
+          v-else
+          class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 text-center"
+        >
+          该兑换码当前状态为 <b>{{ statusLabels[cardInfo.status] }}</b>，无法继续兑换。
+        </div>
       </template>
 
       <!-- 模式 B：余额型兑换码 -->
