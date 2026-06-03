@@ -30,6 +30,38 @@ let started = false;
  * 即使有人伪造 JWT 让反调试关掉，他也只是看到自己本应能看到的页面而已，
  * 真正的接口鉴权在后端用 HS256 + JWT_SECRET 兜底。
  */
+/**
+ * 检测是否为移动端 / 触屏设备。
+ *
+ * 移动端必须关掉两个检测：
+ *  1. 窗口尺寸差检测：手机 outerHeight 包含浏览器外壳（地址栏 + 系统栏），
+ *     和 innerHeight 的差常驻 100–300px；输入框弹起虚拟键盘时 innerHeight 还会
+ *     瞬间被砍半，几乎 100% 命中"检测到 DevTools"误判。
+ *  2. debugger 语句耗时检测：低端机 / GC 卡顿很容易让 debugger noop
+ *     的耗时偶发 > 100ms，误判为命中断点。
+ *
+ * 手机端本身也没有 F12 / 停靠 DevTools 这种"小白能打开"的入口
+ * （要 USB 远程调试，已经在"决心调试的人"档位，不在我们劝退范围）。
+ */
+function isMobileLike(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  // 1. UA 关键字（最直接）
+  const ua = navigator.userAgent || '';
+  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile Safari/i.test(ua)) {
+    return true;
+  }
+  // 2. UA-CH（新 Chrome 已用 Client Hints 替代 UA）
+  if ((navigator as any).userAgentData?.mobile) return true;
+  // 3. 触屏 + 小屏：兜底 iPad / 国产浏览器伪装 UA
+  const hasTouch = 'ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0;
+  const isCoarse = typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  if (hasTouch && (isCoarse || Math.min(window.innerWidth, window.innerHeight) < 768)) {
+    return true;
+  }
+  return false;
+}
+
 function isAdminFromToken(): boolean {
   try {
     if (typeof localStorage === 'undefined') return false;
@@ -246,12 +278,18 @@ export function startAntiDebug() {
 
   started = true;
 
+  const mobile = isMobileLike();
+
   // 给一些反应时间（极慢的浏览器加载时可能误触发尺寸检测）
   setTimeout(() => {
     disableContextMenu();
     disableShortcuts();
-    detectByWindowSize();
-    detectByDebuggerStmt();
+    // 移动端关掉尺寸差和 debugger 检测：误判率太高（虚拟键盘 / GC 卡顿）。
+    // 桌面端两项都开，是当前小白调试入口的主要拦截点。
+    if (!mobile) {
+      detectByWindowSize();
+      detectByDebuggerStmt();
+    }
     detectByConsoleGetter();
     muteConsole();
   }, 600);
