@@ -48,6 +48,20 @@ export class ForgeApiError extends Error {
   }
 }
 
+/**
+ * 上游网络层异常：DNS / TCP / TLS / 超时 / 5xx 等。
+ * 对用户友好提示固定（"上游服务暂时不可用…"），同时把真实的 axios 错误
+ * 码和原文带在 `detail` 上，调用方可以写到订单 failReason 里供管理员排障。
+ */
+export class ForgeNetworkError extends ServiceUnavailableException {
+  constructor(
+    public readonly axiosCode: string,
+    public readonly detail: string,
+  ) {
+    super('上游服务暂时不可用，请稍后重试');
+  }
+}
+
 @Injectable()
 export class ForgeOpenapiService {
   private readonly logger = new Logger(ForgeOpenapiService.name);
@@ -246,8 +260,14 @@ export class ForgeOpenapiService {
           body.request_id,
         );
       }
-      this.logger.error(`forge upstream network error: ${method} ${path} ${err.message}`);
-      throw new ServiceUnavailableException('上游服务暂时不可用，请稍后重试');
+      // 网络层错误：DNS / TCP / TLS / 超时 / 5xx
+      // 把 axios 的 err.code（ETIMEDOUT / ENOTFOUND / ECONNREFUSED 等）和原文
+      // 都保留在 ForgeNetworkError.detail 上，调用方写订单 failReason 时拼上去
+      const axiosCode = (err.code || (err.response?.status ? `HTTP_${err.response.status}` : 'UNKNOWN')).toString();
+      const upstreamStatus = err.response?.status ? ` HTTP ${err.response.status}` : '';
+      const detail = `${axiosCode}${upstreamStatus} ${err.message || ''}`.trim();
+      this.logger.error(`forge upstream network error: ${method} ${path} ${detail}`);
+      throw new ForgeNetworkError(axiosCode, detail);
     }
   }
 

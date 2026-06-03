@@ -57,6 +57,61 @@ export class ForgeOrdersCron {
     }
   }
 
+  /**
+   * 自动重试因网络抖动失败的发货订单。
+   *
+   * 只重试 NETWORK_ERROR 类失败（DNS/TCP/超时/5xx），业务错误（OUT_OF_STOCK /
+   * INSUFFICIENT_BALANCE 等）不会被重试 —— 那种错误重试也是同样的结果，
+   * 还会浪费上游配额。
+   *
+   * 节流策略：
+   *  - createdAt 在最近 30 分钟内：超过 30 分钟的失败大概率不是临时问题，停止重试
+   *  - updatedAt 距今 ≥ 2 分钟：单订单两次重试之间至少间隔 2 分钟，避免打爆上游
+   *  - 每轮最多 10 个：限制上游 QPS
+   * 实际单订单最多重试 ~14 次，分布在 30 分钟内。
+   */
+  @Cron('*/2 * * * *')
+  async retryFailedNetworkErrors() {
+    try {
+      const now = Date.now();
+      const createdSince = new Date(now - 30 * 60 * 1000);
+      const updatedBefore = new Date(now - 2 * 60 * 1000);
+
+      const candidates = await this.prisma.forgeOrder.findMany({
+        where: {
+          status: 'FAILED',
+          failReason: { startsWith: 'NETWORK_ERROR:' },
+          createdAt: { gt: createdSince },
+          updatedAt: { lt: updatedBefore },
+        },
+        select: { orderNo: true },
+        orderBy: { id: 'asc' },
+        take: 10,
+      });
+      if (!candidates.length) return;
+
+      let recovered = 0;
+      for (const o of candidates) {
+        try {
+          await this.orders.fulfillOrder(o.orderNo);
+          recovered++;
+        } catch (e) {
+          // fulfillOrder 已经把最新的 failReason 写回 DB，这里只记日志
+          this.logger.warn(
+            `auto-retry forge ${o.orderNo} still failed: ${(e as Error).message}`,
+          );
+        }
+      }
+      if (recovered) {
+        this.logger.log(
+          `auto-retry recovered ${recovered}/${candidates.length} forge orders from NETWORK_ERROR`,
+        );
+      }
+    } catch (e) {
+      this.logger.error(`retryFailedNetworkErrors: ${(e as Error).message}`);
+    }
+  }
+
   /** 兜底主动查询，捕获 notify 丢失 */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async recoverLostNotify() {

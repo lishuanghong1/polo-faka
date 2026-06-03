@@ -14,7 +14,11 @@ import {
   ForgePaymentMethod,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ForgeApiError, ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
+import {
+  ForgeApiError,
+  ForgeNetworkError,
+  ForgeOpenapiService,
+} from '../forge-openapi/forge-openapi.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 import { ForgeProductsService } from './forge-products.service';
 import { VipService } from '../vip/vip.service';
@@ -437,11 +441,22 @@ export class ForgeOrdersService {
         },
       });
     } catch (e) {
-      const failCode = e instanceof ForgeApiError ? e.code : 'NETWORK_ERROR';
-      const failMsg =
-        e instanceof ForgeApiError
-          ? ForgeOpenapiService.friendlyMessage(e.code, e.upstreamMessage)
-          : (e as Error)?.message || '上游服务暂时不可用';
+      // 三段分支：业务错（ForgeApiError）/ 网络错（ForgeNetworkError）/ 其它
+      // 网络错把真实的 axios code+message 写到 failReason 里（管理员能直接看到
+      // 是 ETIMEDOUT 还是 ENOTFOUND 还是 HTTP_502），方便排障；用户侧仍返回
+      // 笼统提示，由 toHttpException 决定。
+      let failCode: string;
+      let failMsg: string;
+      if (e instanceof ForgeApiError) {
+        failCode = e.code;
+        failMsg = ForgeOpenapiService.friendlyMessage(e.code, e.upstreamMessage);
+      } else if (e instanceof ForgeNetworkError) {
+        failCode = 'NETWORK_ERROR';
+        failMsg = e.detail;
+      } else {
+        failCode = 'NETWORK_ERROR';
+        failMsg = (e as Error)?.message || '上游服务暂时不可用';
+      }
 
       await this.prisma.forgeOrder.update({
         where: { orderNo },
