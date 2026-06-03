@@ -80,6 +80,13 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: polo-api
     restart: always
+    # 指定容器内 DNS：绕过宿主机 / 云厂商默认 DNS，避免上游域名（cursorforgeai
+    # / 支付宝 openapi 等）解析失败（典型症状：日志里 ENOTFOUND getaddrinfo）。
+    # 顺序：阿里 → 腾讯 → Cloudflare，前两个在国内云上稳定，第三个国际兜底。
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
+      - 1.1.1.1
     depends_on:
       mysql:
         condition: service_healthy
