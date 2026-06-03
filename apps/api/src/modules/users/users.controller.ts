@@ -36,6 +36,12 @@ export class UsersController {
   }
 
   @Roles('ADMIN')
+  @Get(':id/detail')
+  detail(@Param('id') id: string) {
+    return this.svc.detail(Number(id));
+  }
+
+  @Roles('ADMIN')
   @Put(':id')
   async update(
     @Param('id') id: string,

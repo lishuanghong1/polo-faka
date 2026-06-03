@@ -24,12 +24,15 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   list(page = 1, pageSize = 20, keyword?: string) {
-    const where = keyword
+    const kw = (keyword || '').trim();
+    const where: Prisma.UserWhereInput = kw
       ? {
           OR: [
-            { username: { contains: keyword } },
-            { email: { contains: keyword } },
-            { nickname: { contains: keyword } },
+            // 数字关键字按 id 精确匹配，避免输入 "5" 匹配出所有含 5 的用户名
+            ...(/^\d+$/.test(kw) ? [{ id: Number(kw) }] : []),
+            { username: { contains: kw } },
+            { email: { contains: kw } },
+            { nickname: { contains: kw } },
           ],
         }
       : {};
@@ -46,6 +49,8 @@ export class UsersService {
           email: true,
           nickname: true,
           balance: true,
+          totalRecharged: true,
+          vipTier: true,
           role: true,
           status: true,
           createdAt: true,
@@ -53,6 +58,135 @@ export class UsersService {
         },
       }),
     ]).then(([total, items]) => ({ total, page, pageSize, items }));
+  }
+
+  /**
+   * 管理员查看单个用户详情：基础信息 + 钱包 + 最近 30 笔充值 + 最近 50 条流水 + 最近 20 笔订单
+   * 用于后台从用户视角自检"客户充值是否真的入账"
+   */
+  async detail(id: number) {
+    if (!id || !Number.isInteger(id)) throw new BadRequestException('用户 id 非法');
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        nickname: true,
+        avatar: true,
+        role: true,
+        status: true,
+        balance: true,
+        totalRecharged: true,
+        vipTier: true,
+        vipUpgradedAt: true,
+        createdAt: true,
+        lastLogin: true,
+      },
+    });
+    if (!user) throw new NotFoundException('用户不存在');
+
+    const [rechargeOrders, balanceLogs, orders, forgeOrders, rechargeAgg] =
+      await this.prisma.$transaction([
+        this.prisma.rechargeOrder.findMany({
+          where: { userId: id },
+          orderBy: { id: 'desc' },
+          take: 30,
+          select: {
+            orderNo: true,
+            amount: true,
+            status: true,
+            payMethod: true,
+            thirdTradeNo: true,
+            buyerLogonId: true,
+            paidAt: true,
+            expireAt: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.balanceLog.findMany({
+          where: { userId: id },
+          orderBy: { id: 'desc' },
+          take: 50,
+          select: {
+            id: true,
+            amount: true,
+            balance: true,
+            type: true,
+            note: true,
+            refOrder: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.order.findMany({
+          where: { userId: id },
+          orderBy: { id: 'desc' },
+          take: 20,
+          select: {
+            orderNo: true,
+            productTitle: true,
+            skuName: true,
+            quantity: true,
+            payAmount: true,
+            payMethod: true,
+            status: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.forgeOrder.findMany({
+          where: { userId: id },
+          orderBy: { id: 'desc' },
+          take: 20,
+          select: {
+            orderNo: true,
+            typeName: true,
+            quantity: true,
+            payAmount: true,
+            totalAmount: true,
+            paymentMethod: true,
+            status: true,
+            createdAt: true,
+          },
+        }),
+        // 已确认入账（PAID）的充值总和，用于和 totalRecharged 交叉验证
+        this.prisma.rechargeOrder.aggregate({
+          where: { userId: id, status: 'PAID' },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+      ]);
+
+    return {
+      user,
+      wallet: {
+        balance: Number(user.balance),
+        totalRecharged: Number(user.totalRecharged),
+        vipTier: user.vipTier,
+        vipUpgradedAt: user.vipUpgradedAt,
+        paidRechargeCount: rechargeAgg._count._all,
+        paidRechargeSum: Number(rechargeAgg._sum.amount ?? 0),
+      },
+      rechargeOrders: rechargeOrders.map((o) => ({
+        ...o,
+        amount: Number(o.amount),
+      })),
+      balanceLogs: balanceLogs.map((l) => ({
+        ...l,
+        amount: Number(l.amount),
+        balance: Number(l.balance),
+      })),
+      orders: orders.map((o) => ({
+        ...o,
+        payAmount: Number(o.payAmount),
+        kind: 'LOCAL' as const,
+      })),
+      forgeOrders: forgeOrders.map((o) => ({
+        ...o,
+        payAmount: o.payAmount !== null ? Number(o.payAmount) : null,
+        totalAmount: Number(o.totalAmount),
+        kind: 'FORGE' as const,
+      })),
+    };
   }
 
   myBalanceLogs(userId: number, page = 1, pageSize = 30) {

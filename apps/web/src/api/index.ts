@@ -1,5 +1,73 @@
 import http from './http';
 
+export type AdminUserDetail = {
+  user: {
+    id: number;
+    username: string;
+    email: string | null;
+    nickname: string | null;
+    avatar: string | null;
+    role: 'USER' | 'ADMIN';
+    status: 'ACTIVE' | 'BANNED';
+    balance: string;
+    totalRecharged: string;
+    vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+    vipUpgradedAt: string | null;
+    createdAt: string;
+    lastLogin: string | null;
+  };
+  wallet: {
+    balance: number;
+    totalRecharged: number;
+    vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+    vipUpgradedAt: string | null;
+    paidRechargeCount: number;
+    paidRechargeSum: number;
+  };
+  rechargeOrders: Array<{
+    orderNo: string;
+    amount: number;
+    status: 'PENDING' | 'PAID' | 'CANCELLED' | 'EXPIRED' | 'REFUNDED';
+    payMethod: string;
+    thirdTradeNo: string | null;
+    buyerLogonId: string | null;
+    paidAt: string | null;
+    expireAt: string;
+    createdAt: string;
+  }>;
+  balanceLogs: Array<{
+    id: number;
+    amount: number;
+    balance: number;
+    type: 'RECHARGE' | 'CONSUME' | 'REFUND' | 'ADJUST';
+    note: string | null;
+    refOrder: string | null;
+    createdAt: string;
+  }>;
+  orders: Array<{
+    orderNo: string;
+    productTitle: string;
+    skuName: string;
+    quantity: number;
+    payAmount: number;
+    payMethod: string;
+    status: string;
+    createdAt: string;
+    kind: 'LOCAL';
+  }>;
+  forgeOrders: Array<{
+    orderNo: string;
+    typeName: string;
+    quantity: number;
+    payAmount: number | null;
+    totalAmount: number;
+    paymentMethod: string;
+    status: string;
+    createdAt: string;
+    kind: 'FORGE';
+  }>;
+};
+
 export const api = {
   // 站点
   publicSettings: () => http.get('/site-settings/public'),
@@ -123,6 +191,7 @@ export const api = {
     keysRemove: (id: number) => http.delete(`/card-keys/${id}`),
 
     users: (params: any) => http.get('/users', { params }),
+    userDetail: (id: number) => http.get<AdminUserDetail>(`/users/${id}/detail`),
     userAdjust: (id: number, body: any) => http.put(`/users/${id}/adjust-balance`, body),
 
     annsList: () => http.get('/announcements'),
