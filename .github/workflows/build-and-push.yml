@@ -1,0 +1,181 @@
+name: Build and Push to Aliyun ACR
+
+# 触发：
+#   - push 到 main 且影响 web/api 相关文件
+#   - 手动触发（workflow_dispatch），可选构建 both/web/api
+#
+# 产物：
+#   ${REGISTRY}/${NAMESPACE}/polo-web:latest
+#   ${REGISTRY}/${NAMESPACE}/polo-web:<commit-sha>
+#   ${REGISTRY}/${NAMESPACE}/polo-api:latest
+#   ${REGISTRY}/${NAMESPACE}/polo-api:<commit-sha>
+#
+# 需要在 GitHub Settings → Secrets and variables → Actions 配置：
+#   Variables（非敏感）:
+#     ACR_REGISTRY    例：registry.cn-shenzhen.aliyuncs.com
+#     ACR_NAMESPACE   例：polo-faka
+#   Secrets（敏感）:
+#     ACR_USERNAME    阿里云账号（不是访问凭证用户名，是登录名）
+#     ACR_PASSWORD    在 ACR 控制台「访问凭证」里设置的固定密码
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/build-and-push.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: '构建目标'
+        type: choice
+        default: both
+        options:
+          - both
+          - web
+          - api
+
+env:
+  REGISTRY: ${{ vars.ACR_REGISTRY }}
+  NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+
+jobs:
+  # ── 变更检测：只重建受影响的镜像，节省 CI 时间 ────────────
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 检测变更文件
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+            api:
+              - 'apps/api/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+
+  # ── 构建 web ─────────────────────────────────────────────
+  build-web:
+    needs: detect
+    if: >
+      needs.detect.outputs.web == 'true'
+      || github.event.inputs.target == 'web'
+      || github.event.inputs.target == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 ACR 配置
+        run: |
+          if [ -z "$REGISTRY" ] || [ -z "$NAMESPACE" ]; then
+            echo "::error::缺少 ACR_REGISTRY / ACR_NAMESPACE 变量，请到 Settings → Variables 配置"
+            exit 1
+          fi
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录阿里云 ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 构建并推送 web 镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          platforms: linux/amd64
+          # 永远更新 latest；同时打一个 sha tag 方便回滚
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-web:latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-web:${{ github.sha }}
+          # 用 ACR 自身作为 buildx 远程缓存（避免每次重装 600MB node_modules）
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-web:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-web:buildcache,mode=max
+          provenance: false
+
+  # ── 构建 api ─────────────────────────────────────────────
+  build-api:
+    needs: detect
+    if: >
+      needs.detect.outputs.api == 'true'
+      || github.event.inputs.target == 'api'
+      || github.event.inputs.target == 'both'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 ACR 配置
+        run: |
+          if [ -z "$REGISTRY" ] || [ -z "$NAMESPACE" ]; then
+            echo "::error::缺少 ACR_REGISTRY / ACR_NAMESPACE 变量，请到 Settings → Variables 配置"
+            exit 1
+          fi
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录阿里云 ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: 构建并推送 api 镜像
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-api:latest
+            ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-api:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-api:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.NAMESPACE }}/polo-api:buildcache,mode=max
+          provenance: false
+
+  # ── 汇总 ───────────────────────────────────────────────
+  summary:
+    needs: [build-web, build-api]
+    if: always() && (needs.build-web.result != 'skipped' || needs.build-api.result != 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 输出部署命令
+        run: |
+          echo "### 构建完成 ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "在服务器上拉取并重启：" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "cd /opt/polo  # 或你的项目目录" >> $GITHUB_STEP_SUMMARY
+          echo "git pull" >> $GITHUB_STEP_SUMMARY
+          echo "bash deploy/deploy-acr.sh" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "镜像标签：" >> $GITHUB_STEP_SUMMARY
+          echo "- latest: 永远是最新一次构建" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${GITHUB_SHA}\`: 本次构建的固定 tag（用于回滚）" >> $GITHUB_STEP_SUMMARY

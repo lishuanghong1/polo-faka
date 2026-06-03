@@ -75,6 +75,12 @@ services:
       - polo
 
   api:
+    # 镜像名同时给 `build` 和 `pull` 用：
+    #   - 服务器从 ACR 拉镜像时按这个名字找
+    #   - 本地 `docker compose build` 时也会用这个名字打 tag
+    # 用 ACR：.env.prod 里设 IMAGE_BASE=registry.cn-xxx.aliyuncs.com/<namespace>
+    # 不用 ACR：留空，默认本地 tag 是 polo-faka/polo-api:latest
+    image: ${IMAGE_BASE:-polo-faka}/polo-api:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -135,6 +141,7 @@ services:
       - polo
 
   web:
+    image: ${IMAGE_BASE:-polo-faka}/polo-web:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
