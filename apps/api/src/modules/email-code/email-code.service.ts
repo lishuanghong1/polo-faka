@@ -4,7 +4,13 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import axios from 'axios';
 import { ForgeApiError, ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
+import { PrismaService } from '../../prisma/prisma.service';
+
+/** 仓库账号在线接码：直接调三方临时邮箱 API（密码从仓库 content 取） */
+const TOOLSVIP_EMAILS_URL = 'https://tool.toolsvip.cc/easy-mailbox/emails';
+const WAREHOUSE_SEPARATOR = '----';
 
 export interface FetchCodeParams {
   email: string;
@@ -80,7 +86,10 @@ const CONFIG_ERROR: FriendlyError = {
 export class EmailCodeService {
   private readonly logger = new Logger(EmailCodeService.name);
 
-  constructor(private readonly forge: ForgeOpenapiService) {}
+  constructor(
+    private readonly forge: ForgeOpenapiService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /** site-settings 改动后调用 */
   invalidate() {
@@ -88,7 +97,96 @@ export class EmailCodeService {
   }
 
   async isEnabled() {
-    return this.forge.isEnabled();
+    // forge 接码启用，或仓库里有账号（仓库邮箱走 toolsvip）时，均视为可用
+    if (await this.forge.isEnabled()) return true;
+    try {
+      const count = await this.prisma.warehouseAccount.count();
+      return count > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 在仓库里按邮箱找到对应的邮箱密码（content = email----emailpwd----cursorpwd----token）。
+   * 找不到返回 null（说明不是仓库邮箱，走原 forge 逻辑）。
+   */
+  private async resolveWarehousePassword(email: string): Promise<string | null> {
+    let content: string | null = null;
+    try {
+      const byEmail = await this.prisma.warehouseAccount.findFirst({
+        where: { email },
+        orderBy: { id: 'desc' },
+      });
+      content = byEmail?.content ?? null;
+      if (!content) {
+        const byContent = await this.prisma.warehouseAccount.findFirst({
+          where: { content: { startsWith: email } },
+          orderBy: { id: 'desc' },
+        });
+        content = byContent?.content ?? null;
+      }
+    } catch (e) {
+      this.logger.warn(`resolveWarehousePassword failed: ${(e as Error)?.message}`);
+      return null;
+    }
+    if (!content) return null;
+    const parts = content.split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
+    // email----emailpwd----cursorpwd----token
+    return parts[1] || null;
+  }
+
+  /** 从三方邮件 list 里提取最新的 6 位验证码 */
+  private extractCode(mail: any): string | null {
+    for (const h of [mail?.text, mail?.subject, mail?.html]) {
+      if (typeof h !== 'string') continue;
+      const m = h.match(/(?<!\d)(\d{6})(?!\d)/);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  /** 调 toolsvip 临时邮箱接口，返回 { found, verification_code, mail_time? } */
+  private async fetchFromToolsvip(email: string, password: string, timeRange: number) {
+    const { data } = await axios.get(TOOLSVIP_EMAILS_URL, {
+      params: { email, password, mailbox: 'inbox' },
+      timeout: 15000,
+    });
+    const list: any[] = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.emails)
+          ? data.emails
+          : [];
+    if (!list.length) return { found: false };
+
+    const now = Date.now();
+    const within = (d?: string) => {
+      if (!timeRange || timeRange <= 0) return true;
+      if (!d) return true;
+      const t = Date.parse(d);
+      if (Number.isNaN(t)) return true;
+      return now - t <= timeRange * 1000 + 60_000; // 容忍 60s 时钟偏差
+    };
+
+    const candidates = list
+      .filter((m) => within(m?.date))
+      .sort((a, b) => (Date.parse(b?.date || '') || 0) - (Date.parse(a?.date || '') || 0));
+
+    for (const m of candidates) {
+      const code = this.extractCode(m);
+      if (code) {
+        return {
+          found: true,
+          verification_code: code,
+          mail_time: m?.date ? Math.floor(Date.parse(m.date) / 1000) : undefined,
+          subject: m?.subject,
+          from: m?.from,
+        };
+      }
+    }
+    return { found: false };
   }
 
   /** 把上游错误码翻译成友好结构（接码场景专用） */
@@ -122,9 +220,34 @@ export class EmailCodeService {
       throw new BadRequestException('邮箱格式不正确');
     }
 
+    const timeRange = params.timeRange && params.timeRange > 0 ? params.timeRange : 300;
+
+    // 仓库邮箱：用 content 里的邮箱密码调 toolsvip 临时邮箱接口
+    const warehousePassword = await this.resolveWarehousePassword(email);
+    if (warehousePassword) {
+      try {
+        const r = await this.fetchFromToolsvip(email, warehousePassword, timeRange);
+        if (r.found) {
+          return { ok: true, code: 'OK', ...r };
+        }
+        // 还没收到 → 让前端继续轮询
+        return { ok: true, code: 'OK', found: false, status: '正在查收邮件…' };
+      } catch (e) {
+        this.logger.warn(`toolsvip fetch failed: ${(e as Error)?.message}`);
+        return {
+          ok: false,
+          code: 'SERVICE_ERROR',
+          found: false,
+          message: '邮箱服务繁忙，正在重试',
+          hint: '正在重新连接临时邮箱服务。',
+          terminal: false,
+        };
+      }
+    }
+
     const body: Record<string, any> = {
       email,
-      time_range: params.timeRange && params.timeRange > 0 ? params.timeRange : 300,
+      time_range: timeRange,
       clear_cache: !!params.clearCache,
       mark_read: !!params.markRead,
       mail_id: params.mailId || '',

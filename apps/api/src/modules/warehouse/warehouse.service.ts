@@ -13,6 +13,19 @@ interface BulkItem {
   remark?: string;
 }
 
+/** 仓库 content = email----emailpwd----cursorpwd----token */
+const WAREHOUSE_SEPARATOR = '----';
+
+/** 售出发货只给 邮箱 + token（去掉邮箱密码 / cursor 密码） */
+function buildDeliveryContent(fullContent: string): string {
+  const parts = (fullContent || '').split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
+  const email = parts[0] || '';
+  const token = parts.length >= 4 ? parts[3] : parts[parts.length - 1] || '';
+  if (email && token) return `${email}${WAREHOUSE_SEPARATOR}${token}`;
+  // 兜底：格式不符合预期时原样发货，避免发空
+  return fullContent;
+}
+
 @Injectable()
 export class WarehouseService {
   private readonly logger = new Logger(WarehouseService.name);
@@ -177,7 +190,8 @@ export class WarehouseService {
         data: {
           productId,
           skuId,
-          content: wa.content,
+          // 发货只给 邮箱 + token；完整账号信息仍保留在 warehouse_accounts.content
+          content: buildDeliveryContent(wa.content),
           remark: wa.remark ?? `from warehouse #${wa.id}`,
           status: 'AVAILABLE',
         },
