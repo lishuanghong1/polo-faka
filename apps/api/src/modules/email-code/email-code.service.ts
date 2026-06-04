@@ -126,6 +126,18 @@ export class EmailCodeService {
         });
         content = byContent?.content ?? null;
       }
+      // 兜底：上面都没命中时，扫描全部账号按 content 第一段做大小写无关匹配
+      if (!content) {
+        const all = await this.prisma.warehouseAccount.findMany({
+          select: { content: true, email: true },
+          take: 2000,
+        });
+        const hit = all.find((r) => {
+          const e0 = (r.content || '').split(WAREHOUSE_SEPARATOR)[0]?.trim().toLowerCase();
+          return e0 === email || (r.email || '').trim().toLowerCase() === email;
+        });
+        content = hit?.content ?? null;
+      }
     } catch (e) {
       this.logger.warn(`resolveWarehousePassword failed: ${(e as Error)?.message}`);
       return null;
@@ -146,12 +158,21 @@ export class EmailCodeService {
     return null;
   }
 
-  /** 调 toolsvip 临时邮箱接口，返回 { found, verification_code, mail_time? } */
+  /** 调 toolsvip 临时邮箱接口，返回 { found, verification_code, mail_time?, debug } */
   private async fetchFromToolsvip(email: string, password: string, timeRange: number) {
-    const { data } = await axios.get(TOOLSVIP_EMAILS_URL, {
-      params: { email, password, mailbox: 'inbox' },
-      timeout: 15000,
-    });
+    let data: any;
+    try {
+      const resp = await axios.get(TOOLSVIP_EMAILS_URL, {
+        params: { email, password, mailbox: 'inbox' },
+        timeout: 15000,
+      });
+      data = resp.data;
+    } catch (e: any) {
+      const status = e?.response?.status;
+      this.logger.warn(`toolsvip http error: status=${status} msg=${e?.message}`);
+      return { found: false, debug: { httpError: status || 'network', msg: String(e?.message || '') } };
+    }
+
     const list: any[] = Array.isArray(data)
       ? data
       : Array.isArray(data?.data)
@@ -159,34 +180,65 @@ export class EmailCodeService {
         : Array.isArray(data?.emails)
           ? data.emails
           : [];
-    if (!list.length) return { found: false };
+
+    if (!list.length) {
+      // 返回的不是邮件数组（多半是密码错误 / 鉴权失败的错误体）
+      let sample = '';
+      try {
+        sample = typeof data === 'string' ? data.slice(0, 200) : JSON.stringify(data).slice(0, 200);
+      } catch {
+        sample = '<unserializable>';
+      }
+      this.logger.warn(`toolsvip returned no list for ${email}; sample=${sample}`);
+      return { found: false, debug: { total: 0, sample } };
+    }
 
     const now = Date.now();
+    const sorted = [...list].sort(
+      (a, b) => (Date.parse(b?.date || '') || 0) - (Date.parse(a?.date || '') || 0),
+    );
     const within = (d?: string) => {
       if (!timeRange || timeRange <= 0) return true;
       if (!d) return true;
       const t = Date.parse(d);
       if (Number.isNaN(t)) return true;
-      return now - t <= timeRange * 1000 + 60_000; // 容忍 60s 时钟偏差
+      return now - t <= timeRange * 1000 + 120_000; // 容忍 2 分钟时钟偏差
     };
 
-    const candidates = list
-      .filter((m) => within(m?.date))
-      .sort((a, b) => (Date.parse(b?.date || '') || 0) - (Date.parse(a?.date || '') || 0));
+    // 1) 优先：时间窗内、且发件来自 cursor 的邮件
+    // 2) 退化：时间窗内任意带 6 位码邮件
+    // 3) 兜底：忽略时间窗，取最新一封带 6 位码的邮件（轮询天然取最新，避免时钟/延迟误杀）
+    const isCursor = (m: any) => /cursor/i.test(String(m?.from || ''));
+    const passes = [
+      sorted.filter((m) => within(m?.date) && isCursor(m)),
+      sorted.filter((m) => within(m?.date)),
+      sorted,
+    ];
 
-    for (const m of candidates) {
-      const code = this.extractCode(m);
-      if (code) {
-        return {
-          found: true,
-          verification_code: code,
-          mail_time: m?.date ? Math.floor(Date.parse(m.date) / 1000) : undefined,
-          subject: m?.subject,
-          from: m?.from,
-        };
+    for (const group of passes) {
+      for (const m of group) {
+        const code = this.extractCode(m);
+        if (code) {
+          return {
+            found: true,
+            verification_code: code,
+            mail_time: m?.date ? Math.floor(Date.parse(m.date) / 1000) : undefined,
+            subject: m?.subject,
+            from: m?.from,
+          };
+        }
       }
     }
-    return { found: false };
+
+    return {
+      found: false,
+      debug: {
+        total: list.length,
+        latestFrom: sorted[0]?.from,
+        latestSubject: sorted[0]?.subject,
+        latestDate: sorted[0]?.date,
+      },
+    };
   }
 
   /** 把上游错误码翻译成友好结构（接码场景专用） */
@@ -226,12 +278,12 @@ export class EmailCodeService {
     const warehousePassword = await this.resolveWarehousePassword(email);
     if (warehousePassword) {
       try {
-        const r = await this.fetchFromToolsvip(email, warehousePassword, timeRange);
+        const r: any = await this.fetchFromToolsvip(email, warehousePassword, timeRange);
         if (r.found) {
           return { ok: true, code: 'OK', ...r };
         }
-        // 还没收到 → 让前端继续轮询
-        return { ok: true, code: 'OK', found: false, status: '正在查收邮件…' };
+        // 还没收到 → 让前端继续轮询（debug 字段方便在浏览器 Network 排查）
+        return { ok: true, code: 'OK', found: false, status: '正在查收邮件…', debug: r.debug };
       } catch (e) {
         this.logger.warn(`toolsvip fetch failed: ${(e as Error)?.message}`);
         return {
