@@ -49,12 +49,14 @@ function statusColor(s: string) {
   if (s === 'PENDING') return 'bg-amber-100 text-amber-700';
   if (s === 'ASSIGNED') return 'bg-sky-100 text-sky-700';
   if (s === 'SOLD') return 'bg-emerald-100 text-emerald-700';
+  if (s === 'UNLISTED') return 'bg-ink-200 text-ink-600';
   return 'bg-ink-100 text-ink-700';
 }
 function statusLabel(s: string) {
   if (s === 'PENDING') return '未分配';
   if (s === 'ASSIGNED') return '已上架';
   if (s === 'SOLD') return '已售出';
+  if (s === 'UNLISTED') return '已下架';
   return s;
 }
 function previewContent(c: string) {
@@ -143,6 +145,7 @@ async function reveal(row: any) {
         <option value="PENDING">未分配</option>
         <option value="ASSIGNED">已上架</option>
         <option value="SOLD">已售出</option>
+        <option value="UNLISTED">已下架</option>
       </select>
       <input
         v-model="sourceRefFilter"

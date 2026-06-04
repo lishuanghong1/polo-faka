@@ -284,6 +284,50 @@ export class WarehouseService {
     return { ok: true };
   }
 
+  // ====== 外部系统（cursor-jb）按 sourceRef 联动 ======
+
+  /** 下架：标记 UNLISTED；若关联 CardKey 仍 AVAILABLE 则下架（删除卡密，避免被买） */
+  async unlistByRef(sourceRef: string) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { sourceRef } });
+    if (!wa) return { ok: false, reason: 'not_found' };
+    return this.prisma.$transaction(async (tx) => {
+      if (wa.cardKeyId) {
+        const ck = await tx.cardKey.findUnique({ where: { id: wa.cardKeyId } });
+        if (ck && ck.status === 'AVAILABLE') {
+          await tx.cardKey.delete({ where: { id: ck.id } }).catch(() => null);
+          await tx.warehouseAccount.update({
+            where: { id: wa.id },
+            data: { status: 'UNLISTED', cardKeyId: null, productId: null, skuId: null },
+          });
+          return { ok: true, status: 'UNLISTED', cardKeyRemoved: true };
+        }
+      }
+      // 已售出 / 无可下架卡密：仅标记 UNLISTED，保留 CardKey 和订单
+      await tx.warehouseAccount.update({ where: { id: wa.id }, data: { status: 'UNLISTED' } });
+      return { ok: true, status: 'UNLISTED', cardKeyRemoved: false };
+    });
+  }
+
+  /** 恢复：UNLISTED -> PENDING（回到未分配，admin 可重新分配） */
+  async relistByRef(sourceRef: string) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { sourceRef } });
+    if (!wa) return { ok: false, reason: 'not_found' };
+    if (wa.status !== 'UNLISTED') return { ok: true, status: wa.status };
+    await this.prisma.warehouseAccount.update({
+      where: { id: wa.id },
+      data: { status: 'PENDING' },
+    });
+    return { ok: true, status: 'PENDING' };
+  }
+
+  /** 删除：只删仓库记录，保留 CardKey / 订单等 faka 业务数据 */
+  async deleteByRef(sourceRef: string) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { sourceRef } });
+    if (!wa) return { ok: false, reason: 'not_found' };
+    await this.prisma.warehouseAccount.delete({ where: { id: wa.id } });
+    return { ok: true, deleted: true, keptCardKey: wa.cardKeyId ?? null };
+  }
+
   /** 由 OrdersService 在卡密 SOLD 后调用 */
   async markSoldByCardKeyIds(cardKeyIds: number[], orderNo: string, soldAt: Date) {
     if (!cardKeyIds.length) return { updated: 0 };

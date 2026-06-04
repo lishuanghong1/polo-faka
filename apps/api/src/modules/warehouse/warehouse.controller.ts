@@ -49,6 +49,34 @@ export class WarehouseController {
     return this.svc.statusBySourceRefs(body?.refs || []);
   }
 
+  /** 外部系统下架：标 UNLISTED 并下架可售卡密 */
+  @Post('unlist-by-ref')
+  async unlistByRef(@Body() body: { sourceRef: string }, @Req() req: Request) {
+    const r = await this.svc.unlistByRef(body?.sourceRef);
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_UNASSIGN, {
+      target: `ref:${body?.sourceRef}`,
+      detail: { action: 'unlist', ...r },
+    });
+    return r;
+  }
+
+  /** 外部系统恢复：UNLISTED -> PENDING */
+  @Post('relist-by-ref')
+  async relistByRef(@Body() body: { sourceRef: string }) {
+    return this.svc.relistByRef(body?.sourceRef);
+  }
+
+  /** 外部系统删除：只删仓库记录，保留 CardKey/订单 */
+  @Post('delete-by-ref')
+  async deleteByRef(@Body() body: { sourceRef: string }, @Req() req: Request) {
+    const r = await this.svc.deleteByRef(body?.sourceRef);
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_DELETE, {
+      target: `ref:${body?.sourceRef}`,
+      detail: { keptCardKey: (r as any)?.keptCardKey ?? null },
+    });
+    return r;
+  }
+
   /** 列表 */
   @Get()
   list(
