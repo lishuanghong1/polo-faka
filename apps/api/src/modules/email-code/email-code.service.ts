@@ -214,14 +214,22 @@ export class EmailCodeService {
       return now - t <= timeRange * 1000 + 120_000; // 容忍 2 分钟时钟偏差
     };
 
-    // 1) 优先：时间窗内、且发件来自 cursor 的邮件
-    // 2) 退化：时间窗内任意带 6 位码邮件
-    // 3) 兜底：忽略时间窗，取最新一封带 6 位码的邮件（轮询天然取最新，避免时钟/延迟误杀）
-    const isCursor = (m: any) => /cursor/i.test(String(m?.from || ''));
+    // 1) 时间窗内真·验证邮件（no-reply@cursor.sh / 含验证码关键词）
+    // 2) 时间窗内任意带 6 位码邮件
+    // 3) 忽略时间窗的验证邮件
+    // 4) 兜底：忽略时间窗取最新带码邮件
+    const isVerification = (m: any) => {
+      const frm = String(m?.from || '').toLowerCase();
+      if (frm.includes('no-reply@cursor') || frm.includes('noreply@cursor')) return true;
+      const blob = (String(m?.subject || '') + ' ' + String(m?.text || '')).toLowerCase();
+      return ['验证码', '完成验证', 'one-time', 'verification', 'verify', '登录 cursor', 'sign in to cursor'].some(
+        (k) => blob.includes(k),
+      );
+    };
+    // 只认真正的验证码邮件，避免误抓营销邮件里的数字。时间窗内优先，其次忽略时间窗。
     const passes = [
-      sorted.filter((m) => within(m?.date) && isCursor(m)),
-      sorted.filter((m) => within(m?.date)),
-      sorted,
+      sorted.filter((m) => within(m?.date) && isVerification(m)),
+      sorted.filter((m) => isVerification(m)),
     ];
 
     for (const group of passes) {
