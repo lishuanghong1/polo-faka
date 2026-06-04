@@ -206,6 +206,13 @@ export const api = {
     poolRemove: (id: number) => http.delete(`/pool/accounts/${id}`),
     poolRefresh: () => http.post('/pool/accounts/refresh-all'),
 
+    warehouseList: (params: any) => http.get('/warehouse', { params }),
+    warehouseAssign: (id: number, body: { productId: number; skuId: number }) =>
+      http.post(`/warehouse/${id}/assign`, body),
+    warehouseUnassign: (id: number) => http.post(`/warehouse/${id}/unassign`),
+    warehouseRemove: (id: number) => http.delete(`/warehouse/${id}`),
+    warehouseBulkImport: (items: any[]) => http.post('/warehouse/bulk-import', { items }),
+
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
 

@@ -671,3 +671,32 @@ model AuditLog {
   @@index([target, createdAt])
   @@map("audit_logs")
 }
+
+// ===================== 仓库 =====================
+
+/// 由外部系统（如 cursor-jb）推送进来的账号库存，admin 可在管理后台
+/// 分配到具体 Product/SKU。分配后会同步创建一条 CardKey；售出时
+/// orderNo / soldAt 会回填到这里，便于外部系统反查。
+model WarehouseAccount {
+  id          Int       @id @default(autoincrement())
+  /// 外部系统的引用键，如 "cursor-jb:5"。同一 sourceRef 重复推送不会重复入库
+  sourceRef   String?   @unique @db.VarChar(128)
+  /// 账号内容（如 email----emailpwd----cursorpwd----token），SKU 内唯一
+  content     String    @db.Text
+  email       String?   @db.VarChar(255)
+  remark      String?   @db.VarChar(500)
+  /// 分配状态：PENDING (未分配) / ASSIGNED (已分配到商品) / SOLD (已售出)
+  status      String    @default("PENDING") @db.VarChar(16)
+  productId   Int?
+  skuId       Int?
+  cardKeyId   Int?      @unique
+  assignedAt  DateTime?
+  soldAt      DateTime?
+  orderNo     String?   @db.VarChar(64)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([skuId, status])
+  @@map("warehouse_accounts")
+}

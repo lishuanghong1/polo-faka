@@ -35,6 +35,12 @@ export const AuditActions = {
   CARD_KEY_PURGE: 'CARD_KEY_PURGE',
   CARD_KEY_BULK_IMPORT: 'CARD_KEY_BULK_IMPORT',
 
+  // 仓库（外部账号入库 / 分配到商品）
+  WAREHOUSE_BULK_IMPORT: 'WAREHOUSE_BULK_IMPORT',
+  WAREHOUSE_ASSIGN: 'WAREHOUSE_ASSIGN',
+  WAREHOUSE_UNASSIGN: 'WAREHOUSE_UNASSIGN',
+  WAREHOUSE_DELETE: 'WAREHOUSE_DELETE',
+
   // 用户 / 资金
   USER_UPDATE: 'USER_UPDATE',
   BALANCE_ADJUST: 'BALANCE_ADJUST',
@@ -84,6 +90,10 @@ export const AuditActionLabels: Record<string, string> = {
   CARD_KEY_BULK_REMOVE: '批量删除卡密',
   CARD_KEY_PURGE: '清理卡密',
   CARD_KEY_BULK_IMPORT: '导入卡密',
+  WAREHOUSE_BULK_IMPORT: '仓库批量入库',
+  WAREHOUSE_ASSIGN: '仓库账号分配到商品',
+  WAREHOUSE_UNASSIGN: '撤回仓库账号分配',
+  WAREHOUSE_DELETE: '删除仓库账号',
   USER_UPDATE: '修改用户',
   BALANCE_ADJUST: '调整余额',
   BALANCE_RECHARGE: '账户充值到账',

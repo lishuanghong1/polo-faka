@@ -244,11 +244,12 @@ export class OrdersService {
         if (list.length < need) return [];
         const ids = list.map((c) => c.id);
         // 仅当卡密仍是 AVAILABLE 时才标 SOLD；count 不足说明被并发抢占了
+        const soldAt = new Date();
         const r = await tx.cardKey.updateMany({
           where: { id: { in: ids }, status: 'AVAILABLE' },
           data: {
             status: 'SOLD',
-            soldAt: new Date(),
+            soldAt,
             orderNo,
           },
         });
@@ -256,6 +257,11 @@ export class OrdersService {
           // 让事务回滚，外层会进入「库存不足」分支，订单卡在 PAID 待人工
           throw new Error('卡密被并发抢占，事务回滚');
         }
+        // 同步：若卡密来自外部仓库（warehouse_accounts），更新其 SOLD 状态
+        await tx.warehouseAccount.updateMany({
+          where: { cardKeyId: { in: ids } },
+          data: { status: 'SOLD', soldAt, orderNo },
+        });
         return list;
       }).catch((e) => {
         if ((e as Error).message?.includes('并发抢占')) return [];

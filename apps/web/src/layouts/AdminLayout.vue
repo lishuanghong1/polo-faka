@@ -39,6 +39,7 @@ const groups = [
     label: '高阶',
     items: [
       { to: '/admin/pool', icon: 'M4 18l4-2 4 4 4-4 4 2M4 14l4-2 4 4 4-4 4 2M4 10l4-2 4 4 4-4 4 2', label: '号池' },
+      { to: '/admin/warehouse', icon: 'M3 7v13h18V7M3 7l3-4h12l3 4M3 7h18M8 11h8', label: '仓库' },
       { to: '/admin/announcements', icon: 'M11 5h2a2 2 0 012 2v12l-3-2-3 2V7a2 2 0 012-2zM5 9h2M5 13h2M5 17h2', label: '公告' },
     ],
   },

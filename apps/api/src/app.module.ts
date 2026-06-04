@@ -13,6 +13,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductsModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { CardKeysModule } from './modules/card-keys/card-keys.module';
+import { WarehouseModule } from './modules/warehouse/warehouse.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { SiteSettingsModule } from './modules/site-settings/site-settings.module';
 import { FeedbacksModule } from './modules/feedbacks/feedbacks.module';
@@ -48,6 +49,7 @@ import { VipModule } from './modules/vip/vip.module';
     ProductsModule,
     OrdersModule,
     CardKeysModule,
+    WarehouseModule,
     AnnouncementsModule,
     SiteSettingsModule,
     FeedbacksModule,
