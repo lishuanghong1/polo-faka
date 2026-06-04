@@ -108,44 +108,53 @@ export class EmailCodeService {
   }
 
   /**
-   * 在仓库里按邮箱找到对应的邮箱密码（content = email----emailpwd----cursorpwd----token）。
+   * 在仓库里按邮箱找到对应账号，返回 content 里的「原始大小写邮箱 + 邮箱密码」。
+   * content = email----emailpwd----cursorpwd----token。
    * 找不到返回 null（说明不是仓库邮箱，走原 forge 逻辑）。
+   *
+   * 注意：toolsvip 对邮箱大小写敏感，所以这里必须用 content 里存的原始邮箱，
+   * 不能用前端传入的（已被 toLowerCase 的）邮箱。
    */
-  private async resolveWarehousePassword(email: string): Promise<string | null> {
+  private async resolveWarehouseCreds(
+    emailLower: string,
+  ): Promise<{ email: string; password: string } | null> {
     let content: string | null = null;
     try {
       const byEmail = await this.prisma.warehouseAccount.findFirst({
-        where: { email },
+        where: { email: emailLower },
         orderBy: { id: 'desc' },
       });
       content = byEmail?.content ?? null;
       if (!content) {
         const byContent = await this.prisma.warehouseAccount.findFirst({
-          where: { content: { startsWith: email } },
+          where: { content: { startsWith: emailLower } },
           orderBy: { id: 'desc' },
         });
         content = byContent?.content ?? null;
       }
-      // 兜底：上面都没命中时，扫描全部账号按 content 第一段做大小写无关匹配
+      // 兜底：扫描全部账号按 content 第一段 / email 字段做大小写无关匹配
       if (!content) {
         const all = await this.prisma.warehouseAccount.findMany({
           select: { content: true, email: true },
-          take: 2000,
+          take: 5000,
         });
         const hit = all.find((r) => {
           const e0 = (r.content || '').split(WAREHOUSE_SEPARATOR)[0]?.trim().toLowerCase();
-          return e0 === email || (r.email || '').trim().toLowerCase() === email;
+          return e0 === emailLower || (r.email || '').trim().toLowerCase() === emailLower;
         });
         content = hit?.content ?? null;
       }
     } catch (e) {
-      this.logger.warn(`resolveWarehousePassword failed: ${(e as Error)?.message}`);
+      this.logger.warn(`resolveWarehouseCreds failed: ${(e as Error)?.message}`);
       return null;
     }
     if (!content) return null;
     const parts = content.split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
     // email----emailpwd----cursorpwd----token
-    return parts[1] || null;
+    const origEmail = parts[0] || emailLower;
+    const password = parts[1] || '';
+    if (!password) return null;
+    return { email: origEmail, password };
   }
 
   /** 从三方邮件 list 里提取最新的 6 位验证码 */
@@ -274,11 +283,11 @@ export class EmailCodeService {
 
     const timeRange = params.timeRange && params.timeRange > 0 ? params.timeRange : 300;
 
-    // 仓库邮箱：用 content 里的邮箱密码调 toolsvip 临时邮箱接口
-    const warehousePassword = await this.resolveWarehousePassword(email);
-    if (warehousePassword) {
+    // 仓库邮箱：用 content 里的「原始大小写邮箱 + 邮箱密码」调 toolsvip 临时邮箱接口
+    const creds = await this.resolveWarehouseCreds(email);
+    if (creds) {
       try {
-        const r: any = await this.fetchFromToolsvip(email, warehousePassword, timeRange);
+        const r: any = await this.fetchFromToolsvip(creds.email, creds.password, timeRange);
         if (r.found) {
           return { ok: true, code: 'OK', ...r };
         }
