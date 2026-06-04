@@ -110,7 +110,36 @@ export class WarehouseService {
     const rows = await this.prisma.warehouseAccount.findMany({
       where: { sourceRef: { in: refs } },
     });
-    return rows.map((r) => this.toView(r));
+
+    // 附带商品名 / SKU 名，方便外部系统直接展示
+    const productIds = Array.from(
+      new Set(rows.map((r) => r.productId).filter((x): x is number => x != null)),
+    );
+    const skuIds = Array.from(
+      new Set(rows.map((r) => r.skuId).filter((x): x is number => x != null)),
+    );
+    const [products, skus] = await Promise.all([
+      productIds.length
+        ? this.prisma.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true, title: true },
+          })
+        : Promise.resolve([]),
+      skuIds.length
+        ? this.prisma.sku.findMany({
+            where: { id: { in: skuIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    const productMap = new Map(products.map((p) => [p.id, p.title]));
+    const skuMap = new Map(skus.map((s) => [s.id, s.name]));
+
+    return rows.map((r) => ({
+      ...this.toView(r),
+      productTitle: r.productId ? productMap.get(r.productId) ?? null : null,
+      skuName: r.skuId ? skuMap.get(r.skuId) ?? null : null,
+    }));
   }
 
   // ====== 管理后台：列表 / 分配 / 撤回 / 删除 ======
