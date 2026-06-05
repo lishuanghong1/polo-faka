@@ -115,6 +115,13 @@ function isMobile() {
 async function submit() {
   if (!canSubmit.value || submitting.value) return;
   errorMsg.value = '';
+
+  // 支付宝：先在点击的同步上下文里开空白页签，避免 await 后被拦截
+  let payWindow: Window | null = null;
+  if (payMethod.value === 'ALIPAY') {
+    payWindow = window.open('', '_blank');
+  }
+
   submitting.value = true;
   try {
     if (payMethod.value === 'REDEEM') {
@@ -141,9 +148,13 @@ async function submit() {
       });
       const channel = isMobile() ? 'WAP' : 'PC';
       const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
-      window.location.href = payUrl;
+      // 支付宝在新页签打开，当前页跳订单页轮询
+      if (payWindow) payWindow.location.href = payUrl;
+      else window.open(payUrl, '_blank');
+      router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
     }
   } catch (e: any) {
+    if (payWindow) payWindow.close();
     const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e?.message || '下单失败';
     errorMsg.value = msg;
     ElMessage.error(msg);

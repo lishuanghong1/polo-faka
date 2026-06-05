@@ -69,13 +69,19 @@ async function submitContact() {
 const paying = ref(false);
 async function goPay() {
   if (!order.value || paying.value) return;
+  // 先在点击同步上下文开空白页签，避免 await 后被拦截
+  const payWindow = window.open('', '_blank');
   paying.value = true;
   try {
     const channel = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? 'WAP' : 'PC';
     const r = await api.pay.alipayCreate(order.value.orderNo, channel);
-    window.location.href = r.payUrl;
+    // 支付宝新页签打开，当前订单页保持轮询
+    if (payWindow) payWindow.location.href = r.payUrl;
+    else window.open(r.payUrl, '_blank');
   } catch (e: any) {
+    if (payWindow) payWindow.close();
     ElMessage.error(e?.response?.data?.error?.message || '获取支付链接失败');
+  } finally {
     paying.value = false;
   }
 }

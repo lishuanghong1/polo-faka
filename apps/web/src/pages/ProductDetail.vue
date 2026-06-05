@@ -113,6 +113,12 @@ async function buy() {
     return;
   }
 
+  // 支付宝：在点击的同步上下文里先开一个空白页签，避免 await 之后被浏览器拦截弹窗
+  let payWindow: Window | null = null;
+  if (payMethod.value !== 'BALANCE') {
+    payWindow = window.open('', '_blank');
+  }
+
   submitting.value = true;
   try {
     const order = await api.createOrder({
@@ -130,8 +136,12 @@ async function buy() {
     }
     const channel = isMobile() ? 'WAP' : 'PC';
     const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
-    window.location.href = payUrl;
+    // 支付宝在新页签打开，当前页跳到订单页轮询支付状态
+    if (payWindow) payWindow.location.href = payUrl;
+    else window.open(payUrl, '_blank');
+    router.push(`/order/${order.orderNo}`);
   } catch (e: any) {
+    if (payWindow) payWindow.close();
     ElMessage.error(e?.response?.data?.error?.message || e?.message || '下单失败');
   } finally {
     submitting.value = false;
