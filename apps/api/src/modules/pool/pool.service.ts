@@ -400,9 +400,17 @@ export class PoolService {
     return sawEvents ? Math.max(0, totalUsed) : null;
   }
 
+  private async fetchCursorUsageForWindow(rawToken: string, startAt: Date, endAt: Date) {
+    const credential = this.parsePoolCredential(rawToken);
+    if (!credential.cursorToken) throw new BadRequestException('Cursor token 为空');
+    return this.fetchCursorUsageEvents(credential.cursorToken, startAt, endAt);
+  }
+
   private usageStatus(info: { total: number; used: number; remain: number }) {
-    if (info.remain <= 0) return 'EXHAUSTED';
-    if (info.remain < 5) return 'LOW_QUOTA';
+    if (info.total > 0) {
+      if (info.remain <= 0) return 'EXHAUSTED';
+      if (info.remain < 5) return 'LOW_QUOTA';
+    }
     return 'HEALTHY';
   }
 
@@ -712,7 +720,6 @@ export class PoolService {
     }
 
     this.assertGrantUsable(grant);
-    const requiredQuota = this.quotaRemain(grant.quotaTotal, grant.quotaUsed);
     const candidates = await this.prisma.poolAccount.findMany({
       where: {
         status: { in: ASSIGNABLE_POOL_STATUSES as any },
@@ -728,7 +735,6 @@ export class PoolService {
         return null;
       });
       if (!synced) continue;
-      if (synced.info.remain + 0.0001 < requiredQuota) continue;
 
       const assigned = await this.prisma.$transaction(async (tx) => {
         const freshGrant = await tx.poolGrant.findUnique({ where: { id: grant.id } });
@@ -777,14 +783,28 @@ export class PoolService {
     if (!account) throw new NotFoundException('账号不存在');
 
     const plainToken = decryptString(account.token);
-    const previousUsed = Number(account.usedQuota ?? 0);
+    const checkedAt = new Date();
     const info = await this.fetchCursorUsage(plainToken, Number(account.totalQuota ?? 0));
     info.total = toFixed4(Number(info.total || 0));
     info.used = toFixed4(Number(info.used || 0));
     info.remain = toFixed4(Math.max(0, Number(info.remain ?? info.total - info.used)));
 
-    const delta = Math.max(0, toFixed4(info.used - previousUsed));
-    const checkedAt = new Date();
+    const activeGrant = applyGrantUsage
+      ? await this.prisma.poolGrant.findFirst({
+          where: { accountId: account.id, active: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : null;
+    const grantWindowUsed = activeGrant
+      ? await this.fetchCursorUsageForWindow(
+          plainToken,
+          activeGrant.startAt ?? activeGrant.createdAt ?? checkedAt,
+          checkedAt,
+        ).catch((e) => {
+          this.logger.warn(`fetch grant usage window failed: ${e?.message ?? e}`);
+          return null;
+        })
+      : null;
     let grantDelta = 0;
 
     await this.prisma.$transaction(async (tx) => {
@@ -798,20 +818,19 @@ export class PoolService {
         },
       });
 
-      if (!applyGrantUsage) return;
-      const grant = await tx.poolGrant.findFirst({
-        where: { accountId: account.id, active: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (!grant) return;
+      if (!activeGrant) return;
 
-      const expired = !!grant.endAt && grant.endAt.getTime() < Date.now();
-      const nextUsed = toFixed4(Number(grant.quotaUsed) + (expired ? 0 : delta));
-      const exhausted = nextUsed >= Number(grant.quotaTotal) - 0.0001;
-      grantDelta = expired ? 0 : delta;
+      const expired = !!activeGrant.endAt && activeGrant.endAt.getTime() < Date.now();
+      const previousGrantUsed = Number(activeGrant.quotaUsed ?? 0);
+      const nextUsed =
+        grantWindowUsed === null
+          ? previousGrantUsed
+          : toFixed4(Math.max(0, grantWindowUsed));
+      const exhausted = nextUsed >= Number(activeGrant.quotaTotal) - 0.0001;
+      grantDelta = expired ? 0 : Math.max(0, toFixed4(nextUsed - previousGrantUsed));
 
       await tx.poolGrant.update({
-        where: { id: grant.id },
+        where: { id: activeGrant.id },
         data: {
           quotaUsed: new Prisma.Decimal(nextUsed),
           active: !(expired || exhausted),
@@ -868,12 +887,12 @@ export class PoolService {
       },
     );
 
-    const total = toFixed4(parsed.total > 0 ? parsed.total : fallbackTotal);
+    const total = toFixed4(fallbackTotal > 0 ? fallbackTotal : 0);
     const used = toFixed4(eventUsed ?? parsed.used);
     return {
       total,
       used,
-      remain: toFixed4(Math.max(0, total - used)),
+      remain: total > 0 ? toFixed4(Math.max(0, total - used)) : 0,
     };
   }
 

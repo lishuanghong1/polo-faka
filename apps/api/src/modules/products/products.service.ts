@@ -96,9 +96,9 @@ export class ProductsService {
         status: { in: ['HEALTHY', 'LOW_QUOTA', 'UNKNOWN'] as any },
         grants: { none: { active: true } },
       },
-      select: { totalQuota: true, usedQuota: true },
+      select: { id: true },
     });
-    return rows.filter((a) => Number(a.totalQuota) - Number(a.usedQuota) > 0).length;
+    return rows.length;
   }
 
   // ====== Admin ======
