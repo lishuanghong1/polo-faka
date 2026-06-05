@@ -509,7 +509,6 @@ export class PoolService {
     if (typeof data?.label === 'string') out.label = data.label.slice(0, 64);
     if (typeof data?.type === 'string') out.type = data.type.slice(0, 32);
     if (typeof data?.email === 'string') out.email = data.email.slice(0, 128);
-    if (Number.isFinite(Number(data?.totalQuota))) out.totalQuota = Number(data.totalQuota);
     if (Number.isFinite(Number(data?.usedQuota))) out.usedQuota = Number(data.usedQuota);
     if (typeof data?.status === 'string') out.status = data.status.slice(0, 16);
     if (typeof data?.note === 'string') out.note = data.note.slice(0, 500);
@@ -571,19 +570,12 @@ export class PoolService {
 
   private deriveGrantMeta(order: any) {
     const attrs = order.sku?.attrs;
-    const explicitQuota = positiveNumberFrom(['poolQuota', 'quotaTotal', 'quota'], attrs);
-    const quotaPerUnit = positiveNumberFrom(['poolQuotaPerUnit', 'quotaPerUnit'], attrs);
     const amountRate = envNumber('POOL_QUOTA_PER_CNY', DEFAULT_POOL_QUOTA_PER_CNY);
     const validityDays =
       positiveNumberFrom(['poolValidityDays', 'validityDays'], attrs) ??
       envNumber('POOL_DEFAULT_VALIDITY_DAYS', DEFAULT_POOL_VALIDITY_DAYS);
 
-    const quantity = Math.max(1, Number(order.quantity || 1));
-    const quotaTotal = explicitQuota
-      ? explicitQuota * quantity
-      : quotaPerUnit
-        ? quotaPerUnit * quantity
-        : Number(order.payAmount ?? order.totalAmount) * amountRate;
+    const quotaTotal = Number(order.payAmount ?? order.totalAmount) * amountRate;
 
     return {
       quotaTotal: Math.max(0.0001, toFixed4(quotaTotal)),

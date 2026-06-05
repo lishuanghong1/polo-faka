@@ -23,7 +23,7 @@ async function load() {
 onMounted(load);
 
 function newOne() {
-  editing.value = { label: '', type: 'CURSOR_PRO', token: '', email: '', totalQuota: 0, usedQuota: 0, _tokenChanged: true };
+  editing.value = { label: '', type: 'CURSOR_PRO', token: '', email: '', usedQuota: 0, _tokenChanged: true };
 }
 function startEdit(a: any) {
   editing.value = { ...a, token: '', _tokenChanged: false };
@@ -68,7 +68,7 @@ async function refresh() {
   refreshing.value = true;
   try {
     const r = await api.admin.poolRefresh();
-    ElMessage.success(`已刷新 ${r.length} 个账号的额度`);
+    ElMessage.success(`已刷新 ${r.length} 个账号的用量`);
     load();
   } finally {
     refreshing.value = false;
@@ -77,10 +77,10 @@ async function refresh() {
 
 const summary = computed(() => {
   const totalAccounts = list.value.length;
-  const totalQuota = list.value.reduce((s, a) => s + Number(a.totalQuota || 0), 0);
   const usedQuota = list.value.reduce((s, a) => s + Number(a.usedQuota || 0), 0);
   const healthy = list.value.filter((a) => a.status === 'HEALTHY').length;
-  return { totalAccounts, totalQuota, usedQuota, remain: totalQuota - usedQuota, healthy };
+  const occupied = list.value.filter((a) => a.activeGrant).length;
+  return { totalAccounts, usedQuota, healthy, occupied };
 });
 </script>
 
@@ -95,7 +95,7 @@ const summary = computed(() => {
         <svg class="w-3.5 h-3.5 inline mr-1 -mt-0.5" :class="{ 'animate-spin': refreshing }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M4 4v6h6M20 20v-6h-6M4 10a8 8 0 0114-5l2 2M20 14a8 8 0 01-14 5l-2-2"/>
         </svg>
-        {{ refreshing ? '刷新中' : '刷新额度' }}
+        {{ refreshing ? '刷新中' : '刷新用量' }}
       </button>
       <button class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="newOne">
         + 新建账号
@@ -104,7 +104,7 @@ const summary = computed(() => {
   </AdminPageHeader>
 
   <!-- Summary -->
-  <div class="card p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-y-3 sm:divide-x sm:divide-ink-100">
+  <div class="card p-4 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-y-3 sm:divide-x sm:divide-ink-100">
     <div class="px-3 sm:px-4">
       <div class="text-xs text-ink-500">账号总数</div>
       <div class="mt-1 text-lg font-medium text-ink-900">{{ summary.totalAccounts }}</div>
@@ -114,16 +114,12 @@ const summary = computed(() => {
       <div class="mt-1 text-lg font-medium text-brand-700">{{ summary.healthy }}</div>
     </div>
     <div class="px-3 sm:px-4">
-      <div class="text-xs text-ink-500">总额度</div>
-      <div class="mt-1 text-lg font-medium text-ink-900">${{ summary.totalQuota.toFixed(2) }}</div>
-    </div>
-    <div class="px-3 sm:px-4">
-      <div class="text-xs text-ink-500">已用</div>
+      <div class="text-xs text-ink-500">Cursor 已用</div>
       <div class="mt-1 text-lg font-medium text-ink-700">${{ summary.usedQuota.toFixed(2) }}</div>
     </div>
     <div class="px-3 sm:px-4">
-      <div class="text-xs text-ink-500">剩余</div>
-      <div class="mt-1 text-lg font-semibold text-price">${{ summary.remain.toFixed(2) }}</div>
+      <div class="text-xs text-ink-500">占用中</div>
+      <div class="mt-1 text-lg font-semibold text-price">{{ summary.occupied }}</div>
     </div>
   </div>
 
@@ -134,9 +130,7 @@ const summary = computed(() => {
         <th>标签</th>
         <th>类型</th>
         <th>Token</th>
-        <th class="!text-right">额度</th>
-        <th class="!text-right">已用</th>
-        <th class="!text-right">剩余</th>
+        <th class="!text-right">Cursor 已用</th>
         <th>占用订单</th>
         <th>状态</th>
         <th>最后检查</th>
@@ -152,9 +146,7 @@ const summary = computed(() => {
         </td>
         <td class="text-ink-600 text-xs font-mono">{{ a.type }}</td>
         <td class="font-mono text-xs text-ink-500">{{ a.tokenMasked || '—' }}</td>
-        <td class="text-right text-ink-600">${{ a.totalQuota }}</td>
         <td class="text-right text-ink-600">${{ a.usedQuota }}</td>
-        <td class="text-right font-medium text-price">${{ (Number(a.totalQuota) - Number(a.usedQuota)).toFixed(2) }}</td>
         <td>
           <div v-if="a.activeGrant" class="text-xs">
             <div class="font-mono text-ink-700">{{ a.activeGrant.orderNo }}</div>
