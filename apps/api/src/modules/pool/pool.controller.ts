@@ -58,6 +58,25 @@ export class PoolController {
     return this.svc.queryQuota(orderNo);
   }
 
+  /**
+   * 从平台维护的号池里申请一个可用账号。
+   * 已经申请过的订单会返回同一个账号；额度耗尽/过期后不再返回 Token。
+   */
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('grants/:orderNo/claim-account')
+  async claim(
+    @Param('orderNo') orderNo: string,
+    @CurrentUser('sub') userId: number,
+  ) {
+    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (!order.userId || order.userId !== userId) {
+      throw new ForbiddenException('订单不属于当前用户');
+    }
+    return this.svc.claimAccount(orderNo);
+  }
+
   /** Token 一键激活（公开，限流以防滥用） */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })

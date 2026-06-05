@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
+import { useUserStore } from '@/stores/user';
 import {
   formatCardKeyContent,
   formatCardKeysForCopy,
@@ -21,11 +22,16 @@ import { formatDateTime, formatMoneyRaw, copyText } from '@/utils/format';
 const route = useRoute();
 const router = useRouter();
 const site = useSiteStore();
+const user = useUserStore();
 const order = ref<any>(null);
 const loading = ref(true);
 const notFound = ref(false);
 const needContact = ref(false);
 const contactInput = ref('');
+const poolGrant = ref<any | null>(null);
+const poolToken = ref('');
+const poolLoading = ref(false);
+const poolClaiming = ref(false);
 let timer: any = null;
 
 const wechat = computed(() => site.settings.cs_wechat || 'ymw_polo');
@@ -34,11 +40,13 @@ const telegram = computed(() => site.settings.cs_telegram || '');
 
 const needContactSupport = computed(() => {
   if (!order.value) return false;
+  if (isPoolQuotaOrder.value) return false;
   if (!['PAID', 'DELIVERED'].includes(order.value.status)) return false;
   return !order.value.cardKeys?.length;
 });
 
 const statusInfo = computed(() => statusOf(order.value?.status));
+const isPoolQuotaOrder = computed(() => order.value?.product?.deliveryType === 'POOL_QUOTA');
 
 const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
   return (order.value?.cardKeys || [])
@@ -55,16 +63,47 @@ const plainCardKeys = computed(() => {
 
 const primaryDeliveryEmail = computed(() => deliveryAccounts.value[0]?.email || '');
 
+const poolQuotaPercent = computed(() => {
+  if (!poolGrant.value?.quotaTotal) return 0;
+  return Math.min(100, Math.max(0, (Number(poolGrant.value.quotaUsed || 0) / Number(poolGrant.value.quotaTotal)) * 100));
+});
+
+const poolAccountCopyText = computed(() => {
+  const account = poolGrant.value?.account;
+  if (!account) return '';
+  if (account.raw) return account.raw;
+  if (!poolToken.value) return '';
+  return [account.email, account.emailPassword, account.cursorPassword, poolToken.value]
+    .filter(Boolean)
+    .join('----');
+});
+
+async function loadPoolGrant() {
+  poolGrant.value = null;
+  poolToken.value = '';
+  if (!isPoolQuotaOrder.value || order.value?.status !== 'DELIVERED') return;
+  if (!user.isLoggedIn) return;
+  poolLoading.value = true;
+  try {
+    poolGrant.value = await api.poolQuery(order.value.orderNo, true);
+  } catch {
+    poolGrant.value = null;
+  } finally {
+    poolLoading.value = false;
+  }
+}
+
 async function load(contact?: string) {
   try {
     const r: any = await api.orderQuery(route.params.orderNo as string, contact);
     if (r && r.requireContact) {
-      order.value = null; needContact.value = true; notFound.value = false;
+      order.value = null; needContact.value = true; notFound.value = false; poolGrant.value = null;
     } else {
       order.value = r; notFound.value = false; needContact.value = false;
+      await loadPoolGrant();
     }
   } catch {
-    order.value = null; needContact.value = false; notFound.value = true;
+    order.value = null; needContact.value = false; notFound.value = true; poolGrant.value = null;
   } finally {
     loading.value = false;
   }
@@ -122,6 +161,32 @@ async function copy(text: string, label = '已复制') {
 }
 function copyAll() {
   copy(formatCardKeysForCopy(order.value.cardKeys || []), '已复制全部交付内容');
+}
+
+async function claimPoolAccount() {
+  if (!order.value || poolClaiming.value) return;
+  poolClaiming.value = true;
+  try {
+    const r = await api.poolClaim(order.value.orderNo);
+    poolGrant.value = r;
+    poolToken.value = r?.account?.token || '';
+    ElMessage.success('已分配号池账号');
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '申请账号失败');
+  } finally {
+    poolClaiming.value = false;
+  }
+}
+
+async function refreshPoolGrant() {
+  if (!order.value || poolLoading.value) return;
+  poolLoading.value = true;
+  try {
+    poolGrant.value = await api.poolQuery(order.value.orderNo);
+    ElMessage.success('额度已刷新');
+  } finally {
+    poolLoading.value = false;
+  }
 }
 
 onMounted(async () => {
@@ -286,6 +351,123 @@ const statusHeroClass = computed(() => {
             <dd class="text-ink-900">{{ formatDateTime(order.createdAt) }}</dd>
           </div>
         </dl>
+      </div>
+
+      <!-- ────── 号池额度 ────── -->
+      <div v-if="isPoolQuotaOrder" class="card p-5 md:p-6 mb-4">
+        <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+          <h3 class="text-sm font-semibold text-ink-900 flex items-center gap-2">
+            <span class="w-1 h-4 bg-brand-600 rounded-full" />
+            高级模型额度
+          </h3>
+          <button
+            v-if="user.isLoggedIn && poolGrant"
+            class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded transition"
+            :disabled="poolLoading"
+            @click="refreshPoolGrant"
+          >
+            {{ poolLoading ? '刷新中' : '刷新额度' }}
+          </button>
+        </div>
+
+        <div v-if="!user.isLoggedIn" class="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
+          该商品是登录用户专属额度包。请登录购买账号后查看额度并申请号池账号。
+          <button
+            class="ml-2 text-brand-700 hover:underline"
+            @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
+          >去登录</button>
+        </div>
+
+        <div v-else-if="poolLoading && !poolGrant" class="text-sm text-ink-500 py-2">正在读取额度…</div>
+
+        <div v-else-if="poolGrant" class="space-y-4">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="rounded-xl bg-ink-50/80 px-3 py-3">
+              <div class="text-xs text-ink-500">总额度</div>
+              <div class="mt-1 text-lg font-semibold text-ink-900">${{ Number(poolGrant.quotaTotal || 0).toFixed(2) }}</div>
+            </div>
+            <div class="rounded-xl bg-ink-50/80 px-3 py-3">
+              <div class="text-xs text-ink-500">已使用</div>
+              <div class="mt-1 text-lg font-semibold text-ink-800">${{ Number(poolGrant.quotaUsed || 0).toFixed(2) }}</div>
+            </div>
+            <div class="rounded-xl bg-brand-50/70 px-3 py-3">
+              <div class="text-xs text-brand-700">剩余额度</div>
+              <div class="mt-1 text-lg font-semibold text-brand-800">${{ Number(poolGrant.quotaRemain || 0).toFixed(2) }}</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="h-2 rounded-full bg-ink-100 overflow-hidden">
+              <div class="h-full bg-brand-600 transition-all" :style="{ width: `${poolQuotaPercent}%` }" />
+            </div>
+            <div class="mt-2 flex justify-between gap-3 text-xs text-ink-500">
+              <span>{{ poolGrant.active ? '额度可用' : '额度已停用' }}</span>
+              <span v-if="poolGrant.endAt">有效期至 {{ formatDateTime(poolGrant.endAt) }}</span>
+            </div>
+          </div>
+
+          <div v-if="poolGrant.account" class="rounded-xl border border-ink-100 bg-ink-50/60 p-4 space-y-2.5">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div class="text-sm font-medium text-ink-900">{{ poolGrant.account.label }}</div>
+                <div class="text-xs text-ink-500 font-mono">{{ poolGrant.account.type }}</div>
+              </div>
+              <span class="text-xs px-2 py-0.5 rounded-md border border-brand-200 bg-brand-50 text-brand-700">已分配</span>
+            </div>
+            <div v-if="poolGrant.account.email" class="flex items-center gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0">邮箱</div>
+              <code class="text-sm text-ink-900 break-all flex-1 font-mono">{{ poolGrant.account.email }}</code>
+              <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copy(poolGrant.account.email, '邮箱已复制')">复制</button>
+            </div>
+            <div v-if="poolGrant.account.emailPassword" class="flex items-center gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0">邮箱密码</div>
+              <code class="text-sm text-ink-900 break-all flex-1 font-mono">{{ poolGrant.account.emailPassword }}</code>
+              <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copy(poolGrant.account.emailPassword, '邮箱密码已复制')">复制</button>
+            </div>
+            <div v-if="poolGrant.account.cursorPassword" class="flex items-center gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0">账号密码</div>
+              <code class="text-sm text-ink-900 break-all flex-1 font-mono">{{ poolGrant.account.cursorPassword }}</code>
+              <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copy(poolGrant.account.cursorPassword, '账号密码已复制')">复制</button>
+            </div>
+            <div class="flex items-start gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0 mt-1">Token</div>
+              <code class="text-xs text-ink-700 break-all flex-1 font-mono leading-relaxed">{{ poolToken || poolGrant.account.tokenMasked }}</code>
+              <button
+                v-if="poolToken"
+                class="text-xs text-brand-600 hover:underline shrink-0 mt-0.5"
+                @click="copy(poolToken, 'Token 已复制')"
+              >复制</button>
+              <button
+                v-else
+                class="text-xs text-brand-600 hover:underline shrink-0 mt-0.5"
+                :disabled="poolClaiming || !poolGrant.active"
+                @click="claimPoolAccount"
+              >查看</button>
+            </div>
+            <div v-if="poolAccountCopyText" class="pt-1">
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded transition"
+                @click="copy(poolAccountCopyText, '账号信息已复制')"
+              >复制完整账号</button>
+            </div>
+          </div>
+
+          <BrandButton
+            v-else
+            variant="primary"
+            size="md"
+            block
+            :loading="poolClaiming"
+            :disabled="!poolGrant.active || Number(poolGrant.quotaRemain || 0) <= 0"
+            @click="claimPoolAccount"
+          >
+            {{ poolClaiming ? '正在申请…' : '申请号池账号' }}
+          </BrandButton>
+        </div>
+
+        <div v-else class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          额度正在发放中，请稍后刷新订单页。
+        </div>
       </div>
 
       <!-- ────── 账号交付 ────── -->

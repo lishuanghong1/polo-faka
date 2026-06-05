@@ -151,7 +151,9 @@ export const api = {
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
   // 池
-  poolQuery: (orderNo: string) => http.get(`/pool/grants/${orderNo}`),
+  poolQuery: (orderNo: string, silent = false) =>
+    http.get(`/pool/grants/${orderNo}`, silent ? ({ silent: true } as any) : undefined),
+  poolClaim: (orderNo: string) => http.post(`/pool/grants/${orderNo}/claim-account`),
   poolBind: (orderNo: string, token: string) => http.post(`/pool/grants/${orderNo}/bind-token`, { token }),
   activate: (body: { token: string; captcha?: string }) => http.post('/pool/activate', body),
 

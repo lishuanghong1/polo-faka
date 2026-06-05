@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { VipService } from '../vip/vip.service';
+import { PoolService } from '../pool/pool.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -23,6 +24,7 @@ export class OrdersService {
     private prisma: PrismaService,
     @Inject(REDIS_CLIENT) private redis: Redis,
     private vip: VipService,
+    private pool: PoolService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -48,6 +50,9 @@ export class OrdersService {
     }
     if (!sku.visible || sku.product.status !== 'ON_SALE') {
       throw new BadRequestException('商品已下架');
+    }
+    if (sku.product.deliveryType === 'POOL_QUOTA' && !userId) {
+      throw new BadRequestException('号池额度包需要登录后购买');
     }
 
     const unitPrice = this.calcUnitPrice(
@@ -225,7 +230,10 @@ export class OrdersService {
     }
 
     try {
-      const order = await this.prisma.order.findUnique({ where: { orderNo } });
+      const order = await this.prisma.order.findUnique({
+        where: { orderNo },
+        include: { product: true },
+      });
       if (!order) return;
       if (order.status === 'DELIVERED' || order.status === 'REFUNDED') return;
 
@@ -235,6 +243,25 @@ export class OrdersService {
           where: { orderNo },
           data: { status: 'PAID', paidAt: new Date() },
         });
+      }
+
+      if (order.product.deliveryType === 'POOL_QUOTA') {
+        await this.pool.createGrantForOrder(orderNo);
+        await this.prisma.$transaction([
+          this.prisma.order.update({
+            where: { orderNo },
+            data: { status: 'DELIVERED', deliveredAt: new Date() },
+          }),
+          this.prisma.sku.update({
+            where: { id: order.skuId },
+            data: { sales: { increment: order.quantity } },
+          }),
+          this.prisma.product.update({
+            where: { id: order.productId },
+            data: { sales: { increment: order.quantity } },
+          }),
+        ]);
+        return;
       }
 
       // 取出 quantity 张可用卡密（用事务 + CAS 守卫，防并发抢占）
@@ -302,6 +329,7 @@ export class OrdersService {
     const order = await this.prisma.order.findUnique({
       where: { orderNo },
       include: {
+        product: { select: { deliveryType: true } },
         cardKeys: {
           select: {
             id: true,

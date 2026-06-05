@@ -36,11 +36,18 @@ export class ProductsService {
       }),
     ]);
 
+    const poolStock = items.some((p) => p.deliveryType === 'POOL_QUOTA')
+      ? await this.computePoolAvailableAccounts()
+      : 0;
     const list = await Promise.all(
       items.map(async (p) => {
-        const stockBySku = await this.computeStockBySku(p.id);
-        // 库存只看 CardKey AVAILABLE 数；sku.stock 字段已废弃（仅作为旧数据兼容字段保留）
-        const skus = p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? 0 }));
+        const stockBySku =
+          p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
+        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看当前可申请的号池账号数
+        const skus = p.skus.map((s) => ({
+          ...s,
+          stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+        }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
       }),
@@ -58,10 +65,15 @@ export class ProductsService {
       },
     });
     if (!p) throw new NotFoundException('商品不存在');
-    const stockBySku = await this.computeStockBySku(p.id);
+    const poolStock =
+      p.deliveryType === 'POOL_QUOTA' ? await this.computePoolAvailableAccounts() : 0;
+    const stockBySku = p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
     return {
       ...p,
-      skus: p.skus.map((s) => ({ ...s, stock: stockBySku[s.id] ?? 0 })),
+      skus: p.skus.map((s) => ({
+        ...s,
+        stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+      })),
     };
   }
 
@@ -75,6 +87,18 @@ export class ProductsService {
     const result: Record<number, number> = {};
     for (const r of rows) result[r.skuId] = r._count._all;
     return result;
+  }
+
+  /** 当前可新分配给用户的号池账号数量 */
+  async computePoolAvailableAccounts() {
+    const rows = await this.prisma.poolAccount.findMany({
+      where: {
+        status: { in: ['HEALTHY', 'LOW_QUOTA', 'UNKNOWN'] as any },
+        grants: { none: { active: true } },
+      },
+      select: { totalQuota: true, usedQuota: true },
+    });
+    return rows.filter((a) => Number(a.totalQuota) - Number(a.usedQuota) > 0).length;
   }
 
   // ====== Admin ======

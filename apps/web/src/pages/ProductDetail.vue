@@ -31,6 +31,7 @@ const vipMe = ref<{
 const vipOverrides = ref<Record<string, number>>({}); // tier -> discount
 
 const currentSku = computed(() => product.value?.skus?.find((s: any) => s.id === skuId.value));
+const isPoolQuotaProduct = computed(() => product.value?.deliveryType === 'POOL_QUOTA');
 const bulk = computed<any[] | null>(() => product.value?.bulkPricing || null);
 const unitPrice = computed(() => {
   if (!currentSku.value) return 0;
@@ -97,6 +98,15 @@ function isMobile() {
 
 async function buy() {
   if (!skuId.value) return;
+  if (isPoolQuotaProduct.value && !userStore.isLoggedIn) {
+    ElMessage.warning('号池额度包需要先登录');
+    router.push({ name: 'login', query: { redirect: route.fullPath } });
+    return;
+  }
+  if (isPoolQuotaProduct.value && currentSku.value && currentSku.value.stock <= 0) {
+    ElMessage.warning('暂无可申请的号池账号，请稍后再试');
+    return;
+  }
   if (payMethod.value === 'BALANCE') {
     if (!userStore.isLoggedIn) {
       ElMessage.warning('余额支付需要先登录');
@@ -187,16 +197,29 @@ async function buy() {
             <span
               class="ml-1 text-xs"
               :class="s.stock <= 0 ? 'text-amber-600' : 'text-ink-400'"
-            >({{ s.stock <= 0 ? '需联系客服' : s.stock }})</span>
+            >
+              ({{
+                isPoolQuotaProduct
+                  ? (s.stock <= 0 ? '暂无可申请账号' : `可申请 ${s.stock} 个账号`)
+                  : (s.stock <= 0 ? '需联系客服' : s.stock)
+              }})
+            </span>
           </el-radio>
         </el-radio-group>
       </div>
 
       <div
-        v-if="currentSku && currentSku.stock <= 0"
+        v-if="currentSku && currentSku.stock <= 0 && !isPoolQuotaProduct"
         class="mt-3 px-3 py-2 rounded-lg bg-amber-50/70 border border-amber-200 text-xs text-amber-800 leading-relaxed"
       >
         当前规格暂无库存，可正常下单并完成支付，付款后我们会人工尽快为您发货；如急需可在订单页联系客服。
+      </div>
+
+      <div
+        v-if="isPoolQuotaProduct"
+        class="mt-3 px-3 py-2 rounded-lg bg-brand-50/70 border border-brand-200 text-xs text-brand-900 leading-relaxed"
+      >
+        该商品为高级模型额度包。付款后会生成可用额度，您可在订单页申请号池账号；额度用完或过期后不再展示账号 Token。
       </div>
 
       <div v-if="bulk && bulk.length" class="mt-4 text-xs text-ink-500">
@@ -300,7 +323,12 @@ async function buy() {
         <el-button
           type="primary"
           :loading="submitting"
-          :disabled="!skuId || !currentSku || (payMethod === 'ALIPAY' && !alipayEnabled)"
+          :disabled="
+            !skuId ||
+            !currentSku ||
+            (payMethod === 'ALIPAY' && !alipayEnabled) ||
+            (isPoolQuotaProduct && (!userStore.isLoggedIn || currentSku.stock <= 0))
+          "
           @click="buy"
         >
           {{
@@ -309,7 +337,11 @@ async function buy() {
                   ? (balanceEnough ? '余额支付' : '余额不足 · 去充值')
                   : '登录后用余额支付')
               : (alipayEnabled
-                  ? (currentSku && currentSku.stock <= 0 ? '下单（人工发货）' : '立即购买')
+                  ? (isPoolQuotaProduct && !userStore.isLoggedIn
+                      ? '登录后购买额度包'
+                      : isPoolQuotaProduct && currentSku && currentSku.stock <= 0
+                        ? '暂无可申请账号'
+                        : currentSku && currentSku.stock <= 0 ? '下单（人工发货）' : '立即购买')
                   : '支付宝未启用')
           }}
         </el-button>

@@ -26,5 +26,6 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     Skeleton: typeof import('./components/Skeleton.vue')['default']
     StatusTag: typeof import('./components/admin/StatusTag.vue')['default']
+    UserDetailDrawer: typeof import('./components/admin/UserDetailDrawer.vue')['default']
   }
 }

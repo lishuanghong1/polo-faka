@@ -137,6 +137,7 @@ const summary = computed(() => {
         <th class="!text-right">额度</th>
         <th class="!text-right">已用</th>
         <th class="!text-right">剩余</th>
+        <th>占用订单</th>
         <th>状态</th>
         <th>最后检查</th>
         <th class="!text-right" style="width: 160px"></th>
@@ -154,6 +155,16 @@ const summary = computed(() => {
         <td class="text-right text-ink-600">${{ a.totalQuota }}</td>
         <td class="text-right text-ink-600">${{ a.usedQuota }}</td>
         <td class="text-right font-medium text-price">${{ (Number(a.totalQuota) - Number(a.usedQuota)).toFixed(2) }}</td>
+        <td>
+          <div v-if="a.activeGrant" class="text-xs">
+            <div class="font-mono text-ink-700">{{ a.activeGrant.orderNo }}</div>
+            <div class="text-ink-400">
+              ${{ Number(a.activeGrant.quotaUsed || 0).toFixed(2) }} /
+              ${{ Number(a.activeGrant.quotaTotal || 0).toFixed(2) }}
+            </div>
+          </div>
+          <span v-else class="text-xs text-ink-400">未占用</span>
+        </td>
         <td><StatusTag :status="a.status" /></td>
         <td class="text-ink-500 text-xs">{{ a.lastCheckAt ? new Date(a.lastCheckAt).toLocaleString() : '—' }}</td>
         <td class="text-right whitespace-nowrap">

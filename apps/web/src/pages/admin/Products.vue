@@ -33,6 +33,11 @@ function startEdit(p: any) {
   if (Array.isArray(editing.value.bulkPricing)) {
     editing.value._bulkStr = JSON.stringify(editing.value.bulkPricing);
   }
+  for (const s of editing.value.skus || []) {
+    const attrs = s.attrs && typeof s.attrs === 'object' ? s.attrs : {};
+    s._poolQuota = attrs.poolQuota ?? attrs.quotaTotal ?? attrs.quota ?? '';
+    s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
+  }
 }
 
 function newProduct() {
@@ -46,7 +51,7 @@ function newProduct() {
     _tagsStr: '',
     _bulkStr: '',
     warranty: '',
-    skus: [{ name: '默认规格', price: 0, sort: 0, visible: true }],
+    skus: [{ name: '默认规格', price: 0, sort: 0, visible: true, _poolQuota: '', _poolValidityDays: '' }],
     status: 'ON_SALE',
     deliveryType: 'CARD_KEY',
   };
@@ -71,6 +76,28 @@ async function save() {
   }
   delete payload._tagsStr;
   delete payload._bulkStr;
+  payload.skus = (payload.skus || []).map((raw: any) => {
+    const s = { ...raw };
+    const attrs = s.attrs && typeof s.attrs === 'object' && !Array.isArray(s.attrs) ? { ...s.attrs } : {};
+    if (payload.deliveryType === 'POOL_QUOTA') {
+      const quota = Number(s._poolQuota);
+      const validityDays = Number(s._poolValidityDays);
+      if (Number.isFinite(quota) && quota > 0) attrs.poolQuota = quota;
+      else delete attrs.poolQuota;
+      if (Number.isFinite(validityDays) && validityDays > 0) attrs.poolValidityDays = Math.floor(validityDays);
+      else delete attrs.poolValidityDays;
+    } else {
+      delete attrs.poolQuota;
+      delete attrs.quotaTotal;
+      delete attrs.quota;
+      delete attrs.poolValidityDays;
+      delete attrs.validityDays;
+    }
+    s.attrs = Object.keys(attrs).length ? attrs : null;
+    delete s._poolQuota;
+    delete s._poolValidityDays;
+    return s;
+  });
 
   if (payload.id) {
     await api.admin.productsUpdate(payload.id, payload);
@@ -101,7 +128,7 @@ async function toggleStatus(p: any) {
 }
 
 function addSku() {
-  editing.value.skus.push({ name: '', price: 0, sort: editing.value.skus.length, visible: true });
+  editing.value.skus.push({ name: '', price: 0, sort: editing.value.skus.length, visible: true, _poolQuota: '', _poolValidityDays: '' });
 }
 function removeSku(i: number) {
   editing.value.skus.splice(i, 1);
@@ -203,6 +230,14 @@ function removeSku(i: number) {
             <option value="DRAFT">草稿</option>
           </select>
         </div>
+        <div>
+          <label class="block text-xs text-ink-500 mb-1">交付类型</label>
+          <select v-model="editing.deliveryType" class="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white">
+            <option value="CARD_KEY">卡密自动发货</option>
+            <option value="POOL_QUOTA">号池额度包</option>
+            <option value="MANUAL">人工发货</option>
+          </select>
+        </div>
       </div>
       <div>
         <label class="block text-xs text-ink-500 mb-1">标题</label>
@@ -275,6 +310,43 @@ function removeSku(i: number) {
           <input v-model.number="s.price" type="number" step="0.01" placeholder="价格" class="px-3 py-2 border border-ink-200 rounded-lg text-sm text-right" />
           <input v-model.number="s.sort" type="number" placeholder="排序" class="px-3 py-2 border border-ink-200 rounded-lg text-sm text-right" />
           <button class="text-ink-400 hover:text-rose-600 text-lg" @click="removeSku(i)">×</button>
+        </div>
+        <div v-if="editing.deliveryType === 'POOL_QUOTA'" class="space-y-2">
+          <div
+            v-for="(s, i) in editing.skus"
+            :key="`pool-${i}`"
+            class="grid grid-cols-1 sm:grid-cols-[1fr_140px_120px] gap-2 items-end rounded-lg bg-brand-50/50 border border-brand-100 p-3"
+          >
+            <div class="min-w-0">
+              <div class="text-xs text-ink-500 mb-1">规格</div>
+              <div class="text-sm text-ink-800 truncate">{{ s.name || `规格 ${i + 1}` }}</div>
+            </div>
+            <div>
+              <label class="block text-xs text-ink-500 mb-1">授权额度</label>
+              <input
+                v-model.number="s._poolQuota"
+                type="number"
+                min="0"
+                step="0.0001"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm text-right"
+                placeholder="默认按实付金额"
+              />
+            </div>
+            <div>
+              <label class="block text-xs text-ink-500 mb-1">有效天数</label>
+              <input
+                v-model.number="s._poolValidityDays"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm text-right"
+                placeholder="30"
+              />
+            </div>
+          </div>
+          <p class="text-[11px] text-brand-800 leading-relaxed">
+            授权额度留空时，系统按实付金额和环境变量 POOL_QUOTA_PER_CNY 计算；填写后按该规格额度 × 购买数量发放。
+          </p>
         </div>
         <p v-if="editing.id" class="text-[11px] text-ink-400 mt-1">
           提示：删除规格时如果该规格还有售出/锁定的卡密，保存会失败。

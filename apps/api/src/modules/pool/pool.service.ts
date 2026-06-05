@@ -1,8 +1,52 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decryptString, encryptString, isEncrypted, maskSecret } from '../../common/crypto.util';
+
+const ASSIGNABLE_POOL_STATUSES = ['HEALTHY', 'LOW_QUOTA', 'UNKNOWN'];
+const DEFAULT_POOL_QUOTA_PER_CNY = 1;
+const DEFAULT_POOL_VALIDITY_DAYS = 30;
+const POOL_ACCOUNT_SEPARATOR = '----';
+const CURSOR_USAGE_SUMMARY_URL = 'https://cursor.com/api/usage-summary';
+const CURSOR_USAGE_EVENTS_URL = 'https://cursor.com/api/dashboard/get-filtered-usage-events';
+
+function toFixed4(value: number) {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+function numeric(value: unknown, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function positiveNumberFrom(keys: string[], source: any): number | null {
+  if (!source || typeof source !== 'object') return null;
+  for (const key of keys) {
+    const n = Number(source[key]);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
+function envNumber(key: string, fallback: number) {
+  const n = Number(process.env[key]);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function parseMoneyLike(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const n = Number(value.replace(/[$,\s]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
 
 @Injectable()
 export class PoolService {
@@ -17,27 +61,412 @@ export class PoolService {
     }, 2000);
   }
 
-  /** 列表项展示用：脱敏 + 不返回密文 */
-  private toListItem(a: any) {
-    let plain = '';
+  private quotaRemain(total: unknown, used: unknown) {
+    return Math.max(0, toFixed4(numeric(total) - numeric(used)));
+  }
+
+  private safeDecrypt(token?: string | null) {
+    if (!token) return '';
     try {
-      plain = decryptString(a.token);
+      return decryptString(token);
     } catch {
-      /* 解密失败 → 视为空 */
+      return '';
+    }
+  }
+
+  private parsePoolCredential(raw: string) {
+    const value = String(raw || '').trim();
+    const parts = value.split(POOL_ACCOUNT_SEPARATOR).map((part) => part.trim());
+    if (parts.length >= 4) {
+      return {
+        raw: value,
+        email: parts[0] || '',
+        emailPassword: parts[1] || '',
+        cursorPassword: parts[2] || '',
+        cursorToken: parts.slice(3).join(POOL_ACCOUNT_SEPARATOR).trim(),
+      };
     }
     return {
+      raw: value,
+      email: '',
+      emailPassword: '',
+      cursorPassword: '',
+      cursorToken: value,
+    };
+  }
+
+  private cursorAuthHeaders(cursorToken: string, includeOrigin = false) {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      Cookie: `WorkosCursorSessionToken=${cursorToken}`,
+      Authorization: `Bearer ${cursorToken}`,
+      Referer: 'https://cursor.com/dashboard/usage',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36',
+    };
+    if (includeOrigin) headers.Origin = 'https://cursor.com';
+    return headers;
+  }
+
+  private getPath(source: any, path: string) {
+    return path.split('.').reduce((current, key) => {
+      if (current == null) return undefined;
+      return current[key];
+    }, source);
+  }
+
+  private firstMoney(source: any, paths: string[]) {
+    for (const path of paths) {
+      const n = parseMoneyLike(this.getPath(source, path));
+      if (n !== null) return /cents?/i.test(path) ? n / 100 : n;
+    }
+    return null;
+  }
+
+  private firstDate(source: any, paths: string[]) {
+    for (const path of paths) {
+      const value = this.getPath(source, path);
+      if (!value) continue;
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+    return null;
+  }
+
+  private findMoneyByKey(
+    source: unknown,
+    matcher: (key: string) => boolean,
+    seen = new WeakSet<object>(),
+  ): number | null {
+    if (!source || typeof source !== 'object') return null;
+    const obj = source as Record<string, unknown>;
+    if (seen.has(obj)) return null;
+    seen.add(obj);
+
+    if (Array.isArray(source)) {
+      for (const item of source) {
+        const n = this.findMoneyByKey(item, matcher, seen);
+        if (n !== null) return n;
+      }
+      return null;
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+      if (matcher(key)) {
+        const n = parseMoneyLike(value);
+        if (n !== null) return /cents?/i.test(key) ? n / 100 : n;
+      }
+      const nested = this.findMoneyByKey(value, matcher, seen);
+      if (nested !== null) return nested;
+    }
+    return null;
+  }
+
+  private cursorBillingWindow(summary: any) {
+    const endAt =
+      this.firstDate(summary, [
+        'billingCycleEnd',
+        'currentPeriodEnd',
+        'periodEnd',
+        'endDate',
+        'data.billingCycleEnd',
+        'data.currentPeriodEnd',
+        'data.periodEnd',
+      ]) ?? new Date();
+    const startAt =
+      this.firstDate(summary, [
+        'billingCycleStart',
+        'currentPeriodStart',
+        'periodStart',
+        'startDate',
+        'data.billingCycleStart',
+        'data.currentPeriodStart',
+        'data.periodStart',
+      ]) ?? dayjs(endAt).subtract(31, 'day').toDate();
+    return { startAt, endAt };
+  }
+
+  private normalizeCursorEvents(data: any): any[] {
+    const candidates = [
+      data,
+      data?.events,
+      data?.usageEvents,
+      data?.items,
+      data?.rows,
+      data?.data,
+      data?.data?.events,
+      data?.data?.usageEvents,
+      data?.data?.items,
+      data?.data?.rows,
+      data?.result?.events,
+      data?.result?.items,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+  }
+
+  private cursorEventCost(event: any) {
+    return (
+      this.firstMoney(event, [
+        'chargedCents',
+        'costCents',
+        'amountCents',
+        'usageCents',
+        'priceCents',
+        'totalCents',
+        'usageCostCents',
+        'costInCents',
+        'amountInCents',
+        'charged',
+        'cost',
+        'amount',
+        'price',
+        'usageCost',
+        'totalCost',
+        'spend',
+        'spent',
+      ]) ??
+      this.findMoneyByKey(event, (key) =>
+        /(?:cost|amount|price|charge|charged|spend|spent|cents?|usd|dollars?)/i.test(key),
+      ) ??
+      0
+    );
+  }
+
+  private parseCursorSummary(summary: any, fallbackTotal = 0) {
+    const used =
+      this.firstMoney(summary, [
+        'used',
+        'usedQuota',
+        'usage',
+        'usageAmount',
+        'usageCost',
+        'totalUsed',
+        'totalUsage',
+        'totalCost',
+        'currentUsage',
+        'currentSpend',
+        'spend',
+        'spent',
+        'amount',
+        'charged',
+        'usedCents',
+        'usageCents',
+        'totalCostCents',
+        'data.used',
+        'data.usedQuota',
+        'data.usage',
+        'data.usageCost',
+        'data.totalCost',
+        'data.currentUsage',
+        'data.currentSpend',
+        'data.usedCents',
+        'data.usageCents',
+      ]) ??
+      this.findMoneyByKey(
+        summary,
+        (key) =>
+          /(?:used|spend|spent|cost|charged|amount)/i.test(key) &&
+          !/(limit|quota|budget|allowance|remaining|remain)/i.test(key),
+      ) ??
+      0;
+
+    const remain = this.firstMoney(summary, [
+      'remain',
+      'remaining',
+      'quotaRemain',
+      'remainingQuota',
+      'remainingAmount',
+      'remainingCents',
+      'data.remain',
+      'data.remaining',
+      'data.quotaRemain',
+      'data.remainingQuota',
+      'data.remainingCents',
+    ]);
+
+    const detectedTotal =
+      this.firstMoney(summary, [
+        'total',
+        'totalQuota',
+        'quotaTotal',
+        'limit',
+        'quota',
+        'budget',
+        'allowance',
+        'hardLimit',
+        'spendingLimit',
+        'monthlyLimit',
+        'totalCents',
+        'limitCents',
+        'quotaCents',
+        'budgetCents',
+        'allowanceCents',
+        'hardLimitCents',
+        'spendingLimitCents',
+        'monthlyLimitCents',
+        'data.total',
+        'data.totalQuota',
+        'data.quotaTotal',
+        'data.limit',
+        'data.quota',
+        'data.budget',
+        'data.allowance',
+        'data.hardLimit',
+        'data.spendingLimit',
+        'data.monthlyLimit',
+        'data.totalCents',
+        'data.limitCents',
+        'data.quotaCents',
+        'data.budgetCents',
+        'data.allowanceCents',
+      ]) ??
+      this.findMoneyByKey(
+        summary,
+        (key) =>
+          /(?:limit|quota|budget|allowance|total)/i.test(key) &&
+          !/(used|usage|spend|spent|cost|charged|amount)/i.test(key),
+      );
+
+    const total =
+      detectedTotal && detectedTotal > 0
+        ? detectedTotal
+        : remain !== null
+          ? used + remain
+          : fallbackTotal;
+
+    return { total: Math.max(0, total), used: Math.max(0, used) };
+  }
+
+  private async fetchCursorUsageEvents(cursorToken: string, startAt: Date, endAt: Date) {
+    const url = process.env.CURSOR_USAGE_EVENTS_ENDPOINT || CURSOR_USAGE_EVENTS_URL;
+    const pageSize = Math.floor(envNumber('CURSOR_USAGE_EVENTS_PAGE_SIZE', 100));
+    const maxPages = Math.floor(envNumber('CURSOR_USAGE_EVENTS_MAX_PAGES', 20));
+    let page = 1;
+    let totalUsed = 0;
+    let hasMore = true;
+    let sawEvents = false;
+
+    while (hasMore && page <= maxPages) {
+      const { data } = await axios.post(
+        url,
+        {
+          startDate: startAt.toISOString(),
+          endDate: endAt.toISOString(),
+          startTime: startAt.toISOString(),
+          endTime: endAt.toISOString(),
+          page,
+          pageSize,
+        },
+        {
+          headers: this.cursorAuthHeaders(cursorToken, true),
+          timeout: envNumber('CURSOR_USAGE_TIMEOUT_MS', 15000),
+        },
+      );
+
+      if (page === 1) {
+        const aggregate =
+          this.firstMoney(data, [
+            'totalCost',
+            'totalCostCents',
+            'totalAmount',
+            'totalAmountCents',
+            'totalUsageCost',
+            'totalUsageCostCents',
+            'data.totalCost',
+            'data.totalCostCents',
+            'data.totalAmount',
+            'data.totalAmountCents',
+          ]) ??
+          this.findMoneyByKey(data, (key) =>
+            /^(?:total|sum|aggregate).*(?:cost|amount|charge|spend|spent|cents?|usd)$/i.test(key),
+          );
+        if (aggregate !== null) return Math.max(0, aggregate);
+      }
+
+      const events = this.normalizeCursorEvents(data);
+      sawEvents = sawEvents || events.length > 0;
+      totalUsed += events.reduce((sum, event) => sum + this.cursorEventCost(event), 0);
+
+      const explicitHasMore = data?.hasMore ?? data?.data?.hasMore ?? data?.result?.hasMore;
+      const nextPage = data?.nextPage ?? data?.data?.nextPage ?? data?.result?.nextPage;
+      hasMore = explicitHasMore !== undefined ? Boolean(explicitHasMore) : Boolean(nextPage);
+      if (!hasMore && events.length >= pageSize) hasMore = true;
+      page += 1;
+    }
+
+    return sawEvents ? Math.max(0, totalUsed) : null;
+  }
+
+  private usageStatus(info: { total: number; used: number; remain: number }) {
+    if (info.remain <= 0) return 'EXHAUSTED';
+    if (info.remain < 5) return 'LOW_QUOTA';
+    return 'HEALTHY';
+  }
+
+  private toAccountView(a: any, revealToken = false) {
+    const plain = this.safeDecrypt(a.token);
+    const credential = this.parsePoolCredential(plain);
+    const view: any = {
       id: a.id,
       label: a.label,
       type: a.type,
-      email: a.email,
-      tokenMasked: maskSecret(plain),
-      totalQuota: a.totalQuota,
-      usedQuota: a.usedQuota,
+      email: a.email || credential.email,
+      tokenMasked: maskSecret(credential.cursorToken),
+      totalQuota: Number(a.totalQuota ?? 0),
+      usedQuota: Number(a.usedQuota ?? 0),
+      quotaRemain: this.quotaRemain(a.totalQuota, a.usedQuota),
       status: a.status,
       lastCheckAt: a.lastCheckAt,
       note: a.note,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
+    };
+    if (revealToken) {
+      view.token = credential.cursorToken;
+      view.cursorPassword = credential.cursorPassword;
+      view.emailPassword = credential.emailPassword;
+      view.raw = credential.raw;
+    }
+    return view;
+  }
+
+  /** 列表项展示用：脱敏 + 不返回密文 */
+  private toListItem(a: any) {
+    const activeGrant = Array.isArray(a.grants) ? a.grants[0] : null;
+    return {
+      ...this.toAccountView(a, false),
+      activeGrant: activeGrant
+        ? {
+            orderNo: activeGrant.orderNo,
+            quotaTotal: Number(activeGrant.quotaTotal ?? 0),
+            quotaUsed: Number(activeGrant.quotaUsed ?? 0),
+            quotaRemain: this.quotaRemain(activeGrant.quotaTotal, activeGrant.quotaUsed),
+            endAt: activeGrant.endAt,
+          }
+        : null,
+    };
+  }
+
+  private toGrantView(grant: any, revealToken = false) {
+    const quotaTotal = Number(grant.quotaTotal ?? 0);
+    const quotaUsed = Number(grant.quotaUsed ?? 0);
+    return {
+      id: grant.id,
+      orderNo: grant.orderNo,
+      quotaTotal,
+      quotaUsed,
+      quotaRemain: this.quotaRemain(quotaTotal, quotaUsed),
+      validityDays: grant.validityDays,
+      startAt: grant.startAt,
+      endAt: grant.endAt,
+      active: grant.active,
+      lastCheckAt: grant.lastCheckAt,
+      createdAt: grant.createdAt,
+      updatedAt: grant.updatedAt,
+      account: grant.account ? this.toAccountView(grant.account, revealToken) : null,
     };
   }
 
@@ -50,6 +479,13 @@ export class PoolService {
         orderBy: { id: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: {
+          grants: {
+            where: { active: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
       }),
     ]);
     return { total, page, pageSize, items: raw.map((a) => this.toListItem(a)) };
@@ -62,7 +498,7 @@ export class PoolService {
     let token = '';
     try {
       token = decryptString(a.token);
-    } catch (e) {
+    } catch {
       throw new ForbiddenException('解密失败：密钥不正确或密文损坏');
     }
     this.logger.warn(
@@ -91,6 +527,8 @@ export class PoolService {
       throw new NotFoundException('token 非法或过长');
     }
     const safe = this.pickAccountFields(data);
+    const credential = this.parsePoolCredential(token);
+    if (!safe.email && credential.email) safe.email = credential.email;
     return this.prisma.poolAccount
       .create({ data: { ...safe, token: encryptString(token) } })
       .then((a) => this.toListItem(a));
@@ -103,6 +541,8 @@ export class PoolService {
       if (typeof token !== 'string' || token.length > 10_000) {
         throw new NotFoundException('token 非法或过长');
       }
+      const credential = this.parsePoolCredential(token);
+      if (!patch.email && credential.email) patch.email = credential.email;
       patch.token = encryptString(token);
     }
     return this.prisma.poolAccount
@@ -133,7 +573,61 @@ export class PoolService {
 
   // ====== 额度发放（用户侧） ======
 
-  /** 用户提交自己的 Cursor Token，绑定到订单上 */
+  private deriveGrantMeta(order: any) {
+    const attrs = order.sku?.attrs;
+    const explicitQuota = positiveNumberFrom(['poolQuota', 'quotaTotal', 'quota'], attrs);
+    const quotaPerUnit = positiveNumberFrom(['poolQuotaPerUnit', 'quotaPerUnit'], attrs);
+    const amountRate = envNumber('POOL_QUOTA_PER_CNY', DEFAULT_POOL_QUOTA_PER_CNY);
+    const validityDays =
+      positiveNumberFrom(['poolValidityDays', 'validityDays'], attrs) ??
+      envNumber('POOL_DEFAULT_VALIDITY_DAYS', DEFAULT_POOL_VALIDITY_DAYS);
+
+    const quantity = Math.max(1, Number(order.quantity || 1));
+    const quotaTotal = explicitQuota
+      ? explicitQuota * quantity
+      : quotaPerUnit
+        ? quotaPerUnit * quantity
+        : Number(order.payAmount ?? order.totalAmount) * amountRate;
+
+    return {
+      quotaTotal: Math.max(0.0001, toFixed4(quotaTotal)),
+      validityDays: Math.max(1, Math.floor(validityDays)),
+    };
+  }
+
+  /** 本地 POOL_QUOTA 商品付款后创建额度包。重复调用保持幂等。 */
+  async createGrantForOrder(orderNo: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo },
+      include: { product: true, sku: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.product.deliveryType !== 'POOL_QUOTA') return null;
+    if (!order.userId) throw new BadRequestException('号池额度包需要登录购买');
+    if (!['PAID', 'DELIVERED'].includes(order.status)) {
+      throw new BadRequestException('订单未支付，暂不能发放号池额度');
+    }
+
+    const existing = await this.prisma.poolGrant.findUnique({
+      where: { orderNo },
+      include: { account: true },
+    });
+    if (existing) return this.toGrantView(existing, false);
+
+    const { quotaTotal, validityDays } = this.deriveGrantMeta(order);
+    const grant = await this.prisma.poolGrant.create({
+      data: {
+        orderNo,
+        quotaTotal: new Prisma.Decimal(quotaTotal),
+        validityDays,
+        active: true,
+      },
+      include: { account: true },
+    });
+    return this.toGrantView(grant, false);
+  }
+
+  /** 用户提交自己的 Cursor Token，绑定到订单上（保留旧模式） */
   async bindUserToken(orderNo: string, userToken: string) {
     const grant = await this.prisma.poolGrant.findUnique({ where: { orderNo } });
     if (!grant) throw new NotFoundException('未找到该订单的额度配额');
@@ -148,48 +642,195 @@ export class PoolService {
     });
   }
 
-  /** 查询某个订单的额度使用情况（最新） */
+  private async deactivateGrant(id: number) {
+    return this.prisma.poolGrant.update({
+      where: { id },
+      data: { active: false, lastCheckAt: new Date() },
+      include: { account: true },
+    });
+  }
+
+  private assertGrantUsable(grant: any) {
+    if (grant.endAt && grant.endAt.getTime() < Date.now()) {
+      throw new BadRequestException('额度已过期');
+    }
+    if (this.quotaRemain(grant.quotaTotal, grant.quotaUsed) <= 0) {
+      throw new BadRequestException('额度已用完');
+    }
+    if (!grant.active) {
+      throw new BadRequestException('额度已停用');
+    }
+  }
+
+  /** 查询某个订单的额度使用情况（会顺手刷新已分配账号的最新用量） */
   async queryQuota(orderNo: string) {
-    const grant = await this.prisma.poolGrant.findUnique({
+    const current = await this.prisma.poolGrant.findUnique({
+      where: { orderNo },
+      include: { account: true },
+    });
+    if (!current) throw new NotFoundException('订单无效');
+
+    if (current.accountId) {
+      await this.syncAccountUsage(current.accountId).catch((e) => {
+        this.logger.warn(`sync grant account ${current.accountId} failed: ${e.message}`);
+      });
+    }
+
+    let grant = await this.prisma.poolGrant.findUnique({
       where: { orderNo },
       include: { account: true },
     });
     if (!grant) throw new NotFoundException('订单无效');
-    return {
-      orderNo: grant.orderNo,
-      quotaTotal: grant.quotaTotal,
-      quotaUsed: grant.quotaUsed,
-      quotaRemain: +(Number(grant.quotaTotal) - Number(grant.quotaUsed)).toFixed(4),
-      startAt: grant.startAt,
-      endAt: grant.endAt,
-      active: grant.active,
-      lastCheckAt: grant.lastCheckAt,
-    };
+
+    const expired = !!grant.endAt && grant.endAt.getTime() < Date.now();
+    const exhausted = this.quotaRemain(grant.quotaTotal, grant.quotaUsed) <= 0;
+    if (grant.active && (expired || exhausted)) {
+      grant = await this.deactivateGrant(grant.id);
+    }
+
+    return this.toGrantView(grant, false);
   }
 
-  /** 对所有 Pool 账号执行查询：模拟 Cursor 账单查询接口 */
+  /** 用户从号池申请账号；已申请过则幂等返回同一个账号的明文 token。 */
+  async claimAccount(orderNo: string) {
+    let grant = await this.prisma.poolGrant.findUnique({
+      where: { orderNo },
+      include: { account: true },
+    });
+    if (!grant) throw new NotFoundException('未找到该订单的额度配额');
+
+    if (grant.accountId) {
+      await this.syncAccountUsage(grant.accountId).catch((e) => {
+        this.logger.warn(`sync claimed account ${grant.accountId} failed: ${e.message}`);
+      });
+      grant = await this.prisma.poolGrant.findUnique({
+        where: { orderNo },
+        include: { account: true },
+      });
+      this.assertGrantUsable(grant);
+      return this.toGrantView(grant, true);
+    }
+
+    this.assertGrantUsable(grant);
+    const requiredQuota = this.quotaRemain(grant.quotaTotal, grant.quotaUsed);
+    const candidates = await this.prisma.poolAccount.findMany({
+      where: {
+        status: { in: ASSIGNABLE_POOL_STATUSES as any },
+        grants: { none: { active: true } },
+      },
+      orderBy: { id: 'asc' },
+      take: 50,
+    });
+
+    for (const account of candidates) {
+      const synced = await this.syncAccountUsage(account.id, { applyGrantUsage: false }).catch((e) => {
+        this.logger.warn(`skip pool account ${account.id}: ${e.message}`);
+        return null;
+      });
+      if (!synced) continue;
+      if (synced.info.remain + 0.0001 < requiredQuota) continue;
+
+      const assigned = await this.prisma.$transaction(async (tx) => {
+        const freshGrant = await tx.poolGrant.findUnique({ where: { id: grant.id } });
+        if (!freshGrant) throw new NotFoundException('未找到该订单的额度配额');
+        if (freshGrant.accountId) {
+          return tx.poolGrant.findUnique({
+            where: { id: freshGrant.id },
+            include: { account: true },
+          });
+        }
+        const activeCount = await tx.poolGrant.count({
+          where: { accountId: account.id, active: true },
+        });
+        if (activeCount > 0) return null;
+
+        const now = new Date();
+        return tx.poolGrant.update({
+          where: { id: freshGrant.id },
+          data: {
+            accountId: account.id,
+            startAt: freshGrant.startAt ?? now,
+            endAt: freshGrant.endAt ?? dayjs(now).add(freshGrant.validityDays, 'day').toDate(),
+            active: true,
+            lastCheckAt: now,
+          },
+          include: { account: true },
+        });
+      });
+
+      if (assigned) return this.toGrantView(assigned, true);
+    }
+
+    throw new BadRequestException('暂无满足该额度的可用号池账号，请稍后再试或联系管理员');
+  }
+
+  /**
+   * 刷新单个池账号用量。
+   * applyGrantUsage=true 时，会把账号 usedQuota 相比上次快照的增量扣到当前活跃 Grant。
+   */
+  private async syncAccountUsage(
+    accountId: number,
+    options: { applyGrantUsage?: boolean } = {},
+  ) {
+    const applyGrantUsage = options.applyGrantUsage !== false;
+    const account = await this.prisma.poolAccount.findUnique({ where: { id: accountId } });
+    if (!account) throw new NotFoundException('账号不存在');
+
+    const plainToken = decryptString(account.token);
+    const previousUsed = Number(account.usedQuota ?? 0);
+    const info = await this.fetchCursorUsage(plainToken, Number(account.totalQuota ?? 0));
+    info.total = toFixed4(Number(info.total || 0));
+    info.used = toFixed4(Number(info.used || 0));
+    info.remain = toFixed4(Math.max(0, Number(info.remain ?? info.total - info.used)));
+
+    const delta = Math.max(0, toFixed4(info.used - previousUsed));
+    const checkedAt = new Date();
+    let grantDelta = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.poolAccount.update({
+        where: { id: account.id },
+        data: {
+          totalQuota: new Prisma.Decimal(info.total),
+          usedQuota: new Prisma.Decimal(info.used),
+          status: this.usageStatus(info) as any,
+          lastCheckAt: checkedAt,
+        },
+      });
+
+      if (!applyGrantUsage) return;
+      const grant = await tx.poolGrant.findFirst({
+        where: { accountId: account.id, active: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (!grant) return;
+
+      const expired = !!grant.endAt && grant.endAt.getTime() < Date.now();
+      const nextUsed = toFixed4(Number(grant.quotaUsed) + (expired ? 0 : delta));
+      const exhausted = nextUsed >= Number(grant.quotaTotal) - 0.0001;
+      grantDelta = expired ? 0 : delta;
+
+      await tx.poolGrant.update({
+        where: { id: grant.id },
+        data: {
+          quotaUsed: new Prisma.Decimal(nextUsed),
+          active: !(expired || exhausted),
+          lastCheckAt: checkedAt,
+        },
+      });
+    });
+
+    return { id: account.id, info, delta: grantDelta };
+  }
+
+  /** 对所有 Pool 账号执行查询，并把用量增量同步到活跃额度 */
   async refreshAllAccounts() {
     const accounts = await this.prisma.poolAccount.findMany();
     const results: any[] = [];
     for (const a of accounts) {
       try {
-        const plainToken = decryptString(a.token);
-        const info = await this.fetchCursorUsage(plainToken);
-        await this.prisma.poolAccount.update({
-          where: { id: a.id },
-          data: {
-            totalQuota: info.total,
-            usedQuota: info.used,
-            status:
-              info.remain <= 0
-                ? 'EXHAUSTED'
-                : info.remain < 5
-                  ? 'LOW_QUOTA'
-                  : 'HEALTHY',
-            lastCheckAt: new Date(),
-          },
-        });
-        results.push({ id: a.id, ok: true, ...info });
+        const synced = await this.syncAccountUsage(a.id);
+        results.push({ id: a.id, ok: true, ...synced.info, grantDelta: synced.delta });
       } catch (e: any) {
         await this.prisma.poolAccount.update({
           where: { id: a.id },
@@ -202,26 +843,37 @@ export class PoolService {
   }
 
   /**
-   * 查询 Cursor 余额。
-   * 这里**只给一个可替换的抽象**：真实接口需要你接 Cursor 的内部 API，
-   * 不同时期协议不同，且涉及合规风险。默认实现返回 mock。
+   * 查询 Cursor 实际用量。
+   * 默认读取 Cursor usage-summary 和 get-filtered-usage-events。
    */
-  private async fetchCursorUsage(_token: string): Promise<{ total: number; used: number; remain: number }> {
-    const endpoint = process.env.CURSOR_USAGE_ENDPOINT;
-    if (!endpoint) {
-      // mock：基础 20 + 奖励 ~ 45 = 65 刀，已用随机
-      const total = 65;
-      const used = Math.round(Math.random() * 60 * 100) / 100;
-      return { total, used, remain: +(total - used).toFixed(2) };
-    }
-    const { data } = await axios.get(endpoint, {
-      headers: { Authorization: `Bearer ${_token}` },
-      timeout: 10000,
+  private async fetchCursorUsage(
+    rawToken: string,
+    fallbackTotal = 0,
+  ): Promise<{ total: number; used: number; remain: number }> {
+    const credential = this.parsePoolCredential(rawToken);
+    if (!credential.cursorToken) throw new BadRequestException('Cursor token 为空');
+
+    const summaryUrl = process.env.CURSOR_USAGE_SUMMARY_ENDPOINT || CURSOR_USAGE_SUMMARY_URL;
+    const { data: summary } = await axios.get(summaryUrl, {
+      headers: this.cursorAuthHeaders(credential.cursorToken),
+      timeout: envNumber('CURSOR_USAGE_TIMEOUT_MS', 15000),
     });
+
+    const { startAt, endAt } = this.cursorBillingWindow(summary);
+    const parsed = this.parseCursorSummary(summary, fallbackTotal);
+    const eventUsed = await this.fetchCursorUsageEvents(credential.cursorToken, startAt, endAt).catch(
+      (e) => {
+        this.logger.warn(`fetch Cursor usage events failed: ${e?.message ?? e}`);
+        return null;
+      },
+    );
+
+    const total = toFixed4(parsed.total > 0 ? parsed.total : fallbackTotal);
+    const used = toFixed4(eventUsed ?? parsed.used);
     return {
-      total: Number(data.total || 0),
-      used: Number(data.used || 0),
-      remain: Number(data.total || 0) - Number(data.used || 0),
+      total,
+      used,
+      remain: toFixed4(Math.max(0, total - used)),
     };
   }
 
