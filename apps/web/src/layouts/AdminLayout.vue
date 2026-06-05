@@ -82,7 +82,7 @@ watch(() => route.fullPath, () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex bg-ink-50">
+  <div class="h-screen overflow-hidden flex bg-ink-50">
     <!-- Sidebar -->
     <aside
       class="bg-white border-r border-ink-100 flex flex-col w-60 shrink-0 z-40 transition-transform duration-200
@@ -189,11 +189,21 @@ watch(() => route.fullPath, () => {
       </header>
 
       <!-- Page -->
-      <div class="flex-1 overflow-auto">
-        <div class="max-w-7xl mx-auto p-3 md:p-6">
+      <div class="admin-page-scroll flex-1 overflow-auto min-h-0">
+        <div class="max-w-7xl mx-auto min-h-full p-3 md:p-6">
           <router-view />
         </div>
       </div>
     </main>
   </div>
 </template>
+
+<style scoped>
+.admin-page-scroll {
+  scrollbar-width: none;
+}
+.admin-page-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+</style>
