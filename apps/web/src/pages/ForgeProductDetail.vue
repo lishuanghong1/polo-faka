@@ -183,7 +183,7 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="max-w-3xl mx-auto px-4 py-8">
+  <section class="max-w-5xl mx-auto px-4 py-8">
     <div v-if="loading" class="card p-10 text-center text-ink-400 text-sm">加载中…</div>
 
     <div v-else-if="!product" class="card p-10 text-center">
@@ -302,10 +302,10 @@ onMounted(load);
         <!-- 支付方式 -->
         <div class="mt-6">
           <label class="block text-sm text-ink-700 mb-2">支付方式</label>
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <button
               :class="[
-                'p-3 rounded-lg border-2 text-left transition',
+                'p-3 rounded-lg border-2 text-left transition min-w-0',
                 payMethod === 'ALIPAY'
                   ? 'border-brand-500 bg-brand-50/30'
                   : 'border-ink-100 hover:border-ink-300',
@@ -314,7 +314,7 @@ onMounted(load);
               :disabled="!alipayEnabled"
               @click="alipayEnabled && (payMethod = 'ALIPAY')"
             >
-              <div class="font-medium text-sm text-ink-900 flex items-center gap-2">
+              <div class="font-medium text-sm text-ink-900 flex items-center gap-2 whitespace-nowrap">
                 <svg class="w-4 h-4 text-[#1677ff]" viewBox="0 0 1024 1024" fill="currentColor">
                   <path d="M230 0h564c127 0 230 103 230 230v564c0 127-103 230-230 230H230C103 1024 0 921 0 794V230C0 103 103 0 230 0z"/>
                 </svg>
@@ -327,19 +327,19 @@ onMounted(load);
 
             <button
               :class="[
-                'p-3 rounded-lg border-2 text-left transition',
+                'p-3 rounded-lg border-2 text-left transition min-w-0',
                 payMethod === 'POINTS' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
               ]"
               @click="payMethod = 'POINTS'"
             >
-              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-2">
+              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2 min-w-0">
+                <span class="flex items-center gap-2 whitespace-nowrap min-w-0">
                   <svg class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19l1-5.8-4.2-4.1 5.9-.9L12 3z" stroke-linejoin="round"/>
                   </svg>
                   积分
                 </span>
-                <span v-if="userStore.isLoggedIn" class="text-xs" :class="pointsEnough ? 'text-emerald-600' : 'text-rose-600'">
+                <span v-if="userStore.isLoggedIn" class="text-xs whitespace-nowrap shrink-0" :class="pointsEnough ? 'text-emerald-600' : 'text-rose-600'">
                   {{ userPoints }} 分
                 </span>
               </div>
@@ -352,19 +352,19 @@ onMounted(load);
 
             <button
               :class="[
-                'p-3 rounded-lg border-2 text-left transition',
+                'p-3 rounded-lg border-2 text-left transition min-w-0',
                 payMethod === 'BALANCE' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
               ]"
               @click="payMethod = 'BALANCE'"
             >
-              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2">
-                <span class="flex items-center gap-2">
+              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2 min-w-0">
+                <span class="flex items-center gap-2 whitespace-nowrap min-w-0">
                   <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   账户余额
                 </span>
-                <span v-if="userStore.isLoggedIn" class="text-xs" :class="balanceEnough ? 'text-emerald-600' : 'text-rose-600'">
+                <span v-if="userStore.isLoggedIn" class="text-xs whitespace-nowrap shrink-0" :class="balanceEnough ? 'text-emerald-600' : 'text-rose-600'">
                   ¥{{ userBalance.toFixed(2) }}
                 </span>
               </div>
@@ -377,12 +377,12 @@ onMounted(load);
 
             <button
               :class="[
-                'p-3 rounded-lg border-2 text-left transition',
+                'p-3 rounded-lg border-2 text-left transition min-w-0',
                 payMethod === 'REDEEM' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
               ]"
               @click="payMethod = 'REDEEM'"
             >
-              <div class="font-medium text-sm text-ink-900">兑换码</div>
+              <div class="font-medium text-sm text-ink-900 whitespace-nowrap">兑换码</div>
               <div class="text-[11px] text-ink-500 mt-1">使用已购买的兑换码</div>
             </button>
           </div>
