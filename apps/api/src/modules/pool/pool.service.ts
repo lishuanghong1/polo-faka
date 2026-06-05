@@ -48,6 +48,12 @@ function parseMoneyLike(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function cursorDateMs(value: Date | null | undefined) {
+  if (!value) return null;
+  const ms = value.getTime();
+  return Number.isFinite(ms) ? String(ms) : null;
+}
+
 @Injectable()
 export class PoolService {
   private readonly logger = new Logger(PoolService.name);
@@ -342,62 +348,44 @@ export class PoolService {
 
   private async fetchCursorUsageEvents(cursorToken: string, startAt: Date, endAt: Date) {
     const url = process.env.CURSOR_USAGE_EVENTS_ENDPOINT || CURSOR_USAGE_EVENTS_URL;
-    const pageSize = Math.floor(envNumber('CURSOR_USAGE_EVENTS_PAGE_SIZE', 100));
-    const maxPages = Math.floor(envNumber('CURSOR_USAGE_EVENTS_MAX_PAGES', 20));
-    let page = 1;
-    let totalUsed = 0;
-    let hasMore = true;
-    let sawEvents = false;
+    const pageSize = Math.floor(envNumber('CURSOR_USAGE_EVENTS_PAGE_SIZE', 500));
+    const maxPages = Math.floor(envNumber('CURSOR_USAGE_EVENTS_MAX_PAGES', 10));
+    const startDate = cursorDateMs(startAt);
+    const endDate = cursorDateMs(endAt);
+    let totalCents = 0;
+    let eventCount = 0;
 
-    while (hasMore && page <= maxPages) {
+    for (let page = 1; page <= maxPages; page += 1) {
+      const body: Record<string, string | number> = { page, pageSize };
+      if (startDate) body.startDate = startDate;
+      if (endDate) body.endDate = endDate;
+
       const { data } = await axios.post(
         url,
-        {
-          startDate: startAt.toISOString(),
-          endDate: endAt.toISOString(),
-          startTime: startAt.toISOString(),
-          endTime: endAt.toISOString(),
-          page,
-          pageSize,
-        },
+        body,
         {
           headers: this.cursorAuthHeaders(cursorToken, true),
           timeout: envNumber('CURSOR_USAGE_TIMEOUT_MS', 15000),
         },
       );
 
-      if (page === 1) {
-        const aggregate =
-          this.firstMoney(data, [
-            'totalCost',
-            'totalCostCents',
-            'totalAmount',
-            'totalAmountCents',
-            'totalUsageCost',
-            'totalUsageCostCents',
-            'data.totalCost',
-            'data.totalCostCents',
-            'data.totalAmount',
-            'data.totalAmountCents',
-          ]) ??
-          this.findMoneyByKey(data, (key) =>
-            /^(?:total|sum|aggregate).*(?:cost|amount|charge|spend|spent|cents?|usd)$/i.test(key),
-          );
-        if (aggregate !== null) return Math.max(0, aggregate);
+      const events = Array.isArray(data?.usageEventsDisplay) ? data.usageEventsDisplay : [];
+      const totalCount = Number(data?.totalUsageEventsCount || 0);
+      for (const event of events) {
+        const cents = parseMoneyLike(event?.chargedCents);
+        if (cents) totalCents += cents;
+        eventCount += 1;
       }
 
-      const events = this.normalizeCursorEvents(data);
-      sawEvents = sawEvents || events.length > 0;
-      totalUsed += events.reduce((sum, event) => sum + this.cursorEventCost(event), 0);
-
-      const explicitHasMore = data?.hasMore ?? data?.data?.hasMore ?? data?.result?.hasMore;
-      const nextPage = data?.nextPage ?? data?.data?.nextPage ?? data?.result?.nextPage;
-      hasMore = explicitHasMore !== undefined ? Boolean(explicitHasMore) : Boolean(nextPage);
-      if (!hasMore && events.length >= pageSize) hasMore = true;
-      page += 1;
+      if (events.length < pageSize) break;
+      if (page === maxPages && eventCount < totalCount) {
+        this.logger.warn(
+          `Cursor usage events truncated: fetched=${eventCount}, total=${totalCount}`,
+        );
+      }
     }
 
-    return sawEvents ? Math.max(0, totalUsed) : null;
+    return Math.max(0, toFixed4(totalCents / 100));
   }
 
   private async fetchCursorUsageForWindow(rawToken: string, startAt: Date, endAt: Date) {
