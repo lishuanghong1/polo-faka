@@ -8,9 +8,10 @@ import { ForgeOrdersCron } from './forge-orders.cron';
 import { ForgeOpenapiModule } from '../forge-openapi/forge-openapi.module';
 import { AlipayModule } from '../alipay/alipay.module';
 import { VipModule } from '../vip/vip.module';
+import { PointsModule } from '../points/points.module';
 
 @Module({
-  imports: [ForgeOpenapiModule, forwardRef(() => AlipayModule), VipModule],
+  imports: [ForgeOpenapiModule, forwardRef(() => AlipayModule), VipModule, PointsModule],
   controllers: [ForgeRedeemController, ForgeRedeemAdminController],
   providers: [
     ForgeProductsService,

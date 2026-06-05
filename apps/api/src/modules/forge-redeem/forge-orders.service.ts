@@ -22,6 +22,7 @@ import {
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 import { ForgeProductsService } from './forge-products.service';
 import { VipService } from '../vip/vip.service';
+import { PointsService } from '../points/points.service';
 
 const orderNano = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 12);
 
@@ -49,6 +50,7 @@ export class ForgeOrdersService {
     private forge: ForgeOpenapiService,
     private products: ForgeProductsService,
     private vip: VipService,
+    private points: PointsService,
   ) {}
 
   /** 兑换码路径：扣余额 + 立即调三方发货 */
@@ -427,18 +429,21 @@ export class ForgeOrdersService {
       });
       const upstream = r.data || {};
       const encrypted = encryptString(JSON.stringify(upstream.accounts || []));
-      await this.prisma.forgeOrder.update({
-        where: { orderNo },
-        data: {
-          status: ForgeOrderStatus.DELIVERED,
-          upstreamOrderNo: upstream.order_no,
-          upstreamRequestId: r.requestId,
-          upstreamAmount:
-            upstream.amount !== undefined ? new Prisma.Decimal(upstream.amount) : null,
-          upstreamData: encrypted,
-          deliveredAt: new Date(),
-          failReason: null,
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.forgeOrder.update({
+          where: { orderNo },
+          data: {
+            status: ForgeOrderStatus.DELIVERED,
+            upstreamOrderNo: upstream.order_no,
+            upstreamRequestId: r.requestId,
+            upstreamAmount:
+              upstream.amount !== undefined ? new Prisma.Decimal(upstream.amount) : null,
+            upstreamData: encrypted,
+            deliveredAt: new Date(),
+            failReason: null,
+          },
+        });
+        await this.points.settleDeliveredForgeOrder(tx, orderNo);
       });
     } catch (e) {
       // 三段分支：业务错（ForgeApiError）/ 网络错（ForgeNetworkError）/ 其它

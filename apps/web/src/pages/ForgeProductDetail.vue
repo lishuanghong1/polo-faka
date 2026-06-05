@@ -55,6 +55,7 @@ const lineTotal = computed(() =>
 
 const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
 const balanceEnough = computed(() => userBalance.value >= lineTotal.value);
+const expectedPointsReward = computed(() => Math.floor(lineTotal.value * 0.1));
 
 const canSubmit = computed(() => {
   if (!product.value) return false;
@@ -382,6 +383,12 @@ onMounted(load);
           <div class="flex items-center justify-between mb-3">
             <span class="text-sm text-ink-500">{{ discountAmount > 0 ? '实付' : '合计' }}</span>
             <span class="text-2xl font-bold text-rose-600">¥{{ lineTotal.toFixed(2) }}</span>
+          </div>
+          <div
+            v-if="expectedPointsReward > 0"
+            class="mb-3 text-[11px] text-amber-600"
+          >
+            登录用户成功发货预计返 {{ expectedPointsReward }} 积分
           </div>
 
           <div v-if="errorMsg" class="text-sm text-rose-600 mb-3">{{ errorMsg }}</div>

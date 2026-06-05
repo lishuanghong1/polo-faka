@@ -181,7 +181,7 @@ function clearInput() {
       </h1>
       <p class="mt-2 text-sm text-ink-500 leading-relaxed max-w-md mx-auto">
         粘贴 Token，自动登录 cursor.com 网页版。<br />
-        <span class="text-emerald-700">Token 不上传，全在你本地浏览器处理。</span>
+        <span class="text-emerald-700">Token 不上传，全在当前浏览器处理。</span>
       </p>
     </div>
 

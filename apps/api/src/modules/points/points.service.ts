@@ -292,6 +292,56 @@ export class PointsService {
     );
   }
 
+  async settleDeliveredForgeOrder(tx: Tx, orderNo: string) {
+    const order = await tx.forgeOrder.findUnique({
+      where: { orderNo },
+      select: {
+        orderNo: true,
+        userId: true,
+        payAmount: true,
+        totalAmount: true,
+        status: true,
+      },
+    });
+    if (!order?.userId || order.status !== 'DELIVERED') return;
+
+    const paidAmount = order.payAmount !== null
+      ? Number(order.payAmount)
+      : Number(order.totalAmount);
+    const reward = this.rewardForAmount(paidAmount);
+    if (reward <= 0) return;
+
+    await this.awardOnce(
+      tx,
+      order.userId,
+      reward,
+      'ORDER_REWARD',
+      order.orderNo,
+      `三方订单 ${order.orderNo} 消费返积分`,
+    );
+
+    const invitee = await tx.user.findUnique({
+      where: { id: order.userId },
+      select: { inviterId: true, inviteRewardedAt: true },
+    });
+    if (!invitee?.inviterId || invitee.inviteRewardedAt) return;
+
+    const marked = await tx.user.updateMany({
+      where: { id: order.userId, inviterId: invitee.inviterId, inviteRewardedAt: null },
+      data: { inviteRewardedAt: new Date() },
+    });
+    if (marked.count === 0) return;
+
+    await this.awardOnce(
+      tx,
+      invitee.inviterId,
+      reward,
+      'INVITE_REWARD',
+      order.orderNo,
+      `邀请用户三方首单 ${order.orderNo} 返积分`,
+    );
+  }
+
   async refundDeductedPoints(tx: Tx, userId: number, orderNo: string, points: number) {
     if (!Number.isInteger(points) || points <= 0) return false;
     return this.awardOnce(
