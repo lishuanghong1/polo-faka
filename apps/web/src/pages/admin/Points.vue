@@ -64,8 +64,7 @@ onMounted(load);
     <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm" @click="load">查询</button>
   </div>
 
-  <div class="overflow-x-auto">
-    <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1060px">
       <thead>
         <tr>
           <th>ID</th>
@@ -95,6 +94,5 @@ onMounted(load);
           <td class="text-xs text-ink-500">{{ new Date(l.createdAt).toLocaleString() }}</td>
         </tr>
       </tbody>
-    </DataTable>
-  </div>
+  </DataTable>
 </template>

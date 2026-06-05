@@ -11,6 +11,7 @@ import { ForgeOrdersService } from './forge-orders.service';
 import {
   AlipayOrderDto,
   BalanceOrderDto,
+  PointsOrderDto,
   RedeemCheckDto,
   RedeemOrderDto,
 } from './dto';
@@ -106,6 +107,28 @@ export class ForgeRedeemController {
   ) {
     try {
       return await this.orders.createByBalance({
+        typeKey: body.typeKey,
+        quantity: body.quantity,
+        contact: body.contact,
+        ip: req.ip,
+        userId,
+      });
+    } catch (e) {
+      throw ForgeOpenapiService.toHttpException(e);
+    }
+  }
+
+  // ── 积分支付下单（需登录） ────────────────────────
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('points-order')
+  async orderByPoints(
+    @Body() body: PointsOrderDto,
+    @Req() req: Request,
+    @CurrentUser('sub') userId: number,
+  ) {
+    try {
+      return await this.orders.createByPoints({
         typeKey: body.typeKey,
         quantity: body.quantity,
         contact: body.contact,

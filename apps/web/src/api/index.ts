@@ -383,6 +383,10 @@ export const api = {
     balanceOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/balance-order', body, { silent: true } as any),
 
+    // 登录 · 下单（积分路径）
+    pointsOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
+      http.post<any>('/forge-redeem/points-order', body, { silent: true } as any),
+
     // 公开 · 订单详情（带 contact 校验）
     orderDetail: (orderNo: string, contact?: string) =>
       http.get<any>(

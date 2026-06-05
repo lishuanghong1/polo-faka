@@ -205,7 +205,7 @@ function uaCategory(ua: string) {
     </div>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="当前没有被封禁的 IP">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="当前没有被封禁的 IP" min-width="1040px">
     <thead>
       <tr>
         <th style="width: 160px">IP</th>

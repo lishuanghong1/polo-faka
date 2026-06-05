@@ -300,6 +300,7 @@ export class PointsService {
         userId: true,
         payAmount: true,
         totalAmount: true,
+        paymentMethod: true,
         status: true,
       },
     });
@@ -311,14 +312,16 @@ export class PointsService {
     const reward = this.rewardForAmount(paidAmount);
     if (reward <= 0) return;
 
-    await this.awardOnce(
-      tx,
-      order.userId,
-      reward,
-      'ORDER_REWARD',
-      order.orderNo,
-      `三方订单 ${order.orderNo} 消费返积分`,
-    );
+    if (order.paymentMethod !== 'POINTS') {
+      await this.awardOnce(
+        tx,
+        order.userId,
+        reward,
+        'ORDER_REWARD',
+        order.orderNo,
+        `三方订单 ${order.orderNo} 消费返积分`,
+      );
+    }
 
     const invitee = await tx.user.findUnique({
       where: { id: order.userId },

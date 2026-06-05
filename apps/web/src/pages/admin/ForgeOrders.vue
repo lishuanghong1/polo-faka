@@ -38,6 +38,7 @@ const paymentOptions = [
   { value: '',        label: '全部支付' },
   { value: 'ALIPAY',  label: '支付宝' },
   { value: 'BALANCE', label: '余额' },
+  { value: 'POINTS',  label: '积分' },
   { value: 'REDEEM',  label: '兑换码' },
 ];
 
@@ -112,6 +113,7 @@ function payMethodChip(m: string) {
   switch ((m || '').toUpperCase()) {
     case 'ALIPAY':  return { text: '支付宝',   cls: 'bg-sky-50 text-sky-700 border-sky-200' };
     case 'BALANCE': return { text: '余额',     cls: 'bg-brand-50 text-brand-700 border-brand-200' };
+    case 'POINTS':  return { text: '积分',     cls: 'bg-amber-50 text-amber-700 border-amber-200' };
     case 'REDEEM':  return { text: '兑换码',   cls: 'bg-violet-50 text-violet-700 border-violet-200' };
     default:        return { text: m || '-',  cls: 'bg-ink-100 text-ink-600 border-ink-200' };
   }
@@ -214,7 +216,7 @@ onMounted(load);
   </div>
 
   <!-- ────── 列表 ────── -->
-  <DataTable :loading="loading" :is-empty="!items.length" empty="暂无三方订单">
+  <DataTable :loading="loading" :is-empty="!items.length" empty="暂无三方订单" min-width="1160px">
     <thead>
       <tr>
         <th>订单号</th>

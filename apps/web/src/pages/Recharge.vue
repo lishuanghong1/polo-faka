@@ -27,7 +27,8 @@ const loadingHist = ref(false);
 const checkingOrder = ref<{ orderNo: string; status: string; amount?: number } | null>(null);
 
 const finalAmount = computed(() => {
-  const v = customAmount.value.trim() ? Number(customAmount.value) : amount.value;
+  const raw = String(customAmount.value ?? '').trim();
+  const v = raw ? Number(raw) : amount.value;
   if (!Number.isFinite(v) || v <= 0) return 0;
   return Math.round(v * 100) / 100;
 });
@@ -37,8 +38,9 @@ const canSubmit = computed(() =>
 );
 
 const customAmountInvalid = computed(() => {
-  if (!customAmount.value.trim()) return false;
-  const v = Number(customAmount.value);
+  const raw = String(customAmount.value ?? '').trim();
+  if (!raw) return false;
+  const v = Number(raw);
   return !Number.isFinite(v) || v < 0.01 || v > 10000;
 });
 

@@ -16,7 +16,7 @@ const loading = ref(true);
 
 const quantity = ref(1);
 const contact = ref('');
-type PayMethod = 'ALIPAY' | 'BALANCE' | 'REDEEM';
+type PayMethod = 'ALIPAY' | 'BALANCE' | 'POINTS' | 'REDEEM';
 const payMethod = ref<PayMethod>('ALIPAY');
 const redeemCode = ref('');
 const submitting = ref(false);
@@ -55,6 +55,9 @@ const lineTotal = computed(() =>
 
 const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
 const balanceEnough = computed(() => userBalance.value >= lineTotal.value);
+const userPoints = computed(() => Number(userStore.profile?.points ?? 0));
+const pointsRequired = computed(() => Math.ceil(lineTotal.value));
+const pointsEnough = computed(() => userPoints.value >= pointsRequired.value);
 const expectedPointsReward = computed(() => Math.floor(lineTotal.value * 0.1));
 
 const canSubmit = computed(() => {
@@ -66,6 +69,10 @@ const canSubmit = computed(() => {
   if (payMethod.value === 'BALANCE') {
     if (!userStore.isLoggedIn) return false;
     if (!balanceEnough.value) return false;
+  }
+  if (payMethod.value === 'POINTS') {
+    if (!userStore.isLoggedIn) return false;
+    if (!pointsEnough.value) return false;
   }
   return true;
 });
@@ -135,6 +142,14 @@ async function submit() {
       router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
     } else if (payMethod.value === 'BALANCE') {
       const order = await api.forge.balanceOrder({
+        typeKey: typeKey.value,
+        quantity: quantity.value,
+        contact: contact.value.trim() || undefined,
+      });
+      await userStore.restore();
+      router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
+    } else if (payMethod.value === 'POINTS') {
+      const order = await api.forge.pointsOrder({
         typeKey: typeKey.value,
         quantity: quantity.value,
         contact: contact.value.trim() || undefined,
@@ -287,7 +302,7 @@ onMounted(load);
         <!-- 支付方式 -->
         <div class="mt-6">
           <label class="block text-sm text-ink-700 mb-2">支付方式</label>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
             <button
               :class="[
                 'p-3 rounded-lg border-2 text-left transition',
@@ -307,6 +322,31 @@ onMounted(load);
               </div>
               <div class="text-[11px] text-ink-500 mt-1">
                 {{ alipayEnabled ? '扫码支付，秒到货' : '未启用' }}
+              </div>
+            </button>
+
+            <button
+              :class="[
+                'p-3 rounded-lg border-2 text-left transition',
+                payMethod === 'POINTS' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
+              ]"
+              @click="payMethod = 'POINTS'"
+            >
+              <div class="font-medium text-sm text-ink-900 flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19l1-5.8-4.2-4.1 5.9-.9L12 3z" stroke-linejoin="round"/>
+                  </svg>
+                  积分
+                </span>
+                <span v-if="userStore.isLoggedIn" class="text-xs" :class="pointsEnough ? 'text-emerald-600' : 'text-rose-600'">
+                  {{ userPoints }} 分
+                </span>
+              </div>
+              <div class="text-[11px] text-ink-500 mt-1">
+                <template v-if="!userStore.isLoggedIn">登录后可用</template>
+                <template v-else-if="!pointsEnough">需 {{ pointsRequired }} 分，还差 {{ pointsRequired - userPoints }}</template>
+                <template v-else>需 {{ pointsRequired }} 分</template>
               </div>
             </button>
 
@@ -366,6 +406,12 @@ onMounted(load);
               @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
             >→ 去登录</button>
           </div>
+          <div v-if="payMethod === 'POINTS' && !userStore.isLoggedIn" class="mt-3">
+            <button
+              class="text-xs text-brand-600 hover:underline"
+              @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
+            >→ 去登录</button>
+          </div>
         </div>
 
         <!-- 总价 + 下单按钮 -->
@@ -385,10 +431,13 @@ onMounted(load);
             <span class="text-2xl font-bold text-rose-600">¥{{ lineTotal.toFixed(2) }}</span>
           </div>
           <div
-            v-if="expectedPointsReward > 0"
+            v-if="payMethod !== 'POINTS' && expectedPointsReward > 0"
             class="mb-3 text-[11px] text-amber-600"
           >
             登录用户成功发货预计返 {{ expectedPointsReward }} 积分
+          </div>
+          <div v-else-if="payMethod === 'POINTS'" class="mb-3 text-[11px] text-ink-500">
+            本单将使用 {{ pointsRequired }} 积分支付，不再返积分
           </div>
 
           <div v-if="errorMsg" class="text-sm text-rose-600 mb-3">{{ errorMsg }}</div>
@@ -402,6 +451,7 @@ onMounted(load);
             <template v-else-if="product.stock <= 0">已缺货</template>
             <template v-else-if="payMethod === 'ALIPAY'">立即支付（支付宝）</template>
             <template v-else-if="payMethod === 'BALANCE'">使用余额支付</template>
+            <template v-else-if="payMethod === 'POINTS'">使用积分支付</template>
             <template v-else>使用兑换码下单</template>
           </button>
 

@@ -240,6 +240,81 @@ export class ForgeOrdersService {
   }
 
   /**
+   * 积分路径：登录用户积分直接结算 → 立即调三方发货。
+   * 规则与前台一致：1 积分 = 1 元，按折后实付金额向上取整扣积分；
+   * 积分支付订单不再给下单用户返消费积分，但仍可触发邀请首单奖励。
+   */
+  async createByPoints(input: {
+    typeKey: string;
+    quantity: number;
+    contact?: string;
+    ip?: string;
+    userId: number;
+  }) {
+    if (!input.userId) throw new BadRequestException('积分支付需要登录');
+    const product = await this.products.getEnabledOrThrow(input.typeKey);
+    this.validateQty(input.quantity);
+    const displayPrice = Number(product.displayPrice);
+    const totalAmount = +(displayPrice * input.quantity).toFixed(2);
+    const vipResult = await this.vip.applyDiscount(
+      input.userId,
+      'FORGE',
+      product.typeKey,
+      totalAmount,
+    );
+    const payAmount = vipResult.payAmount;
+    const pointsUsed = this.points.pointsRequiredForAmount(payAmount);
+
+    const u = await this.prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { id: true, status: true, points: true },
+    });
+    if (!u) throw new NotFoundException('用户不存在');
+    if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
+    if (u.points < pointsUsed) {
+      throw new BadRequestException(`积分不足，还差 ${pointsUsed - u.points} 积分`);
+    }
+
+    const orderNo = makeOrderNo();
+    await this.prisma.$transaction(async (tx) => {
+      await this.points.deductForOrder(tx, input.userId, orderNo, pointsUsed);
+      await tx.forgeOrder.create({
+        data: {
+          orderNo,
+          userId: input.userId,
+          paymentMethod: ForgePaymentMethod.POINTS,
+          typeKey: product.typeKey,
+          typeName: product.typeName,
+          quantity: input.quantity,
+          displayPrice: new Prisma.Decimal(displayPrice),
+          totalAmount: new Prisma.Decimal(totalAmount),
+          discountAmount: new Prisma.Decimal(vipResult.discountAmount),
+          payAmount: new Prisma.Decimal(payAmount),
+          pointsUsed,
+          vipTier: vipResult.tier,
+          contact: input.contact?.slice(0, 128),
+          customerRef: makeCustomerRef(orderNo),
+          status: ForgeOrderStatus.PAID,
+          paidAt: new Date(),
+          ip: input.ip,
+        },
+      });
+    });
+
+    try {
+      await this.fulfillOrder(orderNo);
+    } catch (e) {
+      await this.refundPointsForFailedOrder(orderNo).catch((err) => {
+        this.logger.error(
+          `refund points for failed order ${orderNo}: ${(err as Error).message}`,
+        );
+      });
+      throw e;
+    }
+    return this.detail(orderNo);
+  }
+
+  /**
    * 上游发货失败时退回余额。会判断订单本身：
    * - 必须是 BALANCE 支付且 FAILED 状态
    * - 不会重复退（用 BalanceLog refOrder 去重 / 订单状态机判断）
@@ -281,6 +356,33 @@ export class ForgeOrdersService {
           refundAmount: amountDec,
           refundedAt: new Date(),
           refundReason: '上游发货失败 · 系统自动退回余额',
+        },
+      });
+    });
+  }
+
+  private async refundPointsForFailedOrder(orderNo: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const o = await tx.forgeOrder.findUnique({ where: { orderNo } });
+      if (!o || !o.userId) return;
+      if (o.paymentMethod !== ForgePaymentMethod.POINTS) return;
+      if (o.status !== ForgeOrderStatus.FAILED) return;
+      if (!o.pointsUsed) return;
+
+      const refunded = await this.points.refundDeductedPoints(
+        tx,
+        o.userId,
+        orderNo,
+        o.pointsUsed,
+      );
+      if (!refunded) return;
+
+      await tx.forgeOrder.update({
+        where: { orderNo },
+        data: {
+          status: ForgeOrderStatus.REFUNDED,
+          refundedAt: new Date(),
+          refundReason: '上游发货失败 · 系统自动退回积分',
         },
       });
     });

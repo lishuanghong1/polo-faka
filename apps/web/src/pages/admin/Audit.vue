@@ -135,7 +135,7 @@ function reset() {
     <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1120px">
     <thead>
       <tr>
         <th style="width: 130px">时间</th>

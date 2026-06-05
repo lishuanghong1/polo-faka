@@ -268,7 +268,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 50)));
   </div>
 
   <!-- 列表 -->
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1200px">
     <thead>
       <tr>
         <th style="width: 40px">

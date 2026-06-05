@@ -82,8 +82,7 @@ function openDetail(u: any) {
     <button class="px-3 py-1.5 border border-ink-200 text-ink-700 hover:bg-ink-50 rounded-lg text-sm shrink-0" @click="load">刷新</button>
   </div>
 
-  <div class="overflow-x-auto">
-    <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1360px">
       <thead>
         <tr>
           <th style="width: 60px">ID</th>
@@ -135,8 +134,7 @@ function openDetail(u: any) {
           </td>
         </tr>
       </tbody>
-    </DataTable>
-  </div>
+  </DataTable>
 
   <div v-if="total > pageSize" class="mt-3 flex items-center justify-between text-xs text-ink-500">
     <span>共 {{ total }} 条 · 第 {{ page }} / {{ totalPages }} 页</span>

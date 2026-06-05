@@ -178,7 +178,7 @@ async function reveal(row: any) {
     </div>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号" min-width="1180px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>

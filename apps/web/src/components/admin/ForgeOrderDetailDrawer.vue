@@ -55,6 +55,7 @@ const payMethodLabel = computed(() => {
   const m = (order.value?.paymentMethod || '').toUpperCase();
   if (m === 'ALIPAY') return '支付宝';
   if (m === 'BALANCE') return '账户余额';
+  if (m === 'POINTS') return '积分';
   if (m === 'REDEEM') return '兑换码';
   return order.value?.paymentMethod || '-';
 });
@@ -63,6 +64,7 @@ const payMethodChipCls = computed(() => {
   const m = (order.value?.paymentMethod || '').toUpperCase();
   if (m === 'ALIPAY')  return 'bg-sky-50 text-sky-700 border-sky-200';
   if (m === 'BALANCE') return 'bg-brand-50 text-brand-700 border-brand-200';
+  if (m === 'POINTS')  return 'bg-amber-50 text-amber-700 border-amber-200';
   if (m === 'REDEEM')  return 'bg-violet-50 text-violet-700 border-violet-200';
   return 'bg-ink-100 text-ink-600 border-ink-200';
 });

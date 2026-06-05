@@ -182,9 +182,9 @@ function quickFilter(skuId: number) {
     <div v-if="!overview.length" class="py-10 text-center text-sm text-ink-400">
       还没有任何卡密，<button class="text-brand-700 hover:underline" @click="openImport()">立即导入</button>
     </div>
-    <div v-else class="overflow-x-auto -mx-1 px-1">
-    <table class="w-full text-sm min-w-[680px]">
-      <thead>
+    <div v-else class="overflow-auto -mx-1 px-1 max-h-[340px]">
+    <table class="w-full text-sm min-w-[860px]">
+      <thead class="sticky top-0 z-10 bg-white">
         <tr class="text-ink-400 text-[11px] uppercase tracking-wider">
           <th class="text-left font-medium py-2">商品 / 规格</th>
           <th class="text-right font-medium py-2 pr-3">单价</th>
@@ -197,13 +197,13 @@ function quickFilter(skuId: number) {
       </thead>
       <tbody>
         <tr v-for="o in overview" :key="o.skuId" class="border-t border-ink-100">
-          <td class="py-2.5">
+          <td class="py-2">
             <button class="text-left hover:text-brand-700" @click="quickFilter(o.skuId)">
-              <div class="font-medium text-ink-900">{{ o.productTitle }}</div>
-              <div class="text-xs text-ink-500">{{ o.skuName }}</div>
+              <div class="font-medium text-ink-900 max-w-[360px] truncate">{{ o.productTitle }}</div>
+              <div class="text-xs text-ink-500 max-w-[360px] truncate">{{ o.skuName }}</div>
             </button>
           </td>
-          <td class="text-right text-ink-600 pr-3">¥{{ o.price }}</td>
+          <td class="text-right text-ink-600 pr-3 whitespace-nowrap">¥{{ o.price }}</td>
           <td class="text-right pr-3">
             <span :class="o.AVAILABLE < 5 ? 'text-amber-700 font-semibold' : o.AVAILABLE > 0 ? 'text-brand-700 font-semibold' : 'text-ink-400'">
               {{ o.AVAILABLE }}
@@ -264,7 +264,7 @@ function quickFilter(skuId: number) {
     </span>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1180px">
     <thead>
       <tr>
         <th style="width: 36px">

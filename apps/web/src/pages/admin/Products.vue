@@ -146,7 +146,7 @@ function removeSku(i: number) {
     </template>
   </AdminPageHeader>
 
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1120px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>

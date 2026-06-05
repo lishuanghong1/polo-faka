@@ -30,6 +30,7 @@ const payMethodLabel = computed(() => {
   const m = (order.value?.paymentMethod || '').toUpperCase();
   if (m === 'ALIPAY') return '支付宝';
   if (m === 'BALANCE') return '账户余额';
+  if (m === 'POINTS') return '积分';
   if (m === 'REDEEM') return '兑换码';
   return order.value?.paymentMethod || '-';
 });

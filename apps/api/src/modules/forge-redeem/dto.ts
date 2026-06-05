@@ -149,6 +149,8 @@ export class BalanceOrderDto {
   contact?: string;
 }
 
+export class PointsOrderDto extends BalanceOrderDto {}
+
 export class OrderQueryDto {
   @IsString()
   @Length(1, 64)

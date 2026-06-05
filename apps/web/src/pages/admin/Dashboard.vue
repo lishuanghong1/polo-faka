@@ -215,9 +215,9 @@ function fmtTime(t: string | Date) {
 
       <div v-if="!recent.length" class="text-center py-10 text-sm text-ink-400">暂无订单</div>
 
-      <div v-else class="overflow-x-auto -mx-1 px-1">
-      <table class="w-full text-sm min-w-[720px]">
-        <thead>
+      <div v-else class="overflow-auto -mx-1 px-1 max-h-[360px]">
+      <table class="w-full text-sm min-w-[900px]">
+        <thead class="sticky top-0 z-10 bg-white">
           <tr class="text-ink-400 text-[11px] uppercase tracking-wider">
             <th class="text-left font-medium py-2 px-2">订单号</th>
             <th class="text-left font-medium py-2 px-2">商品</th>
@@ -234,19 +234,19 @@ function fmtTime(t: string | Date) {
             class="border-t border-ink-100 hover:bg-ink-50/60 transition-colors cursor-pointer"
             @click="openOrder(o.orderNo)"
           >
-            <td class="py-2.5 px-2 font-mono text-xs text-ink-600" :title="o.orderNo">
+            <td class="py-2 px-2 font-mono text-xs text-ink-600 whitespace-nowrap" :title="o.orderNo">
               <span class="hidden xl:inline">{{ o.orderNo }}</span>
               <span class="xl:hidden">…{{ o.orderNo.slice(-12) }}</span>
             </td>
-            <td class="py-2.5 px-2 max-w-[280px] truncate text-ink-800">{{ o.productTitle }}</td>
-            <td class="py-2.5 px-2 text-ink-500">{{ o.skuName }}</td>
-            <td class="py-2.5 px-2 text-right font-medium text-ink-900">¥{{ o.totalAmount }}</td>
-            <td class="py-2.5 px-2 pl-4">
+            <td class="py-2 px-2 max-w-[280px] truncate text-ink-800">{{ o.productTitle }}</td>
+            <td class="py-2 px-2 text-ink-500 max-w-[220px] truncate">{{ o.skuName }}</td>
+            <td class="py-2 px-2 text-right font-medium text-ink-900 whitespace-nowrap">¥{{ o.totalAmount }}</td>
+            <td class="py-2 px-2 pl-4">
               <span class="inline-flex px-2 py-0.5 rounded-md text-[11px] border" :class="statusOf(o.status).cls">
                 {{ statusOf(o.status).text }}
               </span>
             </td>
-            <td class="py-2.5 px-2 text-right text-ink-400 text-xs">{{ fmtTime(o.createdAt) }}</td>
+            <td class="py-2 px-2 text-right text-ink-400 text-xs whitespace-nowrap">{{ fmtTime(o.createdAt) }}</td>
           </tr>
         </tbody>
       </table>

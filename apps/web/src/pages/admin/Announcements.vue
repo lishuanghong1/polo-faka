@@ -48,7 +48,7 @@ const modeLabel: Record<string, string> = {
     </template>
   </AdminPageHeader>
 
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="920px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>

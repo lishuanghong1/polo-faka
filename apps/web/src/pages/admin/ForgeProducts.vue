@@ -237,9 +237,9 @@ onMounted(load);
   </div>
 
   <div v-else class="card p-0 overflow-hidden">
-   <div class="overflow-x-auto">
-    <table class="w-full text-sm min-w-[720px]">
-      <thead class="bg-ink-50 text-ink-600">
+   <div class="overflow-auto max-h-[calc(100vh-300px)]">
+    <table class="w-full text-sm min-w-[1120px]">
+      <thead class="bg-ink-50 text-ink-600 sticky top-0 z-10">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">商品</th>
           <th class="px-4 py-2.5 text-right font-medium">代理价 (¥)</th>
@@ -257,7 +257,7 @@ onMounted(load);
           :key="it.typeKey"
           class="border-t border-ink-100"
         >
-          <td class="px-4 py-3">
+          <td class="px-4 py-2">
             <div class="flex items-start gap-3">
               <div
                 v-if="it.coverImage"
@@ -273,7 +273,7 @@ onMounted(load);
                 <span class="absolute inset-0 flex items-center justify-center text-xs text-rose-500 -z-10" title="图片加载失败">⚠</span>
               </div>
               <div class="min-w-0">
-                <div class="font-medium text-ink-900 flex items-center gap-1.5">
+                <div class="font-medium text-ink-900 flex items-center gap-1.5 max-w-[360px] truncate">
                   {{ displayedName(it) }}
                   <span
                     v-if="it.customName"
@@ -281,7 +281,7 @@ onMounted(load);
                     title="已自定义名称"
                   >自定义</span>
                 </div>
-                <div class="text-xs text-ink-500 mt-0.5">
+                <div class="text-xs text-ink-500 mt-0.5 whitespace-nowrap">
                   <span class="font-mono">{{ it.typeKey }}</span>
                   · {{ it.customCategoryName || it.categoryName }}
                   <span v-if="it.warrantyHours"> · 质保 {{ it.warrantyHours }}h</span>
@@ -290,8 +290,8 @@ onMounted(load);
               </div>
             </div>
           </td>
-          <td class="px-4 py-3 text-right font-mono text-ink-700">{{ Number(it.agentPrice).toFixed(2) }}</td>
-          <td class="px-4 py-3">
+          <td class="px-4 py-2 text-right font-mono text-ink-700 whitespace-nowrap">{{ Number(it.agentPrice).toFixed(2) }}</td>
+          <td class="px-4 py-2">
             <div class="flex items-center gap-1 justify-end">
               <input
                 v-model="editing[it.typeKey].displayPrice"
@@ -303,16 +303,16 @@ onMounted(load);
               />
             </div>
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center">
             <span :class="it.stock <= 5 ? 'text-rose-600 font-medium' : 'text-ink-600'">
               {{ it.stock }}
             </span>
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center">
             <span v-if="it.emailCodeEnabled" class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded">支持</span>
             <span v-else class="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">不支持</span>
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center">
             <input
               v-model="editing[it.typeKey].sort"
               type="number"
@@ -320,7 +320,7 @@ onMounted(load);
               @blur="saveSort(it)"
             />
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center">
             <label class="inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -329,7 +329,7 @@ onMounted(load);
               />
             </label>
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center whitespace-nowrap">
             <button
               class="text-xs px-2.5 py-1 rounded-md border border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 transition"
               @click="openDrawer(it)"

@@ -40,7 +40,7 @@ async function del(c: any) {
     </template>
   </AdminPageHeader>
 
-  <DataTable :loading="loading" :is-empty="!list.length">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="760px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>

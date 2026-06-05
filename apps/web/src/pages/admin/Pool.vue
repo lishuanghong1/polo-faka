@@ -123,7 +123,7 @@ const summary = computed(() => {
     </div>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="尚未添加 Pool 账号">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="尚未添加 Pool 账号" min-width="1120px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>

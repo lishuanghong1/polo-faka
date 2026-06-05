@@ -149,9 +149,9 @@ onMounted(load);
 
   <!-- 列表 -->
   <div class="card p-0 overflow-hidden">
-   <div class="overflow-x-auto">
-    <table class="w-full text-sm min-w-[760px]">
-      <thead class="bg-ink-50 text-ink-600">
+   <div class="overflow-auto max-h-[calc(100vh-300px)]">
+    <table class="w-full text-sm min-w-[1040px]">
+      <thead class="bg-ink-50 text-ink-600 sticky top-0 z-10">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">兑换码</th>
           <th class="px-4 py-2.5 text-right font-medium">面额</th>
@@ -164,25 +164,25 @@ onMounted(load);
       </thead>
       <tbody>
         <tr v-for="it in items" :key="it.id" class="border-t border-ink-100">
-          <td class="px-4 py-3">
-            <code class="font-mono text-xs text-ink-900 break-all">{{ it.code }}</code>
+          <td class="px-4 py-2">
+            <code class="font-mono text-xs text-ink-900 whitespace-nowrap">{{ it.code }}</code>
             <div v-if="it.note" class="text-[11px] text-ink-400 mt-0.5">{{ it.note }}</div>
           </td>
-          <td class="px-4 py-3 text-right">¥{{ Number(it.totalAmount).toFixed(2) }}</td>
-          <td class="px-4 py-3 text-right">¥{{ Number(it.usedAmount).toFixed(2) }}</td>
-          <td class="px-4 py-3 text-right text-emerald-700 font-medium">
+          <td class="px-4 py-2 text-right whitespace-nowrap">¥{{ Number(it.totalAmount).toFixed(2) }}</td>
+          <td class="px-4 py-2 text-right whitespace-nowrap">¥{{ Number(it.usedAmount).toFixed(2) }}</td>
+          <td class="px-4 py-2 text-right text-emerald-700 font-medium whitespace-nowrap">
             ¥{{ (Number(it.totalAmount) - Number(it.usedAmount)).toFixed(2) }}
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center">
             <span :class="['px-2 py-0.5 text-xs rounded-full', statusBadge(it.status).cls]">
               {{ statusBadge(it.status).text }}
             </span>
           </td>
-          <td class="px-4 py-3 text-xs text-ink-500">
+          <td class="px-4 py-2 text-xs text-ink-500 whitespace-nowrap">
             <div class="font-mono">{{ it.batchTag || '—' }}</div>
             <div>{{ new Date(it.createdAt).toLocaleString() }}</div>
           </td>
-          <td class="px-4 py-3 text-center">
+          <td class="px-4 py-2 text-center whitespace-nowrap">
             <button
               v-if="it.status === 'ACTIVE'"
               class="text-xs text-ink-500 hover:text-rose-600 mx-1"
