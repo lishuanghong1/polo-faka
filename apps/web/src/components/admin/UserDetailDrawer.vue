@@ -64,6 +64,14 @@ const balanceLogTypeLabel: Record<string, { text: string; cls: string }> = {
   ADJUST: { text: '调整', cls: 'text-amber-700' },
 };
 
+const pointLogTypeLabel: Record<string, { text: string; cls: string }> = {
+  ORDER_REWARD: { text: '消费返积分', cls: 'text-amber-700' },
+  INVITE_REWARD: { text: '邀请返积分', cls: 'text-brand-700' },
+  ORDER_DEDUCT: { text: '积分支付', cls: 'text-rose-600' },
+  ORDER_REFUND: { text: '积分退款', cls: 'text-sky-700' },
+  ADMIN_ADJUST: { text: '管理员调整', cls: 'text-sky-700' },
+};
+
 const rechargeStatusLabel: Record<string, { text: string; cls: string }> = {
   PENDING: { text: '待支付', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
   PAID: { text: '已入账', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -93,6 +101,24 @@ async function adjust() {
   );
   await api.admin.userAdjust(u.id, { amount: Number(value), note: '管理员调整' });
   ElMessage.success('已调整');
+  await load();
+  emit('changed');
+}
+
+async function adjustPoints() {
+  if (!data.value) return;
+  const u = data.value.user;
+  const { value } = await ElMessageBox.prompt(
+    `调整 ${u.username} (#${u.id}) 积分（正数为增加，负数为扣除）`,
+    '调整积分',
+    {
+      inputPattern: /^-?\d+$/,
+      inputErrorMessage: '请输入整数积分',
+      inputPlaceholder: '例如 10 或 -5',
+    },
+  );
+  await api.admin.userAdjustPoints(u.id, { amount: Number(value), note: '管理员调整' });
+  ElMessage.success('积分已调整');
   await load();
   emit('changed');
 }
@@ -149,10 +175,14 @@ function fmt(n: number) {
         <!-- 钱包 -->
         <div>
           <div class="text-xs text-ink-400 uppercase tracking-wider font-medium mb-2">钱包</div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <div class="card p-3 bg-ink-50/40">
               <div class="text-xs text-ink-500">当前余额</div>
               <div class="text-lg font-semibold text-ink-900 mt-1">¥{{ fmt(data.wallet.balance) }}</div>
+            </div>
+            <div class="card p-3 bg-amber-50/50">
+              <div class="text-xs text-amber-700">当前积分</div>
+              <div class="text-lg font-semibold text-amber-700 mt-1">{{ data.wallet.points }} 分</div>
             </div>
             <div class="card p-3 bg-ink-50/40">
               <div class="text-xs text-ink-500">累计充值</div>
@@ -187,6 +217,8 @@ function fmt(n: number) {
             <div class="flex justify-between"><dt class="text-ink-500">注册时间</dt><dd class="text-xs">{{ new Date(data.user.createdAt).toLocaleString() }}</dd></div>
             <div class="flex justify-between"><dt class="text-ink-500">最后登录</dt><dd class="text-xs">{{ data.user.lastLogin ? new Date(data.user.lastLogin).toLocaleString() : '从未登录' }}</dd></div>
             <div v-if="data.wallet.vipUpgradedAt" class="flex justify-between"><dt class="text-ink-500">VIP 升级时间</dt><dd class="text-xs">{{ new Date(data.wallet.vipUpgradedAt).toLocaleString() }}</dd></div>
+            <div v-if="data.wallet.inviteCode" class="flex justify-between"><dt class="text-ink-500">邀请码</dt><dd class="font-mono text-xs">{{ data.wallet.inviteCode }}</dd></div>
+            <div v-if="data.wallet.inviter" class="flex justify-between"><dt class="text-ink-500">邀请人</dt><dd class="text-xs">#{{ data.wallet.inviter.id }} {{ data.wallet.inviter.nickname || data.wallet.inviter.username }}</dd></div>
           </dl>
         </div>
 
@@ -222,6 +254,41 @@ function fmt(n: number) {
                 支付宝单号：{{ o.thirdTradeNo }}
                 <button class="ml-1 text-brand-700 hover:underline" @click="copy(o.thirdTradeNo!)">复制</button>
               </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 积分流水 -->
+        <div>
+          <div class="text-xs text-ink-400 uppercase tracking-wider font-medium mb-2">
+            积分流水（最近 50 条）
+          </div>
+          <div v-if="!data.pointLogs.length" class="text-sm text-ink-400 py-3 text-center bg-ink-50/40 rounded-lg">
+            没有积分流水
+          </div>
+          <ul v-else class="space-y-1">
+            <li
+              v-for="l in data.pointLogs"
+              :key="l.id"
+              class="p-2 bg-ink-50/40 rounded flex items-center justify-between gap-2 text-xs"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="font-medium"
+                    :class="pointLogTypeLabel[l.type]?.cls || 'text-ink-700'"
+                  >{{ pointLogTypeLabel[l.type]?.text || l.type }}</span>
+                  <span
+                    class="font-mono"
+                    :class="l.amount >= 0 ? 'text-amber-700' : 'text-rose-600'"
+                  >{{ l.amount >= 0 ? '+' : '' }}{{ l.amount }} 分</span>
+                  <span class="text-ink-400">余 {{ l.balance }} 分</span>
+                </div>
+                <div v-if="l.note || l.refOrder" class="text-ink-500 mt-0.5 truncate">
+                  {{ l.note }}<template v-if="l.refOrder"> · {{ l.refOrder }}</template>
+                </div>
+              </div>
+              <div class="text-ink-400 shrink-0">{{ new Date(l.createdAt).toLocaleString() }}</div>
             </li>
           </ul>
         </div>
@@ -317,6 +384,10 @@ function fmt(n: number) {
           class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm"
           @click="adjust"
         >调整余额</button>
+        <button
+          class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm"
+          @click="adjustPoints"
+        >调整积分</button>
         <button
           class="px-3 py-1.5 rounded-lg border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm"
           @click="load"

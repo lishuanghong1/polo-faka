@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
 import { useRouter } from 'vue-router';
@@ -17,12 +18,14 @@ import {
 const user = useUserStore();
 const router = useRouter();
 
-type Tab = 'orders' | 'recharges' | 'logs';
+type Tab = 'orders' | 'recharges' | 'logs' | 'points';
 const tab = ref<Tab>('orders');
 
 const orders = ref<any[]>([]);
 const logs = ref<any[]>([]);
 const recharges = ref<any[]>([]);
+const pointInfo = ref<any>(null);
+const pointLogs = ref<any[]>([]);
 const loading = ref(false);
 
 const vipInfo = ref<{
@@ -50,14 +53,17 @@ const initials = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    const [local, forge, lg, rc, vip] = await Promise.all([
+    const [local, forge, lg, rc, vip, pts, ptLogs] = await Promise.all([
       api.myOrders({ page: 1, pageSize: 20 }) as Promise<any>,
       api.myForgeOrders({ page: 1, pageSize: 20 }).catch(() => ({ items: [] })),
       api.balanceLogs({ page: 1, pageSize: 20 }) as Promise<any>,
       api.recharge.listMine({ page: 1, pageSize: 10 }).catch(() => ({ items: [] })) as Promise<any>,
       api.vip.me().catch(() => null) as Promise<any>,
+      api.points.me().catch(() => null) as Promise<any>,
+      api.points.logs({ page: 1, pageSize: 30 }).catch(() => ({ items: [] })) as Promise<any>,
     ]);
     vipInfo.value = vip;
+    pointInfo.value = pts;
 
     const localItems = (local.items || []).map((o: any) => ({
       source: 'LOCAL' as const,
@@ -89,6 +95,7 @@ async function load() {
     );
     logs.value = Array.isArray(lg) ? lg : (lg?.items || []);
     recharges.value = rc?.items || [];
+    pointLogs.value = ptLogs?.items || [];
   } finally {
     loading.value = false;
   }
@@ -102,6 +109,7 @@ const payMethodLabel = (m: string) => {
     case 'BALANCE': return '账户余额';
     case 'REDEEM': return '兑换码';
     case 'MOCK': return '测试支付';
+    case 'POINTS': return '积分';
     default: return m || '-';
   }
 };
@@ -113,6 +121,17 @@ const balanceLogTypeLabel = (t: string) => {
     case 'REFUND':   return '退款';
     case 'ADJUST':   return '调整';
     default:         return t || '-';
+  }
+};
+
+const pointLogTypeLabel = (t: string) => {
+  switch ((t || '').toUpperCase()) {
+    case 'ORDER_REWARD': return '消费返积分';
+    case 'INVITE_REWARD': return '邀请返积分';
+    case 'ORDER_DEDUCT': return '积分支付';
+    case 'ORDER_REFUND': return '积分退款';
+    case 'ADMIN_ADJUST': return '管理员调整';
+    default: return t || '-';
   }
 };
 
@@ -128,6 +147,12 @@ const rechargeStatusInfo = (s: string) => {
 };
 
 function go(route: string) { router.push(route); }
+
+function copyInvite() {
+  if (!pointInfo.value?.inviteCode) return;
+  const url = `${window.location.origin}${pointInfo.value.inviteUrlPath}`;
+  navigator.clipboard?.writeText(url).then(() => ElMessage.success('邀请链接已复制'));
+}
 </script>
 
 <template>
@@ -163,9 +188,10 @@ function go(route: string) { router.push(route); }
           </div>
         </div>
 
-        <!-- 余额行 -->
+        <!-- 余额 / 积分行 -->
         <div class="mt-5 md:mt-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div>
+          <div class="grid grid-cols-2 gap-6">
+            <div>
             <div class="text-xs text-ink-500 mb-1 flex items-center gap-1.5">
               账户余额
               <span class="w-1 h-1 rounded-full bg-ink-300" />
@@ -173,6 +199,18 @@ function go(route: string) { router.push(route); }
             </div>
             <div class="text-3xl md:text-4xl font-bold tracking-tight text-ink-900 leading-none">
               <span class="text-base font-normal text-ink-400 mr-0.5">¥</span>{{ formatMoneyRaw(user.profile?.balance) }}
+            </div>
+            </div>
+            <div>
+              <div class="text-xs text-ink-500 mb-1 flex items-center gap-1.5">
+                我的积分
+                <span class="w-1 h-1 rounded-full bg-ink-300" />
+                <span class="text-ink-400">1 分 = 1 元</span>
+              </div>
+              <div class="text-3xl md:text-4xl font-bold tracking-tight text-amber-600 leading-none">
+                {{ user.profile?.points ?? pointInfo?.points ?? 0 }}
+                <span class="text-base font-normal text-ink-400 ml-1">分</span>
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -282,6 +320,7 @@ function go(route: string) { router.push(route); }
           { k: 'orders', label: '我的订单', n: orders.length },
           { k: 'recharges', label: '充值记录', n: recharges.length },
           { k: 'logs', label: '余额明细', n: logs.length },
+          { k: 'points', label: '积分/邀请', n: pointLogs.length },
         ]"
         :key="t.k"
         class="flex-1 sm:flex-none px-4 py-1.5 text-sm rounded-lg transition whitespace-nowrap"
@@ -358,6 +397,88 @@ function go(route: string) { router.push(route); }
           </div>
         </div>
       </router-link>
+    </div>
+
+    <!-- ────── 积分 / 邀请 ────── -->
+    <div v-show="tab === 'points'" class="space-y-3">
+      <div class="card p-5">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-xl bg-amber-50 border border-amber-100 p-4">
+            <div class="text-xs text-amber-700">当前积分</div>
+            <div class="mt-1 text-3xl font-bold text-amber-700">{{ pointInfo?.points ?? user.profile?.points ?? 0 }}</div>
+            <div class="mt-1 text-[11px] text-amber-700/70">1 积分 = 1 元，仅支持积分单独支付</div>
+          </div>
+          <div class="rounded-xl bg-brand-50 border border-brand-100 p-4">
+            <div class="text-xs text-brand-700">我的邀请码</div>
+            <div class="mt-1 font-mono text-lg font-semibold text-brand-800">{{ pointInfo?.inviteCode || user.profile?.inviteCode || '-' }}</div>
+            <button class="mt-2 text-xs text-brand-700 hover:underline" @click="copyInvite">复制邀请链接</button>
+          </div>
+          <div class="rounded-xl bg-ink-50 border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">邀请成果</div>
+            <div class="mt-2 grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div class="text-lg font-semibold text-ink-900">{{ pointInfo?.inviteCount ?? 0 }}</div>
+                <div class="text-[11px] text-ink-400">邀请人数</div>
+              </div>
+              <div>
+                <div class="text-lg font-semibold text-ink-900">{{ pointInfo?.effectiveInviteCount ?? 0 }}</div>
+                <div class="text-[11px] text-ink-400">有效首单</div>
+              </div>
+              <div>
+                <div class="text-lg font-semibold text-ink-900">{{ pointInfo?.inviteRewardPoints ?? 0 }}</div>
+                <div class="text-[11px] text-ink-400">邀请收益</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-ink-500 leading-relaxed">
+          下单成功发货后返实付金额 10% 积分；好友通过你的链接注册后，首次成功下单发货，你也获得该笔实付金额 10% 积分。
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="px-4 py-3 border-b border-ink-100 flex items-center justify-between">
+          <div class="text-sm font-medium text-ink-900">积分流水</div>
+          <div class="text-xs text-ink-400">最近 {{ pointLogs.length }} 条</div>
+        </div>
+        <EmptyState
+          v-if="!pointLogs.length"
+          icon="wallet"
+          title="暂无积分流水"
+          hint="消费返积分、邀请返积分和积分支付都会记录在这里"
+        />
+        <ul v-else class="divide-y divide-ink-100">
+          <li
+            v-for="l in pointLogs"
+            :key="l.id"
+            class="p-4 flex items-center gap-3"
+          >
+            <div
+              class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 text-xs font-medium"
+              :class="Number(l.amount) >= 0 ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'"
+            >
+              {{ Number(l.amount) >= 0 ? '+' : '-' }}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-ink-900">{{ pointLogTypeLabel(l.type) }}</span>
+                <span v-if="l.refOrder" class="text-[11px] text-ink-400 font-mono truncate">{{ l.refOrder }}</span>
+              </div>
+              <div v-if="l.note" class="text-xs text-ink-500 mt-0.5 truncate">{{ l.note }}</div>
+              <div class="text-[11px] text-ink-400 mt-0.5">{{ formatDateTime(l.createdAt) }}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div
+                class="font-semibold leading-none"
+                :class="Number(l.amount) >= 0 ? 'text-amber-600' : 'text-rose-600'"
+              >
+                {{ Number(l.amount) >= 0 ? '+' : '' }}{{ l.amount }} 分
+              </div>
+              <div class="text-[11px] text-ink-400 mt-1">余额 {{ l.balance }} 分</div>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!-- ────── 充值记录 ────── -->

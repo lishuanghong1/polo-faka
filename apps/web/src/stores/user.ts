@@ -10,6 +10,8 @@ export interface UserProfile {
   nickname?: string;
   avatar?: string;
   balance: string | number;
+  points: number;
+  inviteCode?: string | null;
   role: 'USER' | 'ADMIN';
 }
 
@@ -55,6 +57,7 @@ export const useUserStore = defineStore('user', () => {
     password: string;
     email?: string;
     nickname?: string;
+    inviteCode?: string;
     captchaId: string;
     captchaCode: string;
   }) {

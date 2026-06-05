@@ -90,7 +90,9 @@ function openDetail(u: any) {
           <th>账号</th>
           <th>邮箱</th>
           <th class="!text-right">余额</th>
+          <th class="!text-right">积分</th>
           <th class="!text-right">累计充值</th>
+          <th>邀请码</th>
           <th>VIP</th>
           <th>角色</th>
           <th>状态</th>
@@ -115,7 +117,9 @@ function openDetail(u: any) {
           </td>
           <td class="text-ink-600">{{ u.email || '—' }}</td>
           <td class="text-right font-medium text-ink-900">¥{{ u.balance }}</td>
+          <td class="text-right font-medium text-amber-700">{{ u.points || 0 }}</td>
           <td class="text-right text-ink-700">¥{{ u.totalRecharged }}</td>
+          <td class="font-mono text-xs text-ink-500">{{ u.inviteCode || '—' }}</td>
           <td>
             <span class="text-xs font-medium" :class="vipLabel[u.vipTier]?.cls || 'text-ink-400'">
               {{ vipLabel[u.vipTier]?.text || u.vipTier }}

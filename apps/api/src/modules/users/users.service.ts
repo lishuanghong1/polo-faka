@@ -49,6 +49,8 @@ export class UsersService {
           email: true,
           nickname: true,
           balance: true,
+          points: true,
+          inviteCode: true,
           totalRecharged: true,
           vipTier: true,
           role: true,
@@ -77,6 +79,9 @@ export class UsersService {
         role: true,
         status: true,
         balance: true,
+        points: true,
+        inviteCode: true,
+        inviter: { select: { id: true, username: true, nickname: true } },
         totalRecharged: true,
         vipTier: true,
         vipUpgradedAt: true,
@@ -86,7 +91,7 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('用户不存在');
 
-    const [rechargeOrders, balanceLogs, orders, forgeOrders, rechargeAgg] =
+    const [rechargeOrders, balanceLogs, pointLogs, orders, forgeOrders, rechargeAgg] =
       await this.prisma.$transaction([
         this.prisma.rechargeOrder.findMany({
           where: { userId: id },
@@ -105,6 +110,20 @@ export class UsersService {
           },
         }),
         this.prisma.balanceLog.findMany({
+          where: { userId: id },
+          orderBy: { id: 'desc' },
+          take: 50,
+          select: {
+            id: true,
+            amount: true,
+            balance: true,
+            type: true,
+            note: true,
+            refOrder: true,
+            createdAt: true,
+          },
+        }),
+        this.prisma.pointLog.findMany({
           where: { userId: id },
           orderBy: { id: 'desc' },
           take: 50,
@@ -160,6 +179,9 @@ export class UsersService {
       user,
       wallet: {
         balance: Number(user.balance),
+        points: user.points,
+        inviteCode: user.inviteCode,
+        inviter: user.inviter,
         totalRecharged: Number(user.totalRecharged),
         vipTier: user.vipTier,
         vipUpgradedAt: user.vipUpgradedAt,
@@ -175,6 +197,7 @@ export class UsersService {
         amount: Number(l.amount),
         balance: Number(l.balance),
       })),
+      pointLogs,
       orders: orders.map((o) => ({
         ...o,
         payAmount: Number(o.payAmount),

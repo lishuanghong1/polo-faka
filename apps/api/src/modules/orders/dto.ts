@@ -4,6 +4,7 @@ export enum PayMethodDto {
   ALIPAY = 'ALIPAY',
   WECHAT = 'WECHAT',
   BALANCE = 'BALANCE',
+  POINTS = 'POINTS',
   USDT = 'USDT',
   MOCK = 'MOCK',
 }

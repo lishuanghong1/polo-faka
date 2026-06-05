@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { REDIS_CLIENT } from '../../redis/redis.module';
 import { VipService } from '../vip/vip.service';
 import { PoolService } from '../pool/pool.service';
+import { PointsService } from '../points/points.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -25,6 +26,7 @@ export class OrdersService {
     @Inject(REDIS_CLIENT) private redis: Redis,
     private vip: VipService,
     private pool: PoolService,
+    private points: PointsService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -82,6 +84,22 @@ export class OrdersService {
       if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
       if (Number(u.balance) < payAmount) throw new BadRequestException('余额不足');
     }
+    const pointsUsed = dto.payMethod === PayMethodDto.POINTS
+      ? this.points.pointsRequiredForAmount(payAmount)
+      : 0;
+    if (dto.payMethod === PayMethodDto.POINTS) {
+      if (!userId) throw new BadRequestException('积分支付需要登录');
+      if (sku.product.deliveryType !== 'CARD_KEY') {
+        throw new BadRequestException('该商品暂不支持积分支付');
+      }
+      const u = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, status: true, points: true },
+      });
+      if (!u) throw new BadRequestException('未登录');
+      if (u.status !== 'ACTIVE') throw new BadRequestException('账号已被禁用');
+      if (u.points < pointsUsed) throw new BadRequestException('积分不足');
+    }
 
     const order = await this.prisma.order.create({
       data: {
@@ -96,6 +114,7 @@ export class OrdersService {
         totalAmount: total,
         discountAmount,
         payAmount,
+        pointsUsed,
         payMethod: dto.payMethod as any,
         vipTier: vipResult.tier,
         status: 'PENDING',
@@ -109,6 +128,9 @@ export class OrdersService {
     // 余额支付：立即结算
     if (dto.payMethod === PayMethodDto.BALANCE && userId) {
       await this.payWithBalance(order.orderNo, userId);
+    }
+    if (dto.payMethod === PayMethodDto.POINTS && userId) {
+      await this.payWithPoints(order.orderNo, userId);
     }
 
     return this.detail(order.orderNo);
@@ -164,6 +186,23 @@ export class OrdersService {
       await tx.order.update({
         where: { orderNo },
         data: { status: 'PAID', paidAt: new Date() },
+      });
+    });
+    await this.markPaidAndDeliver(orderNo);
+  }
+
+  async payWithPoints(orderNo: string, userId: number) {
+    await this.prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { orderNo } });
+      if (!order || order.userId !== userId) throw new NotFoundException('订单不存在');
+      if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+      if (order.payMethod !== 'POINTS') throw new BadRequestException('订单不是积分支付');
+
+      const pointsUsed = order.pointsUsed || this.points.pointsRequiredForAmount(Number(order.payAmount));
+      await this.points.deductForOrder(tx, userId, orderNo, pointsUsed);
+      await tx.order.update({
+        where: { orderNo },
+        data: { status: 'PAID', paidAt: new Date(), pointsUsed },
       });
     });
     await this.markPaidAndDeliver(orderNo);
@@ -304,20 +343,21 @@ export class OrdersService {
         return;
       }
 
-      await this.prisma.$transaction([
-        this.prisma.order.update({
+      await this.prisma.$transaction(async (tx) => {
+        await tx.order.update({
           where: { orderNo },
           data: { status: 'DELIVERED', deliveredAt: new Date() },
-        }),
-        this.prisma.sku.update({
+        });
+        await tx.sku.update({
           where: { id: order.skuId },
           data: { sales: { increment: order.quantity } },
-        }),
-        this.prisma.product.update({
+        });
+        await tx.product.update({
           where: { id: order.productId },
           data: { sales: { increment: order.quantity } },
-        }),
-      ]);
+        });
+        await this.points.settleDeliveredLocalOrder(tx, orderNo);
+      });
     } finally {
       try {
         await this.redis.del(lockKey);
@@ -570,6 +610,10 @@ export class OrdersService {
             },
           });
         }
+      }
+      // 积分支付：退还本单扣掉的积分；消费/邀请奖励暂不自动追回。
+      if (order.payMethod === 'POINTS' && order.userId && order.pointsUsed > 0) {
+        await this.points.refundDeductedPoints(tx, order.userId, orderNo, order.pointsUsed);
       }
     });
     return this.detail(orderNo);

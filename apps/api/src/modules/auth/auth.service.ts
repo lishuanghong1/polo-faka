@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CaptchaService } from '../captcha/captcha.service';
+import { PointsService } from '../points/points.service';
 import { LoginDto, RegisterDto } from './dto';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private captcha: CaptchaService,
+    private points: PointsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -23,13 +25,17 @@ export class AuthService {
       if (e) throw new BadRequestException('该邮箱无法用于注册');
     }
     const hash = await argon2.hash(dto.password);
-    const user = await this.prisma.user.create({
-      data: {
-        username: dto.username,
-        password: hash,
-        email: dto.email,
-        nickname: dto.nickname || dto.username,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: dto.username,
+          password: hash,
+          email: dto.email,
+          nickname: dto.nickname || dto.username,
+        },
+      });
+      await this.points.bindInviterForRegister(created.id, dto.inviteCode, tx);
+      return tx.user.findUniqueOrThrow({ where: { id: created.id } });
     });
     return this.issue(user);
   }
@@ -60,6 +66,8 @@ export class AuthService {
         nickname: true,
         avatar: true,
         balance: true,
+        points: true,
+        inviteCode: true,
         role: true,
         createdAt: true,
         lastLogin: true,

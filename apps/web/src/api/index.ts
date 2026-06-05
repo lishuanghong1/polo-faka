@@ -10,6 +10,9 @@ export type AdminUserDetail = {
     role: 'USER' | 'ADMIN';
     status: 'ACTIVE' | 'BANNED';
     balance: string;
+    points: number;
+    inviteCode: string | null;
+    inviter: { id: number; username: string; nickname: string | null } | null;
     totalRecharged: string;
     vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
     vipUpgradedAt: string | null;
@@ -18,6 +21,9 @@ export type AdminUserDetail = {
   };
   wallet: {
     balance: number;
+    points: number;
+    inviteCode: string | null;
+    inviter: { id: number; username: string; nickname: string | null } | null;
     totalRecharged: number;
     vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
     vipUpgradedAt: string | null;
@@ -40,6 +46,15 @@ export type AdminUserDetail = {
     amount: number;
     balance: number;
     type: 'RECHARGE' | 'CONSUME' | 'REFUND' | 'ADJUST';
+    note: string | null;
+    refOrder: string | null;
+    createdAt: string;
+  }>;
+  pointLogs: Array<{
+    id: number;
+    amount: number;
+    balance: number;
+    type: 'ORDER_REWARD' | 'INVITE_REWARD' | 'ORDER_DEDUCT' | 'ORDER_REFUND' | 'ADMIN_ADJUST';
     note: string | null;
     refOrder: string | null;
     createdAt: string;
@@ -97,6 +112,7 @@ export const api = {
     password: string;
     email?: string;
     nickname?: string;
+    inviteCode?: string;
     captchaId: string;
     captchaCode: string;
   }) => http.post('/website-auth/register', body),
@@ -146,6 +162,10 @@ export const api = {
 
   // 用户
   balanceLogs: (params: any) => http.get('/users/my/balance-logs', { params }),
+  points: {
+    me: () => http.get('/points/me'),
+    logs: (params?: { page?: number; pageSize?: number }) => http.get('/points/logs', { params }),
+  },
 
   // 反馈
   feedback: (body: any) => http.post('/feedbacks/submit', body),
@@ -195,6 +215,8 @@ export const api = {
     users: (params: any) => http.get('/users', { params }),
     userDetail: (id: number) => http.get<AdminUserDetail>(`/users/${id}/detail`),
     userAdjust: (id: number, body: any) => http.put(`/users/${id}/adjust-balance`, body),
+    userAdjustPoints: (id: number, body: any) => http.post(`/points/admin/users/${id}/adjust`, body),
+    pointLogs: (params: any) => http.get('/points/admin/logs', { params }),
 
     annsList: () => http.get('/announcements'),
     annsCreate: (body: any) => http.post('/announcements', body),

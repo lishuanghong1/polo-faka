@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/stores/user';
 import Captcha from '@/components/Captcha.vue';
@@ -8,8 +8,10 @@ import BrandButton from '@/components/BrandButton.vue';
 
 const user = useUserStore();
 const router = useRouter();
+const route = useRoute();
 
-const form = ref({ username: '', password: '', email: '', nickname: '' });
+const initialInvite = typeof route.query.invite === 'string' ? route.query.invite : '';
+const form = ref({ username: '', password: '', email: '', nickname: '', inviteCode: initialInvite });
 const captcha = ref({ id: '', code: '' });
 const captchaRef = ref<InstanceType<typeof Captcha> | null>(null);
 const loading = ref(false);
@@ -24,6 +26,7 @@ async function submit() {
       password: form.value.password,
       email: form.value.email || undefined,
       nickname: form.value.nickname || undefined,
+      inviteCode: form.value.inviteCode.trim() || undefined,
       captchaId: captcha.value.id,
       captchaCode: captcha.value.code,
     });
@@ -98,6 +101,20 @@ async function submit() {
             class="w-full px-4 py-2.5 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition placeholder:text-ink-300"
             placeholder="如何称呼你"
           />
+        </div>
+        <div>
+          <label class="text-xs font-medium text-ink-700 block mb-1.5">
+            邀请码 <span class="text-[10px] font-normal text-ink-400">可选</span>
+          </label>
+          <input
+            v-model="form.inviteCode"
+            class="w-full px-4 py-2.5 border border-ink-200 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition placeholder:text-ink-300 uppercase"
+            placeholder="填写好友邀请码，注册后绑定邀请关系"
+            autocomplete="off"
+          />
+          <p class="mt-1 text-[11px] text-ink-400">
+            邀请码仅用于绑定邀请关系，不填也可以正常注册。
+          </p>
         </div>
         <div>
           <label class="text-xs font-medium text-ink-700 block mb-1.5">图形验证码</label>

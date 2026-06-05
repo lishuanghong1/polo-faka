@@ -5,6 +5,7 @@
  */
 const { PrismaClient } = require('@prisma/client');
 const argon2 = require('argon2');
+const { randomBytes } = require('crypto');
 
 const prisma = new PrismaClient();
 
@@ -30,6 +31,35 @@ async function ensureAdmin() {
   }
 }
 
+function makeInviteCode(id) {
+  const rand = randomBytes(3).toString('hex').toUpperCase();
+  return `P${id.toString(36).toUpperCase()}${rand}`.slice(0, 16);
+}
+
+async function ensureInviteCodes() {
+  const users = await prisma.user.findMany({
+    where: { inviteCode: null },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+  let patched = 0;
+  for (const u of users) {
+    for (let i = 0; i < 5; i++) {
+      try {
+        await prisma.user.update({
+          where: { id: u.id },
+          data: { inviteCode: makeInviteCode(u.id) },
+        });
+        patched++;
+        break;
+      } catch (e) {
+        if (e.code !== 'P2002' || i === 4) throw e;
+      }
+    }
+  }
+  if (patched) console.log(`[seed] invite codes backfilled: ${patched}`);
+}
+
 async function ensureSettings() {
   const defaults = [
     { key: 'site_name', value: 'Polo AI 小铺', isPublic: true },
@@ -48,6 +78,7 @@ async function ensureSettings() {
 (async () => {
   try {
     await ensureAdmin();
+    await ensureInviteCodes();
     await ensureSettings();
   } catch (e) {
     console.error('[seed] error:', e.message);

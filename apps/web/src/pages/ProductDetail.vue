@@ -17,7 +17,7 @@ const contact = ref('');
 const submitting = ref(false);
 const alipayEnabled = ref(false);
 
-type PayMethod = 'ALIPAY' | 'BALANCE';
+type PayMethod = 'ALIPAY' | 'BALANCE' | 'POINTS';
 const payMethod = ref<PayMethod>('ALIPAY');
 
 // VIP 折扣相关
@@ -55,6 +55,10 @@ const discountAmount = computed(() => {
 const totalAmount = computed(() => +(originalAmount.value - discountAmount.value).toFixed(2));
 const userBalance = computed(() => Number(userStore.profile?.balance ?? 0));
 const balanceEnough = computed(() => userBalance.value >= totalAmount.value);
+const userPoints = computed(() => Number(userStore.profile?.points ?? 0));
+const pointsRequired = computed(() => Math.ceil(totalAmount.value));
+const pointsEnough = computed(() => userPoints.value >= pointsRequired.value);
+const expectedPointsReward = computed(() => Math.floor(totalAmount.value * 0.1));
 
 async function load() {
   product.value = await api.product(Number(route.params.id));
@@ -118,6 +122,20 @@ async function buy() {
       router.push('/recharge');
       return;
     }
+  } else if (payMethod.value === 'POINTS') {
+    if (!userStore.isLoggedIn) {
+      ElMessage.warning('积分支付需要先登录');
+      router.push({ name: 'login', query: { redirect: route.fullPath } });
+      return;
+    }
+    if (isPoolQuotaProduct.value) {
+      ElMessage.warning('该商品暂不支持积分支付');
+      return;
+    }
+    if (!pointsEnough.value) {
+      ElMessage.warning(`积分不足，还差 ${pointsRequired.value - userPoints.value} 积分`);
+      return;
+    }
   } else if (!alipayEnabled.value) {
     ElMessage.warning('支付宝暂未启用，请稍后再试');
     return;
@@ -125,7 +143,7 @@ async function buy() {
 
   // 支付宝：在点击的同步上下文里先开一个空白页签，避免 await 之后被浏览器拦截弹窗
   let payWindow: Window | null = null;
-  if (payMethod.value !== 'BALANCE') {
+  if (payMethod.value === 'ALIPAY') {
     payWindow = window.open('', '_blank');
   }
 
@@ -138,7 +156,7 @@ async function buy() {
       payMethod: payMethod.value,
       contact: contact.value || undefined,
     });
-    if (payMethod.value === 'BALANCE') {
+    if (payMethod.value === 'BALANCE' || payMethod.value === 'POINTS') {
       ElMessage.success('支付成功，准备发货');
       await userStore.restore();
       router.push(`/order/${order.orderNo}`);
@@ -236,7 +254,7 @@ async function buy() {
 
       <div class="mt-4">
         <div class="text-sm text-ink-700 mb-2">支付方式</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <button
             type="button"
             :class="[
@@ -287,6 +305,37 @@ async function buy() {
               <template v-else>即时扣款，立即发货</template>
             </div>
           </button>
+          <button
+            type="button"
+            :class="[
+              'text-left px-3 py-2.5 rounded-lg border-2 transition text-sm',
+              payMethod === 'POINTS'
+                ? 'border-brand-500 bg-brand-50/40'
+                : 'border-ink-200 hover:border-ink-300 bg-white',
+              isPoolQuotaProduct && 'opacity-50 cursor-not-allowed',
+            ]"
+            :disabled="isPoolQuotaProduct"
+            @click="!isPoolQuotaProduct && (payMethod = 'POINTS')"
+          >
+            <div class="flex items-center justify-between">
+              <div class="font-medium flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19l1-5.8-4.2-4.1 5.9-.9L12 3z" stroke-linejoin="round"/>
+                </svg>
+                积分支付
+              </div>
+              <span v-if="userStore.isLoggedIn" class="text-xs" :class="pointsEnough ? 'text-emerald-600' : 'text-rose-600'">
+                {{ userPoints }} 分
+              </span>
+              <span v-else class="text-xs text-ink-400">未登录</span>
+            </div>
+            <div class="text-[11px] text-ink-500 mt-0.5">
+              <template v-if="isPoolQuotaProduct">该商品暂不支持</template>
+              <template v-else-if="!userStore.isLoggedIn">登录后可用</template>
+              <template v-else-if="!pointsEnough">需 {{ pointsRequired }} 分，还差 {{ pointsRequired - userPoints }}</template>
+              <template v-else>需 {{ pointsRequired }} 分，1 分 = 1 元</template>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -319,6 +368,15 @@ async function buy() {
           <template v-else>
             合计 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount.toFixed(2) }}</span>
           </template>
+          <div
+            v-if="payMethod !== 'POINTS' && expectedPointsReward > 0"
+            class="mt-1 text-[11px] text-amber-600"
+          >
+            成功发货预计返 {{ expectedPointsReward }} 积分
+          </div>
+          <div v-else-if="payMethod === 'POINTS'" class="mt-1 text-[11px] text-ink-500">
+            本单将使用 {{ pointsRequired }} 积分支付，不再返积分
+          </div>
         </div>
         <el-button
           type="primary"
@@ -327,12 +385,17 @@ async function buy() {
             !skuId ||
             !currentSku ||
             (payMethod === 'ALIPAY' && !alipayEnabled) ||
+            (payMethod === 'POINTS' && (isPoolQuotaProduct || !userStore.isLoggedIn || !pointsEnough)) ||
             (isPoolQuotaProduct && (!userStore.isLoggedIn || currentSku.stock <= 0))
           "
           @click="buy"
         >
           {{
-            payMethod === 'BALANCE'
+            payMethod === 'POINTS'
+              ? (userStore.isLoggedIn
+                  ? (pointsEnough ? '积分支付' : '积分不足')
+                  : '登录后用积分支付')
+              : payMethod === 'BALANCE'
               ? (userStore.isLoggedIn
                   ? (balanceEnough ? '余额支付' : '余额不足 · 去充值')
                   : '登录后用余额支付')

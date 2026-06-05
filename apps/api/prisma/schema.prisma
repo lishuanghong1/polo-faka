@@ -30,6 +30,10 @@ model User {
   nickname  String?
   avatar    String?
   balance   Decimal    @default(0) @db.Decimal(12, 2)
+  points    Int        @default(0)
+  inviteCode String?   @unique @db.VarChar(16)
+  inviterId Int?
+  inviteRewardedAt DateTime?
   role      UserRole   @default(USER)
   status    UserStatus @default(ACTIVE)
   lastLogin DateTime?
@@ -44,9 +48,13 @@ model User {
   orders          Order[]
   balanceLogs     BalanceLog[]
   rechargeOrders  RechargeOrder[]
+  pointLogs       PointLog[]
+  inviter         User?      @relation("UserInvites", fields: [inviterId], references: [id], onDelete: SetNull)
+  invitees        User[]     @relation("UserInvites")
 
   @@index([createdAt])
   @@index([vipTier])
+  @@index([inviterId])
   @@map("users")
 }
 
@@ -123,6 +131,34 @@ model BalanceLog {
   @@unique([refOrder, type], map: "uniq_balance_log_ref_type")
   @@index([userId, createdAt])
   @@map("balance_logs")
+}
+
+enum PointLogType {
+  ORDER_REWARD   // 消费返积分
+  INVITE_REWARD  // 邀请首单返积分
+  ORDER_DEDUCT   // 积分支付扣减
+  ORDER_REFUND   // 积分支付退款
+  ADMIN_ADJUST   // 管理员调整
+}
+
+model PointLog {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  amount    Int          // 正为收入，负为支出
+  balance   Int          // 操作后积分余额
+  type      PointLogType
+  note      String?
+  refOrder  String?      @db.VarChar(64)
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 同一订单、同一用户、同一积分动作只能记一次，保证 notify / 补发 / 重试幂等。
+  // MySQL 中 refOrder = NULL 可重复，因此管理员调整不受影响。
+  @@unique([refOrder, type, userId], map: "uniq_point_log_ref_type_user")
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("point_logs")
 }
 
 // ===================== 账户充值 =====================
@@ -289,6 +325,7 @@ enum PayMethod {
   ALIPAY
   WECHAT
   BALANCE
+  POINTS
   USDT
   MOCK
   REDEEM
@@ -307,6 +344,7 @@ model Order {
   totalAmount   Decimal     @db.Decimal(12, 2)              // 原价合计（unitPrice × qty）
   discountAmount Decimal    @default(0) @db.Decimal(12, 2)  // VIP / 优惠券折扣金额（正数）
   payAmount     Decimal     @db.Decimal(12, 2) // 实付（totalAmount - discountAmount，可能再被余额抵扣）
+  pointsUsed    Int         @default(0)
   payMethod     PayMethod
   vipTier       VipTier     @default(NONE)                  // 下单时用户等级快照
   status        OrderStatus @default(PENDING)

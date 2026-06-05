@@ -30,6 +30,7 @@ import { HealthModule } from './modules/health/health.module';
 import { CaptchaModule } from './modules/captcha/captcha.module';
 import { RechargeModule } from './modules/recharge/recharge.module';
 import { VipModule } from './modules/vip/vip.module';
+import { PointsModule } from './modules/points/points.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { VipModule } from './modules/vip/vip.module';
     CaptchaModule,
     RechargeModule,
     VipModule,
+    PointsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

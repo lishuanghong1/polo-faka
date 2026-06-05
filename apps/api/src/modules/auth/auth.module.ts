@@ -9,10 +9,12 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { CaptchaModule } from '../captcha/captcha.module';
+import { PointsModule } from '../points/points.module';
 
 @Module({
   imports: [
     CaptchaModule,
+    PointsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

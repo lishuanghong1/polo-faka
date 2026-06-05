@@ -81,6 +81,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'card-keys', name: 'admin-keys', component: () => import('@/pages/admin/CardKeys.vue') },
       { path: 'categories', name: 'admin-cats', component: () => import('@/pages/admin/Categories.vue') },
       { path: 'users', name: 'admin-users', component: () => import('@/pages/admin/Users.vue') },
+      { path: 'points', name: 'admin-points', component: () => import('@/pages/admin/Points.vue') },
       { path: 'announcements', name: 'admin-anns', component: () => import('@/pages/admin/Announcements.vue') },
       { path: 'pool', name: 'admin-pool', component: () => import('@/pages/admin/Pool.vue') },
       { path: 'warehouse', name: 'admin-warehouse', component: () => import('@/pages/admin/Warehouse.vue') },

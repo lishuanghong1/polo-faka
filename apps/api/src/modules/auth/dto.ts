@@ -38,6 +38,11 @@ export class RegisterDto extends CaptchaFields {
   @IsString()
   @MaxLength(32)
   nickname?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  inviteCode?: string;
 }
 
 export class LoginDto extends CaptchaFields {
