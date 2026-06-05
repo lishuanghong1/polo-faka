@@ -9,7 +9,14 @@ import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
-import { formatCardKeyContent, formatCardKeysForCopy } from '@/utils/card-key';
+import EmailCodeBox from '@/components/EmailCodeBox.vue';
+import {
+  formatCardKeyContent,
+  formatCardKeysForCopy,
+  formatDeliveryAccountForCopy,
+  parseWarehouseDeliveryAccount,
+  type ParsedDeliveryAccount,
+} from '@/utils/card-key';
 
 type CodeKind = 'card' | 'balance';
 
@@ -45,6 +52,21 @@ const lineTotal = computed(() => {
   if (!selectedProduct.value) return 0;
   return +(selectedProduct.value.displayPrice * quantity.value).toFixed(2);
 });
+
+const cardResultAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
+  return (cardResult.value?.cardKeys || [])
+    .map((item: any) => {
+      const account = parseWarehouseDeliveryAccount(item);
+      return account ? { ...account, id: item.id, soldAt: item.soldAt } : null;
+    })
+    .filter(Boolean) as Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>;
+});
+
+const cardResultPlainKeys = computed(() => {
+  return (cardResult.value?.cardKeys || []).filter((item: any) => !parseWarehouseDeliveryAccount(item));
+});
+
+const cardResultPrimaryEmail = computed(() => cardResultAccounts.value[0]?.email || '');
 
 const canPlace = computed(() => {
   if (!balanceInfo.value || !selectedProduct.value) return false;
@@ -148,8 +170,17 @@ async function doPlaceBalance() {
 function copyAllCardKeys() {
   if (!cardResult.value) return;
   const text = formatCardKeysForCopy(cardResult.value.cardKeys || []);
-  navigator.clipboard.writeText(text);
-  ElMessage.success('已复制全部卡密');
+  copyTextContent(text, '已复制全部交付内容');
+}
+
+async function copyTextContent(text: string, label = '已复制') {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    ElMessage.success(label);
+  } catch {
+    ElMessage.error('复制失败，请手动选中复制');
+  }
 }
 
 function goCardOrder() {
@@ -187,21 +218,57 @@ function goCardOrder() {
           <span class="text-ink-800">{{ cardResult.skuName }} × {{ cardResult.quantity }}</span>
         </div>
       </div>
-      <div v-if="cardResult.cardKeys?.length" class="border-t border-ink-100 pt-4">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-semibold text-ink-800">卡密内容</div>
-          <button class="text-xs text-brand-600 hover:underline" @click="copyAllCardKeys">复制全部</button>
-        </div>
-        <div class="space-y-2">
-          <div
-            v-for="c in cardResult.cardKeys"
-            :key="c.id"
-            class="font-mono text-sm bg-ink-50 border border-ink-200 rounded-lg p-3 break-all whitespace-pre-wrap"
-          >
-            {{ formatCardKeyContent(c.content) }}
+      <template v-if="cardResult.cardKeys?.length">
+        <div v-if="cardResultAccounts.length" class="border-t border-ink-100 pt-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold text-ink-800">账号交付</div>
+            <button class="text-xs text-brand-600 hover:underline" @click="copyAllCardKeys">复制全部</button>
+          </div>
+          <div class="space-y-2.5">
+            <div
+              v-for="(a, i) in cardResultAccounts"
+              :key="a.id || a.email || i"
+              class="bg-ink-50 border border-ink-200 rounded-lg p-3 space-y-2"
+            >
+              <div class="flex items-center justify-between gap-3 text-xs text-ink-500">
+                <span>账号 #{{ i + 1 }}</span>
+                <button class="text-brand-600 hover:underline" @click="copyTextContent(formatDeliveryAccountForCopy(a), '账号已复制')">复制该账号</button>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-ink-500 w-12 shrink-0">邮箱</span>
+                <code class="font-mono text-sm text-ink-800 break-all flex-1">{{ a.email }}</code>
+                <button class="text-xs text-brand-600 hover:underline shrink-0" @click="copyTextContent(a.email, '邮箱已复制')">复制</button>
+              </div>
+              <div class="flex items-start gap-2">
+                <span class="text-xs text-ink-500 w-12 shrink-0 mt-1">Token</span>
+                <code class="font-mono text-xs text-ink-700 break-all flex-1 leading-relaxed">{{ a.token }}</code>
+                <button class="text-xs text-brand-600 hover:underline shrink-0 mt-0.5" @click="copyTextContent(a.token, 'Token 已复制')">复制</button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+
+        <div v-if="cardResultPrimaryEmail" class="border-t border-ink-100 pt-4 mt-4">
+          <div class="text-sm font-semibold text-ink-800 mb-2">为该账号接验证码</div>
+          <EmailCodeBox :model-value="cardResultPrimaryEmail" :editable="false" compact />
+        </div>
+
+        <div v-if="cardResultPlainKeys.length" class="border-t border-ink-100 pt-4 mt-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm font-semibold text-ink-800">卡密内容</div>
+            <button class="text-xs text-brand-600 hover:underline" @click="copyAllCardKeys">复制全部</button>
+          </div>
+          <div class="space-y-2">
+            <div
+              v-for="c in cardResultPlainKeys"
+              :key="c.id"
+              class="font-mono text-sm bg-ink-50 border border-ink-200 rounded-lg p-3 break-all whitespace-pre-wrap"
+            >
+              {{ formatCardKeyContent(c.content) }}
+            </div>
+          </div>
+        </div>
+      </template>
       <div v-else class="border-t border-ink-100 pt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
         ⚠️ 该商品暂时没有可用卡密，已为您创建订单。客服处理后会自动发货，您可凭订单号查询。
       </div>

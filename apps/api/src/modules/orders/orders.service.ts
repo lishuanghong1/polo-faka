@@ -13,6 +13,10 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { VipService } from '../vip/vip.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
+function isWarehouseDeliveryRemark(remark?: string | null) {
+  return /^from warehouse #\d+$/i.test(String(remark || '').trim());
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -302,6 +306,7 @@ export class OrdersService {
           select: {
             id: true,
             content: true,
+            remark: true,
             soldAt: true,
           },
         },
@@ -320,7 +325,22 @@ export class OrdersService {
       redeemCode = rec?.code?.code ?? null;
     }
 
-    return { ...order, redeemCode };
+    const cardKeyIds = order.cardKeys.map((cardKey) => cardKey.id);
+    const warehouseRefs = cardKeyIds.length
+      ? await this.prisma.warehouseAccount.findMany({
+          where: { cardKeyId: { in: cardKeyIds } },
+          select: { cardKeyId: true },
+        })
+      : [];
+    const warehouseCardKeyIds = new Set(warehouseRefs.map((ref) => ref.cardKeyId).filter(Boolean));
+
+    const cardKeys = order.cardKeys.map(({ remark, ...cardKey }) => ({
+      ...cardKey,
+      isWarehouseDelivery:
+        warehouseCardKeyIds.has(cardKey.id) || isWarehouseDeliveryRemark(remark),
+    }));
+
+    return { ...order, cardKeys, redeemCode };
   }
 
   async listMine(userId: number, page = 1, pageSize = 20) {

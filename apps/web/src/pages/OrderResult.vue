@@ -4,9 +4,16 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
-import { formatCardKeyContent, formatCardKeysForCopy } from '@/utils/card-key';
+import {
+  formatCardKeyContent,
+  formatCardKeysForCopy,
+  formatDeliveryAccountForCopy,
+  parseWarehouseDeliveryAccount,
+  type ParsedDeliveryAccount,
+} from '@/utils/card-key';
 import { statusOf, shouldKeepPolling } from '@/utils/order-status';
 import OrderStatusBadge from '@/components/OrderStatusBadge.vue';
+import EmailCodeBox from '@/components/EmailCodeBox.vue';
 import BrandButton from '@/components/BrandButton.vue';
 import Skeleton from '@/components/Skeleton.vue';
 import { formatDateTime, formatMoneyRaw, copyText } from '@/utils/format';
@@ -32,6 +39,21 @@ const needContactSupport = computed(() => {
 });
 
 const statusInfo = computed(() => statusOf(order.value?.status));
+
+const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
+  return (order.value?.cardKeys || [])
+    .map((item: any) => {
+      const account = parseWarehouseDeliveryAccount(item);
+      return account ? { ...account, id: item.id, soldAt: item.soldAt } : null;
+    })
+    .filter(Boolean) as Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>;
+});
+
+const plainCardKeys = computed(() => {
+  return (order.value?.cardKeys || []).filter((item: any) => !parseWarehouseDeliveryAccount(item));
+});
+
+const primaryDeliveryEmail = computed(() => deliveryAccounts.value[0]?.email || '');
 
 async function load(contact?: string) {
   try {
@@ -99,7 +121,7 @@ async function copy(text: string, label = '已复制') {
   else ElMessage.error('复制失败');
 }
 function copyAll() {
-  copy(formatCardKeysForCopy(order.value.cardKeys || []), '已复制全部卡密');
+  copy(formatCardKeysForCopy(order.value.cardKeys || []), '已复制全部交付内容');
 }
 
 onMounted(async () => {
@@ -266,13 +288,77 @@ const statusHeroClass = computed(() => {
         </dl>
       </div>
 
+      <!-- ────── 账号交付 ────── -->
+      <div v-if="deliveryAccounts.length" class="card p-5 md:p-6 mb-4">
+        <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <h3 class="text-sm font-semibold text-ink-900 flex items-center gap-2">
+            <span class="w-1 h-4 bg-brand-600 rounded-full" />
+            账号交付
+            <span class="text-xs font-normal text-ink-400">共 {{ deliveryAccounts.length }} 个</span>
+          </h3>
+          <BrandButton variant="ghost" size="sm" @click="copyAll">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            复制全部
+          </BrandButton>
+        </div>
+        <ul class="space-y-3">
+          <li
+            v-for="(a, i) in deliveryAccounts"
+            :key="a.id || a.email || i"
+            class="p-4 bg-ink-50/70 rounded-xl space-y-2.5"
+          >
+            <div class="flex items-center justify-between gap-3 flex-wrap text-xs">
+              <span class="text-ink-500">账号 #{{ i + 1 }}</span>
+              <span v-if="a.id" class="text-ink-400 font-mono">ID: {{ a.id }}</span>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0">邮箱</div>
+              <code class="text-sm text-ink-900 break-all flex-1 font-mono">{{ a.email }}</code>
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 transition"
+                @click="copy(a.email, '邮箱已复制')"
+              >复制</button>
+            </div>
+
+            <div class="flex items-start gap-2.5">
+              <div class="text-xs text-ink-500 w-14 shrink-0 mt-1">Token</div>
+              <code class="text-xs text-ink-700 break-all flex-1 font-mono leading-relaxed">{{ a.token }}</code>
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 mt-0.5 transition"
+                @click="copy(a.token, 'Token 已复制')"
+              >复制</button>
+            </div>
+
+            <div class="pt-1">
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded transition"
+                @click="copy(formatDeliveryAccountForCopy(a), '账号已复制')"
+              >复制该账号</button>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- ────── 接验证码 ────── -->
+      <div v-if="primaryDeliveryEmail && order.status === 'DELIVERED'" class="card p-5 md:p-6 mb-4">
+        <h3 class="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-2">
+          <span class="w-1 h-4 bg-brand-600 rounded-full" />
+          为该账号接验证码
+        </h3>
+        <EmailCodeBox :model-value="primaryDeliveryEmail" :editable="false" compact />
+      </div>
+
       <!-- ────── 卡密交付 ────── -->
-      <div v-if="order.cardKeys?.length" class="card p-5 md:p-6 mb-4">
+      <div v-if="plainCardKeys.length" class="card p-5 md:p-6 mb-4">
         <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
           <h3 class="text-sm font-semibold text-ink-900 flex items-center gap-2">
             <span class="w-1 h-4 bg-brand-600 rounded-full" />
             卡密交付
-            <span class="text-xs font-normal text-ink-400">共 {{ order.cardKeys.length }} 条</span>
+            <span class="text-xs font-normal text-ink-400">共 {{ plainCardKeys.length }} 条</span>
           </h3>
           <BrandButton variant="ghost" size="sm" @click="copyAll">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5">
@@ -284,7 +370,7 @@ const statusHeroClass = computed(() => {
         </div>
         <ul class="space-y-2">
           <li
-            v-for="(c, i) in order.cardKeys"
+            v-for="(c, i) in plainCardKeys"
             :key="i"
             class="group p-3.5 bg-ink-50/70 hover:bg-ink-50 rounded-lg flex items-start justify-between gap-3 transition"
           >
