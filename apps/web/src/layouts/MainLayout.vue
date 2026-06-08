@@ -49,7 +49,7 @@ function goAndClose(path: string) {
         <nav class="hidden md:flex items-center gap-6 text-sm text-ink-600">
           <router-link to="/" class="hover:text-brand-600">首页</router-link>
           <router-link to="/me" class="hover:text-brand-600">个人中心</router-link>
-          <router-link :to="{ path: '/me', query: { tab: 'logs' } }" class="hover:text-brand-600">交易记录</router-link>
+          <router-link to="/recharge" class="hover:text-brand-600">账户充值</router-link>
           <router-link to="/query" class="hover:text-brand-600">订单查询</router-link>
         </nav>
 
@@ -104,7 +104,7 @@ function goAndClose(path: string) {
         <nav class="max-w-7xl mx-auto px-4 py-3 grid gap-1 text-sm">
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/')">首页</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
-          <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me?tab=logs')">交易记录</button>
+          <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recharge')">账户充值</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/query')">订单查询</button>
           <template v-if="user.isLoggedIn">
             <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
