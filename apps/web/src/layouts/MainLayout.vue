@@ -30,17 +30,10 @@ function goAndClose(path: string) {
       <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <router-link to="/" class="flex items-center gap-2 shrink-0">
           <img
-            v-if="site.settings.site_logo"
-            :src="site.settings.site_logo"
+            :src="site.settings.site_logo || '/logo.png'"
             class="w-9 h-9 rounded-xl object-cover"
             alt="logo"
           />
-          <div
-            v-else
-            class="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center text-white font-bold"
-          >
-            {{ (site.settings.site_name || 'P')[0]?.toUpperCase() }}
-          </div>
           <div class="font-semibold text-lg whitespace-nowrap">
             {{ site.settings.site_name || 'Polo 接码' }}
           </div>

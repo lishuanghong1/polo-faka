@@ -32,6 +32,9 @@ export class AuthService {
           password: hash,
           email: dto.email,
           nickname: dto.nickname || dto.username,
+          // 注册即自动登录（直接下发 token），同步记录一次登录时间，
+          // 否则后台用户列表会一直显示「从未登录」
+          lastLogin: new Date(),
         },
       });
       await this.points.bindInviterForRegister(created.id, dto.inviteCode, tx);
