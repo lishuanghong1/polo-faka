@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import OrderStatusBadge from '@/components/OrderStatusBadge.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Skeleton from '@/components/Skeleton.vue';
@@ -17,9 +17,12 @@ import {
 
 const user = useUserStore();
 const router = useRouter();
+const route = useRoute();
 
 type Tab = 'orders' | 'recharges' | 'logs' | 'points';
-const tab = ref<Tab>('orders');
+const validTabs: Tab[] = ['orders', 'recharges', 'logs', 'points'];
+const initialTab = validTabs.includes(route.query.tab as Tab) ? (route.query.tab as Tab) : 'orders';
+const tab = ref<Tab>(initialTab);
 
 const orders = ref<any[]>([]);
 const logs = ref<any[]>([]);
