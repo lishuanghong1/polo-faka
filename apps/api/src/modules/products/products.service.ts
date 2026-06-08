@@ -56,6 +56,41 @@ export class ProductsService {
     return { total, page, pageSize, items: list };
   }
 
+  /** 管理员列表：返回所有状态（在售 / 下架 / 草稿）和全部 SKU（含隐藏），带真实库存 */
+  async adminList(q: { status?: string; keyword?: string; categoryId?: number } = {}) {
+    const where: any = {};
+    if (q.status) where.status = q.status;
+    if (q.categoryId) where.categoryId = Number(q.categoryId);
+    if (q.keyword) where.title = { contains: q.keyword };
+
+    const items = await this.prisma.product.findMany({
+      where,
+      orderBy: [{ sort: 'desc' }, { id: 'desc' }],
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        skus: { orderBy: { sort: 'asc' } },
+      },
+    });
+
+    const poolStock = items.some((p) => p.deliveryType === 'POOL_QUOTA')
+      ? await this.computePoolAvailableAccounts()
+      : 0;
+    const list = await Promise.all(
+      items.map(async (p) => {
+        const stockBySku =
+          p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
+        const skus = p.skus.map((s) => ({
+          ...s,
+          stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+        }));
+        const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
+        return { ...p, skus, totalStock };
+      }),
+    );
+
+    return { total: list.length, items: list };
+  }
+
   async detail(id: number) {
     const p = await this.prisma.product.findUnique({
       where: { id },

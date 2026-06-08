@@ -10,13 +10,24 @@ const list = ref<any[]>([]);
 const cats = ref<any[]>([]);
 const editing = ref<any | null>(null);
 const loading = ref(false);
+const filter = ref<{ status: string; keyword: string }>({ status: '', keyword: '' });
+
+const statusOptions = [
+  { value: '', label: '全部状态' },
+  { value: 'ON_SALE', label: '在售' },
+  { value: 'OFF_SHELF', label: '已下架' },
+  { value: 'DRAFT', label: '草稿' },
+];
 
 async function load() {
   loading.value = true;
   try {
-    const a = await api.products({ pageSize: 100 });
+    const a = await api.admin.productsListAll({
+      status: filter.value.status || undefined,
+      keyword: filter.value.keyword || undefined,
+    });
     list.value = a.items;
-    cats.value = await api.categories();
+    if (!cats.value.length) cats.value = await api.categories();
   } finally {
     loading.value = false;
   }
@@ -145,6 +156,19 @@ function removeSku(i: number) {
       </button>
     </template>
   </AdminPageHeader>
+
+  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
+    <input
+      v-model="filter.keyword"
+      placeholder="搜索商品标题"
+      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
+      @keydown.enter="load"
+    />
+    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none" @change="load">
+      <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+    </select>
+    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
+  </div>
 
   <DataTable :loading="loading" :is-empty="!list.length" min-width="1120px">
     <thead>

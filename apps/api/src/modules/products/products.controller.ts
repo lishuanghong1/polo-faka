@@ -25,6 +25,20 @@ export class ProductsController {
     });
   }
 
+  @Roles('ADMIN')
+  @Get('admin/all')
+  adminList(
+    @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    return this.svc.adminList({
+      status,
+      keyword,
+      categoryId: categoryId ? Number(categoryId) : undefined,
+    });
+  }
+
   @Public()
   @Get(':id')
   detail(@Param('id') id: string) {

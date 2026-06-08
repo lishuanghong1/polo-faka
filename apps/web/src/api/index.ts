@@ -194,6 +194,8 @@ export const api = {
     revenueTrend: (days = 14) => http.get(`/admin/trend/revenue`, { params: { days } }),
     stockAlerts: (threshold = 5) => http.get(`/admin/stock/alerts`, { params: { threshold } }),
 
+    productsListAll: (params?: { status?: string; keyword?: string; categoryId?: number }) =>
+      http.get('/products/admin/all', { params }),
     productsCreate: (body: any) => http.post('/products', body),
     productsUpdate: (id: number, body: any) => http.put(`/products/${id}`, body),
     productsRemove: (id: number) => http.delete(`/products/${id}`),
