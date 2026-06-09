@@ -78,7 +78,7 @@ pub struct UsageInfo {
     pub source: String,
 }
 
-/// 入口：根据 JWT 查询用量，先尝试 RPC 再降级 Cookie
+/// 入口：查询用量。会话串 `user_xxx::jwt` 优先走 usage-summary（与商城号池一致）。
 pub async fn query(token: &str) -> AppResult<UsageInfo> {
     let token = token.trim();
     if token.is_empty() {
@@ -89,38 +89,44 @@ pub async fn query(token: &str) -> AppResult<UsageInfo> {
     let client = build_client()?;
     let user_id = token_parser::session_user_id(token);
 
-    // 1. RPC（首选）
-    match try_rpc(&client, jwt).await {
-        Ok(mut info) => {
-            info.user_id = user_id.clone();
-            return Ok(info);
-        }
-        Err(e) => {
-            // 401/403 直接说明 token 失效，没必要再试其它接口
-            if e.to_string().contains("401") || e.to_string().contains("403") {
-                return Err(AppError::Other(format!(
-                    "token 已失效或被拒绝：{e}",
-                )));
-            }
-        }
-    }
-
-    // 2. Cookie / Summary（需要 user_id）
-    if let Some(uid) = user_id.as_ref() {
-        if let Ok(mut info) = try_summary(&client, jwt, uid).await {
-            info.user_id = user_id;
-            return Ok(info);
-        }
-    }
-
-    // 3. Enterprise /auth/usage 兜底
-    if let Ok(mut info) = try_auth_usage(&client, jwt).await {
-        info.user_id = user_id;
+    // 1. usage-summary + 完整会话串 Cookie/Bearer（商城后端同款）
+    if let Ok(mut info) = try_summary_session(&client, token).await {
+        info.user_id = user_id.clone();
         return Ok(info);
     }
 
+    // 2. RPC：完整会话串
+    if let Ok(mut info) = try_rpc(&client, token).await {
+        info.user_id = user_id.clone();
+        return Ok(info);
+    }
+
+    // 3. RPC：纯 JWT
+    if token != jwt {
+        if let Ok(mut info) = try_rpc(&client, jwt).await {
+            info.user_id = user_id.clone();
+            return Ok(info);
+        }
+    }
+
+    // 4. usage-summary：user_id + JWT 拼 Cookie
+    if let Some(uid) = user_id.as_ref() {
+        if let Ok(mut info) = try_summary(&client, jwt, uid).await {
+            info.user_id = user_id.clone();
+            return Ok(info);
+        }
+    }
+
+    // 5. /auth/usage 兜底
+    for bearer in [token, jwt] {
+        if let Ok(mut info) = try_auth_usage(&client, bearer).await {
+            info.user_id = user_id.clone();
+            return Ok(info);
+        }
+    }
+
     Err(AppError::Other(
-        "查询用量失败：所有备选接口都返回了错误，可能是 token 失效或网络不通".into(),
+        "查询用量失败：所有备选接口都未返回有效数据，可能是 token 失效或网络不通".into(),
     ))
 }
 
@@ -137,12 +143,38 @@ pub fn extract_user_id(token: &str) -> Option<String> {
     token_parser::session_user_id(token)
 }
 
-async fn try_rpc(client: &reqwest::Client, jwt: &str) -> AppResult<UsageInfo> {
+/// 与商城 `cursorAuthHeaders` 一致：完整会话串同时放 Cookie 和 Bearer
+async fn try_summary_session(
+    client: &reqwest::Client,
+    session_token: &str,
+) -> AppResult<UsageInfo> {
+    let resp = client
+        .get(SUMMARY_URL)
+        .header("Accept", "application/json")
+        .header("Cookie", format!("WorkosCursorSessionToken={session_token}"))
+        .header("Authorization", format!("Bearer {session_token}"))
+        .header("Referer", "https://cursor.com/dashboard/usage")
+        .send()
+        .await
+        .map_err(|e| AppError::Other(format!("Summary(session) 请求失败：{e}")))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AppError::Other(format!("Summary(session) HTTP {status}")));
+    }
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| AppError::Other(format!("Summary(session) 响应解析失败：{e}")))?;
+    Ok(parse_summary_response(&body))
+}
+
+async fn try_rpc(client: &reqwest::Client, bearer: &str) -> AppResult<UsageInfo> {
     let resp = client
         .post(RPC_URL)
         .header("Content-Type", "application/json")
         .header("Connect-Protocol-Version", "1")
-        .header("Authorization", format!("Bearer {jwt}"))
+        .header("Authorization", format!("Bearer {bearer}"))
         .body("{}")
         .send()
         .await
