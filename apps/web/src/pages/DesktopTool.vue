@@ -77,10 +77,10 @@ const platformGroups: PlatformGroup[] = [
   {
     os: 'windows',
     title: 'Windows',
-    hint: '64 位 · Win 10 / 11 自带 WebView2，无需额外安装',
+    hint: '64 位 · Win 10 / 11 自带 WebView2；MSI 装不了请换 EXE',
     picks: [
       { label: '推荐：MSI 安装包', matchKind: ['msi'], recommended: true },
-      { label: 'NSIS 安装包', matchKind: ['nsis'] },
+      { label: '备用：EXE 安装包（NSIS）', matchKind: ['nsis'], recommended: true },
     ],
   },
   {
@@ -251,6 +251,10 @@ const recommendedForCurrentOs = computed(() => {
           <code class="block mt-1 px-3 py-2 bg-ink-50 rounded text-[11px] font-mono whitespace-pre-wrap break-all">
 sudo xattr -rd com.apple.quarantine "/Applications/Polo 账号工具.app"
           </code>
+        </div>
+        <div>
+          <div class="text-ink-800 font-medium mb-1">Q: 提示「系统策略禁止安装」？</div>
+          <p>部分公司/学校电脑会拦截 MSI。请改下「EXE 安装包（NSIS）」，或右键「以管理员身份运行」；个人家用电脑一般两种都能装。</p>
         </div>
         <div>
           <div class="text-ink-800 font-medium mb-1">Q: Windows Defender 报毒？</div>
