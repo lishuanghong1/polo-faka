@@ -48,6 +48,23 @@
         }
     }
 
+    # 静态分发：桌面工具安装包等。Caddy 直接从挂载目录读文件。
+    # CI 通过 SCP 把 .msi/.dmg 等放进宿主机的 ./deploy/static/desktop/
+    @static path /static/*
+    handle @static {
+        root * /srv
+        file_server {
+            precompressed gzip br
+        }
+        # 一天缓存；新版本要立即生效时可以加 ?v=xxx
+        header Cache-Control "public, max-age=86400, immutable"
+        # 跨域允许下载页 fetch latest.json（同域其实不需要，但留个白名单防 CDN 链）
+        header Access-Control-Allow-Origin "*"
+        # 强制下载（避免浏览器把 .msi/.dmg 当 text 渲染）
+        @binaries path *.msi *.exe *.dmg *.deb *.rpm *.AppImage
+        header @binaries Content-Disposition "attachment"
+    }
+
     # 静态资源 / SPA fallback 走前端容器
     handle {
         reverse_proxy web:80

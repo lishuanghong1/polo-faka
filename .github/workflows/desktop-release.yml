@@ -8,9 +8,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write # 用于（可选）回写 draft release 当作备份
+  actions: read
 
 jobs:
+  # ─────────── 构建：4 个平台并行 ───────────
   build:
     strategy:
       fail-fast: false
@@ -70,31 +72,113 @@ jobs:
       - name: Install workspace deps
         run: pnpm install --frozen-lockfile
 
-      - name: Build desktop bundle
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Tauri bundle
+        working-directory: apps/desktop
+        run: pnpm tauri build ${{ matrix.args }}
+
+      # 收集所有可分发文件到一个统一目录便于上传
+      - name: Collect bundles
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist-collected
+          # tauri 输出可能在 target/release/bundle 或 target/<triple>/release/bundle
+          find apps/desktop/src-tauri/target -type d -name bundle | while read d; do
+            for ext in msi exe dmg deb rpm AppImage; do
+              find "$d" -maxdepth 3 -type f -iname "*.$ext" -exec cp -v {} dist-collected/ \;
+            done
+          done
+          ls -la dist-collected/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Polo 桌面工具 ${{ github.ref_name }}'
-          releaseBody: |
-            ## 下载
+          name: bundle-${{ matrix.platform }}${{ matrix.rust_target && format('-{0}', matrix.rust_target) || '' }}
+          path: dist-collected/
+          if-no-files-found: error
+          retention-days: 7
 
-            选择对应平台的安装包：
+  # ─────────── 汇总 + 上传到服务器 ───────────
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
 
-            - Windows：`.msi`（推荐）或 `-setup.exe`
-            - macOS Apple Silicon：`aarch64.dmg`
-            - macOS Intel：`x64.dmg`
-            - Linux：`.AppImage`（通用）/ `.deb` / `.rpm`
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true # 4 个 platform 的产物压到一个目录
 
-            ## 常见安装问题
+      - name: Generate latest.json manifest
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const dir = 'artifacts';
+          const files = fs.readdirSync(dir).sort();
+          const refName = process.env.REF_NAME;
+          const version = refName.replace(/^desktop-v/, '');
 
-            - **macOS 提示「文件已损坏」**
-              ```bash
-              sudo xattr -rd com.apple.quarantine "/Applications/Polo 账号工具.app"
-              ```
-            - **Windows Defender 误报**：右键 → 更多选项 → 仍要运行
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          function classify(name) {
+            const lc = name.toLowerCase();
+            if (lc.endsWith('.msi')) return { platform: 'windows', kind: 'msi' };
+            if (lc.endsWith('-setup.exe') || lc.endsWith('_setup.exe')) return { platform: 'windows', kind: 'nsis' };
+            if (lc.endsWith('.exe')) return { platform: 'windows', kind: 'exe' };
+            if (/aarch64.*\.dmg$/.test(lc) || /arm64.*\.dmg$/.test(lc)) return { platform: 'macos-arm', kind: 'dmg' };
+            if (/(x64|x86_64|amd64).*\.dmg$/.test(lc)) return { platform: 'macos-intel', kind: 'dmg' };
+            if (lc.endsWith('.dmg')) return { platform: 'macos-arm', kind: 'dmg' };
+            if (lc.endsWith('.appimage')) return { platform: 'linux', kind: 'appimage' };
+            if (lc.endsWith('.deb')) return { platform: 'linux', kind: 'deb' };
+            if (lc.endsWith('.rpm')) return { platform: 'linux', kind: 'rpm' };
+            return { platform: 'unknown', kind: 'other' };
+          }
+
+          const assets = files.map((name) => {
+            const stat = fs.statSync(path.join(dir, name));
+            return { name, size: stat.size, ...classify(name) };
+          });
+
+          const manifest = {
+            version,
+            tag: refName,
+            commit: process.env.GITHUB_SHA,
+            repository: process.env.GITHUB_REPO,
+            releasedAt: new Date().toISOString(),
+            urlBase: '/static/desktop/',
+            assets,
+          };
+
+          fs.writeFileSync(path.join(dir, 'latest.json'), JSON.stringify(manifest, null, 2));
+          console.log('Generated latest.json:', JSON.stringify(manifest, null, 2));
+          EOF
+
+      - name: List bundle to upload
+        run: ls -la artifacts/
+
+      # 用 SCP 推到自己服务器（不要 GH Releases，因为仓库私有）
+      - name: SCP bundles to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: 'artifacts/*'
+          target: ${{ secrets.DEPLOY_STATIC_DIR }}
+          strip_components: 1
+          overwrite: true
+          rm: false
+
+      - name: Notify done
+        run: |
+          echo "✅ Released $REF_NAME"
+          echo "Manifest: ${{ secrets.DEPLOY_PUBLIC_BASE_URL }}/latest.json"
+        env:
+          REF_NAME: ${{ github.ref_name }}

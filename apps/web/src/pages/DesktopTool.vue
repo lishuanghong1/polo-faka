@@ -2,55 +2,45 @@
 import { computed, onMounted, ref } from 'vue';
 
 /**
- * 直接从 GitHub Releases 拉最新版本展示下载链接。
- * GitHub API 匿名速率：60 次/小时/IP，对桌面工具下载页足够；超限时退化到
- * https://github.com/.../releases/latest 让用户自己挑。
+ * 从同域 /static/desktop/latest.json 读发布元数据。
+ * latest.json 由 CI 自动生成并 SCP 到服务器静态目录。
  */
-const REPO = 'lishuanghong1/polo-faka';
-const TAG_PREFIX = 'desktop-v';
+const MANIFEST_URL = '/static/desktop/latest.json';
 
-interface ReleaseAsset {
+interface ManifestAsset {
   name: string;
   size: number;
-  browser_download_url: string;
-  created_at: string;
+  platform: 'windows' | 'macos-arm' | 'macos-intel' | 'linux' | 'unknown';
+  kind: 'msi' | 'nsis' | 'exe' | 'dmg' | 'appimage' | 'deb' | 'rpm' | 'other';
 }
 
-interface Release {
-  tag_name: string;
-  name: string;
-  html_url: string;
-  body: string;
-  published_at: string;
-  assets: ReleaseAsset[];
-  prerelease: boolean;
-  draft: boolean;
+interface Manifest {
+  version: string;
+  tag: string;
+  releasedAt: string;
+  urlBase: string; // 例如 '/static/desktop/'
+  assets: ManifestAsset[];
 }
 
-const release = ref<Release | null>(null);
+const manifest = ref<Manifest | null>(null);
 const loading = ref(true);
-const apiError = ref('');
+const errorMsg = ref('');
 
-async function loadRelease() {
+async function loadManifest() {
   loading.value = true;
-  apiError.value = '';
+  errorMsg.value = '';
   try {
-    // 列出 releases，挑第一个 tag_name 以 desktop-v 开头、非 draft 的
-    const resp = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=10`, {
-      headers: { Accept: 'application/vnd.github+json' },
-    });
-    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
-    const list = (await resp.json()) as Release[];
-    release.value =
-      list.find((r) => !r.draft && r.tag_name.startsWith(TAG_PREFIX)) || null;
+    const resp = await fetch(`${MANIFEST_URL}?_t=${Date.now()}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    manifest.value = (await resp.json()) as Manifest;
   } catch (e: any) {
-    apiError.value = String(e?.message || e);
+    errorMsg.value = String(e?.message || e);
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(loadRelease);
+onMounted(loadManifest);
 
 // ─────── 平台识别 ───────
 type OsKey = 'windows' | 'macos-arm' | 'macos-intel' | 'linux' | 'unknown';
@@ -61,12 +51,7 @@ const currentOs = computed<OsKey>(() => {
   const platform = ((navigator as any).platform || '').toLowerCase();
   if (ua.includes('win')) return 'windows';
   if (ua.includes('mac') || platform.includes('mac')) {
-    // Apple Silicon vs Intel：UA 不直接给出，但可以猜：M 系列 Mac 在最新 Chrome 上 platform 仍是 MacIntel，但 navigator.userAgentData 在 Chromium 里有 arch。
-    const uaData = (navigator as any).userAgentData;
-    if (uaData?.getHighEntropyValues) {
-      // 异步检测在 setup 里不易拿，这里给个 arm 偏好（Apple Silicon 是现在主流）
-      return 'macos-arm';
-    }
+    // Apple Silicon vs Intel：UA 不直接给出；M 系列是当前主流默认推 arm
     return 'macos-arm';
   }
   if (ua.includes('linux')) return 'linux';
@@ -85,7 +70,7 @@ interface PlatformGroup {
   os: OsKey;
   title: string;
   hint: string;
-  picks: Array<{ label: string; ext: string[]; recommended?: boolean }>;
+  picks: Array<{ label: string; matchKind: ManifestAsset['kind'][]; recommended?: boolean }>;
 }
 
 const platformGroups: PlatformGroup[] = [
@@ -94,50 +79,46 @@ const platformGroups: PlatformGroup[] = [
     title: 'Windows',
     hint: '64 位 · Win 10 / 11 自带 WebView2，无需额外安装',
     picks: [
-      { label: '推荐：MSI 安装包', ext: ['.msi'], recommended: true },
-      { label: 'NSIS 安装包', ext: ['-setup.exe', '_setup.exe'] },
+      { label: '推荐：MSI 安装包', matchKind: ['msi'], recommended: true },
+      { label: 'NSIS 安装包', matchKind: ['nsis'] },
     ],
   },
   {
     os: 'macos-arm',
     title: 'macOS · Apple Silicon (M 系列)',
     hint: '首次打开如提示「文件已损坏」，参见底部说明',
-    picks: [
-      { label: '推荐：DMG 安装包', ext: ['aarch64.dmg', 'arm64.dmg'], recommended: true },
-    ],
+    picks: [{ label: '推荐：DMG 安装包', matchKind: ['dmg'], recommended: true }],
   },
   {
     os: 'macos-intel',
     title: 'macOS · Intel',
     hint: '旧款 Intel Mac 专用',
-    picks: [
-      { label: 'DMG 安装包', ext: ['x64.dmg', 'x86_64.dmg', 'amd64.dmg'], recommended: true },
-    ],
+    picks: [{ label: 'DMG 安装包', matchKind: ['dmg'], recommended: true }],
   },
   {
     os: 'linux',
     title: 'Linux',
     hint: '需要 WebKitGTK 4.1；现代发行版基本自带',
     picks: [
-      { label: '通用：AppImage', ext: ['.AppImage'], recommended: true },
-      { label: 'Debian / Ubuntu', ext: ['.deb'] },
-      { label: 'RHEL / Fedora', ext: ['.rpm'] },
+      { label: '通用：AppImage', matchKind: ['appimage'], recommended: true },
+      { label: 'Debian / Ubuntu', matchKind: ['deb'] },
+      { label: 'RHEL / Fedora', matchKind: ['rpm'] },
     ],
   },
 ];
 
-function pickAsset(
-  ext: string[] | string,
-): ReleaseAsset | null {
-  if (!release.value) return null;
-  const tests = Array.isArray(ext) ? ext : [ext];
-  for (const t of tests) {
-    const found = release.value.assets.find((a) =>
-      a.name.toLowerCase().endsWith(t.toLowerCase()),
-    );
-    if (found) return found;
-  }
-  return null;
+function pickAsset(os: OsKey, kinds: ManifestAsset['kind'][]): ManifestAsset | null {
+  if (!manifest.value) return null;
+  return (
+    manifest.value.assets.find(
+      (a) => a.platform === os && kinds.includes(a.kind),
+    ) || null
+  );
+}
+
+function assetUrl(asset: ManifestAsset): string {
+  const base = manifest.value?.urlBase || '/static/desktop/';
+  return `${base}${encodeURIComponent(asset.name)}`;
 }
 
 function fmtSize(n: number) {
@@ -158,7 +139,7 @@ const recommendedForCurrentOs = computed(() => {
   const group = platformGroups.find((g) => g.os === currentOs.value);
   if (!group) return null;
   for (const p of group.picks) {
-    const asset = pickAsset(p.ext);
+    const asset = pickAsset(group.os, p.matchKind);
     if (asset) return { group, pick: p, asset };
   }
   return null;
@@ -192,13 +173,14 @@ const recommendedForCurrentOs = computed(() => {
         </div>
       </div>
       <a
-        :href="recommendedForCurrentOs.asset.browser_download_url"
+        :href="assetUrl(recommendedForCurrentOs.asset)"
+        :download="recommendedForCurrentOs.asset.name"
         class="block w-full text-center px-5 py-3 rounded-xl brand-gradient text-white text-sm font-medium hover:opacity-90 transition"
       >
         立即下载 · {{ recommendedForCurrentOs.pick.label }}（{{ fmtSize(recommendedForCurrentOs.asset.size) }}）
       </a>
       <p class="mt-2 text-[11px] text-ink-500 text-center">
-        版本 {{ release?.tag_name }} · 发布于 {{ fmtDate(release?.published_at) }}
+        版本 {{ manifest?.version }} · 发布于 {{ fmtDate(manifest?.releasedAt) }}
       </p>
     </section>
 
@@ -208,26 +190,15 @@ const recommendedForCurrentOs = computed(() => {
     </div>
 
     <!-- API 失败兜底 -->
-    <div v-else-if="apiError && !release" class="card p-6 text-center space-y-3">
-      <div class="text-sm text-rose-600">无法从 GitHub 拉取下载信息：{{ apiError }}</div>
-      <a
-        :href="`https://github.com/${REPO}/releases/latest`"
-        target="_blank"
-        rel="noopener"
-        class="inline-block px-4 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700"
-      >
-        前往 GitHub Releases 手动下载
-      </a>
-    </div>
-
-    <!-- 还没有发布 -->
-    <div v-else-if="!release" class="card p-6 text-center space-y-2">
-      <div class="text-sm text-ink-700">尚未发布桌面工具版本。</div>
-      <div class="text-xs text-ink-500">关注 GitHub Releases 页面或稍后再来。</div>
+    <div v-else-if="errorMsg && !manifest" class="card p-6 text-center space-y-3">
+      <div class="text-sm text-rose-600">无法加载发布信息：{{ errorMsg }}</div>
+      <div class="text-xs text-ink-500">
+        可能尚未发布第一版，或服务器静态目录未配置。请稍后重试或联系客服。
+      </div>
     </div>
 
     <!-- 全平台列表 -->
-    <section v-else class="card p-5 md:p-6">
+    <section v-else-if="manifest" class="card p-5 md:p-6">
       <div class="text-sm font-semibold text-ink-900 mb-4">所有平台下载</div>
       <div class="space-y-4">
         <div
@@ -248,8 +219,9 @@ const recommendedForCurrentOs = computed(() => {
           <div class="space-y-1.5">
             <template v-for="p in group.picks" :key="p.label">
               <a
-                v-if="pickAsset(p.ext)"
-                :href="pickAsset(p.ext)!.browser_download_url"
+                v-if="pickAsset(group.os, p.matchKind)"
+                :href="assetUrl(pickAsset(group.os, p.matchKind)!)"
+                :download="pickAsset(group.os, p.matchKind)!.name"
                 class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-ink-50 transition group"
               >
                 <div class="min-w-0 flex items-center gap-2">
@@ -258,10 +230,12 @@ const recommendedForCurrentOs = computed(() => {
                     class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0"
                   >推荐</span>
                   <span class="text-sm text-ink-800">{{ p.label }}</span>
-                  <span class="text-[11px] text-ink-400 font-mono truncate">{{ pickAsset(p.ext)!.name }}</span>
+                  <span class="text-[11px] text-ink-400 font-mono truncate">
+                    {{ pickAsset(group.os, p.matchKind)!.name }}
+                  </span>
                 </div>
                 <span class="text-xs text-ink-500 group-hover:text-brand-700 shrink-0">
-                  {{ fmtSize(pickAsset(p.ext)!.size) }} ↓
+                  {{ fmtSize(pickAsset(group.os, p.matchKind)!.size) }} ↓
                 </span>
               </a>
               <div
@@ -274,16 +248,6 @@ const recommendedForCurrentOs = computed(() => {
             </template>
           </div>
         </div>
-      </div>
-
-      <div class="mt-4 text-[11px] text-ink-500 text-center">
-        所有发布版本：
-        <a
-          :href="`https://github.com/${REPO}/releases`"
-          target="_blank"
-          rel="noopener"
-          class="text-brand-600 hover:underline"
-        >GitHub Releases</a>
       </div>
     </section>
 

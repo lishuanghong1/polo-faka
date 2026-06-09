@@ -1,0 +1,10 @@
+# Caddy 静态目录
+#
+# CI 会把桌面工具安装包推到这里：
+#   deploy/static/desktop/
+#     ├─ latest.json
+#     ├─ Polo 账号工具_0.1.0_x64.msi
+#     ├─ Polo 账号工具_0.1.0_aarch64.dmg
+#     └─ ...
+#
+# 容器内挂载到 /srv/static，通过 https://你的域名/static/desktop/ 访问。

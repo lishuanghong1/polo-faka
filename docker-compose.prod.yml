@@ -178,6 +178,8 @@ services:
       DOMAIN: ${DOMAIN}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 桌面工具安装包等静态文件，CI 用 SCP 写入 ./deploy/static/desktop/
+      - ./deploy/static:/srv/static:ro
       - caddy_data:/data
       - caddy_config:/config
     deploy:
