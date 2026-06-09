@@ -145,11 +145,11 @@ async function save() {
         <label class="text-[11px] text-ink-500">商城后端地址</label>
         <input
           v-model="draft.shopBaseUrl"
-          placeholder="https://your-shop.com"
+          placeholder="https://your-shop.com/api"
           class="w-full mt-0.5 px-3 py-1.5 bg-ink-900 border border-ink-700 rounded text-ink-100 font-mono text-xs focus:outline-none focus:border-brand-500"
         />
         <p class="text-[11px] text-ink-500 mt-1">
-          桌面工具会去这里登录、查号池额度，必须能访问到。
+          填你的商城域名即可（会自动补 /api）；号池登录、查额度都走这里。
         </p>
       </div>
 

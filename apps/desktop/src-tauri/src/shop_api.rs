@@ -78,9 +78,22 @@ pub struct ShopApi<'a> {
     pub jwt: Option<&'a str>,
 }
 
+/// 商城 Nest API 统一前缀；用户填域名时自动补上 `/api`
+fn normalize_base(base: &str) -> String {
+    let b = base.trim().trim_end_matches('/');
+    if b.is_empty() {
+        return String::new();
+    }
+    if b.ends_with("/api") {
+        b.to_string()
+    } else {
+        format!("{b}/api")
+    }
+}
+
 impl<'a> ShopApi<'a> {
     fn url(&self, path: &str) -> String {
-        format!("{}{}", self.base.trim_end_matches('/'), path)
+        format!("{}{}", normalize_base(self.base), path)
     }
 
     fn client() -> AppResult<reqwest::Client> {
@@ -123,13 +136,40 @@ impl<'a> ShopApi<'a> {
 
     async fn parse<T: serde::de::DeserializeOwned>(resp: reqwest::Response) -> AppResult<T> {
         let status = resp.status();
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| AppError::Other(format!("读取商城响应失败：{e}")))?;
+
+        #[derive(Deserialize)]
+        struct ApiEnvelope {
+            success: Option<bool>,
+            data: Option<Value>,
+            error: Option<String>,
+        }
+
+        if let Ok(env) = serde_json::from_str::<ApiEnvelope>(&text) {
+            if env.success == Some(false) {
+                return Err(AppError::Other(
+                    env.error.unwrap_or_else(|| "请求失败".into()),
+                ));
+            }
+            if let Some(data) = env.data {
+                if data.is_null() {
+                    return Err(AppError::Other("商城接口返回 data 为空".into()));
+                }
+                return serde_json::from_value(data).map_err(|e| {
+                    AppError::Other(format!("商城接口响应解析失败：{e}"))
+                });
+            }
+        }
+
         if !status.is_success() {
-            // 尽量取后端返回的 message，否则给状态码
-            let text = resp.text().await.unwrap_or_default();
             let msg = serde_json::from_str::<Value>(&text)
                 .ok()
                 .and_then(|v| {
-                    v.pointer("/error/message")
+                    v.get("error")
+                        .or_else(|| v.pointer("/error/message"))
                         .or_else(|| v.get("message"))
                         .and_then(|m| m.as_str())
                         .map(|s| s.to_string())
@@ -137,9 +177,14 @@ impl<'a> ShopApi<'a> {
                 .unwrap_or_else(|| format!("HTTP {status}"));
             return Err(AppError::Other(msg));
         }
-        resp.json::<T>()
-            .await
-            .map_err(|e| AppError::Other(format!("商城接口响应解析失败：{e}")))
+
+        // 兼容未封装的直出 JSON
+        serde_json::from_str(&text).map_err(|e| {
+            let preview: String = text.chars().take(160).collect();
+            AppError::Other(format!(
+                "商城接口响应解析失败：{e}（请确认商城地址可访问；片段：{preview}）"
+            ))
+        })
     }
 
     // ────────────── 公开接口 ──────────────
