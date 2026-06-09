@@ -61,6 +61,13 @@ export class UpdateForgeProductDto {
   @IsBoolean()
   pointsPayEnabled?: boolean;
 
+  /** 返积分倍率，0~1。null/不传 = 走全局默认 10% */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  pointsAwardRate?: number | null;
+
   // ── 自定义详情：null/空串 = 清空回退到三方默认 ─────────
   @IsOptional()
   @IsString()

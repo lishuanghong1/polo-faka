@@ -58,10 +58,20 @@ const balanceEnough = computed(() => userBalance.value >= lineTotal.value);
 const userPoints = computed(() => Number(userStore.profile?.points ?? 0));
 const pointsRequired = computed(() => Math.ceil(lineTotal.value));
 const pointsEnough = computed(() => userPoints.value >= pointsRequired.value);
-const expectedPointsReward = computed(() => Math.floor(lineTotal.value * 0.1));
 // 商品级积分开关：未下发时积分支付默认启用（保留现有三方默认行为）
 const pointsAwardEnabled = computed(() => product.value?.pointsAwardEnabled !== false);
 const pointsPayEnabled = computed(() => product.value?.pointsPayEnabled !== false);
+// 返积分倍率：商品配置 > 全局默认 10%
+const pointsAwardRate = computed(() => {
+  const r = product.value?.pointsAwardRate;
+  if (r === null || r === undefined || r === '') return 0.1;
+  const n = Number(r);
+  if (!Number.isFinite(n)) return 0.1;
+  return Math.max(0, Math.min(1, n));
+});
+const expectedPointsReward = computed(() =>
+  Math.floor(lineTotal.value * pointsAwardRate.value),
+);
 
 const canSubmit = computed(() => {
   if (!product.value) return false;

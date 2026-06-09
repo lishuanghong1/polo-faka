@@ -21,9 +21,11 @@ interface PublicProductItem {
   stock: number;
   warrantyHours: number | null;
   emailCodeEnabled: boolean;
-  // 积分相关开关：前台据此显示/隐藏积分支付按钮和返积分提示
+  // 积分相关：前台据此显示/隐藏积分支付按钮和返积分提示
   pointsAwardEnabled: boolean;
   pointsPayEnabled: boolean;
+  /** 返积分倍率，null = 走全局默认 10% */
+  pointsAwardRate: number | null;
   // ── 自定义详情：留空则不返回 ─────────
   subtitle?: string | null;
   coverImage?: string | null;
@@ -178,6 +180,12 @@ export class ForgeProductsService {
         ...(dto.pointsPayEnabled !== undefined && {
           pointsPayEnabled: dto.pointsPayEnabled,
         }),
+        ...(dto.pointsAwardRate !== undefined && {
+          pointsAwardRate:
+            dto.pointsAwardRate === null
+              ? null
+              : new Prisma.Decimal(dto.pointsAwardRate),
+        }),
         ...(dto.customName !== undefined && { customName: norm(dto.customName) }),
         ...(dto.customCategoryName !== undefined && {
           customCategoryName: norm(dto.customCategoryName),
@@ -239,6 +247,8 @@ export class ForgeProductsService {
             emailCodeEnabled: r.emailCodeEnabled,
             pointsAwardEnabled: r.pointsAwardEnabled,
             pointsPayEnabled: r.pointsPayEnabled,
+            pointsAwardRate:
+              r.pointsAwardRate !== null ? Number(r.pointsAwardRate) : null,
           },
           r,
         ),
@@ -263,6 +273,8 @@ export class ForgeProductsService {
           emailCodeEnabled: !!t.email_code_enabled,
           pointsAwardEnabled: local.pointsAwardEnabled,
           pointsPayEnabled: local.pointsPayEnabled,
+          pointsAwardRate:
+            local.pointsAwardRate !== null ? Number(local.pointsAwardRate) : null,
         };
         result.push(applyOverrides(item, local));
       }

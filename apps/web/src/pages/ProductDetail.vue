@@ -61,7 +61,17 @@ const balanceEnough = computed(() => userBalance.value >= totalAmount.value);
 const userPoints = computed(() => Number(userStore.profile?.points ?? 0));
 const pointsRequired = computed(() => Math.ceil(totalAmount.value));
 const pointsEnough = computed(() => userPoints.value >= pointsRequired.value);
-const expectedPointsReward = computed(() => Math.floor(totalAmount.value * 0.1));
+// 返积分倍率：商品配置 > 全局默认 10%
+const pointsAwardRate = computed(() => {
+  const r = product.value?.pointsAwardRate;
+  if (r === null || r === undefined || r === '') return 0.1;
+  const n = Number(r);
+  if (!Number.isFinite(n)) return 0.1;
+  return Math.max(0, Math.min(1, n));
+});
+const expectedPointsReward = computed(() =>
+  Math.floor(totalAmount.value * pointsAwardRate.value),
+);
 
 async function load() {
   product.value = await api.product(Number(route.params.id));

@@ -249,6 +249,8 @@ model Product {
   // pointsPayEnabled   = false 时本商品禁用积分支付通道
   pointsAwardEnabled Boolean   @default(true)
   pointsPayEnabled   Boolean   @default(false)
+  // 返积分倍率：null 走全局默认（10%）。范围 0.0001 ~ 1.0000，等价于 0.01% ~ 100%
+  pointsAwardRate    Decimal?  @db.Decimal(5, 4)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -571,6 +573,8 @@ model ForgeProduct {
   // 积分相关开关：在商品维度独立控制是否返积分 / 是否允许积分下单
   pointsAwardEnabled Boolean  @default(true)
   pointsPayEnabled   Boolean  @default(true)
+  // 返积分倍率：null 走全局默认（10%）。范围 0.0001 ~ 1.0000
+  pointsAwardRate    Decimal? @db.Decimal(5, 4)
   /// 自定义商品名（覆盖三方 typeName）
   customName        String?  @db.VarChar(128)
   /// 自定义分类名（覆盖三方 categoryName）

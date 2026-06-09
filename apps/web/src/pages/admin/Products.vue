@@ -44,6 +44,12 @@ function startEdit(p: any) {
   if (Array.isArray(editing.value.bulkPricing)) {
     editing.value._bulkStr = JSON.stringify(editing.value.bulkPricing);
   }
+  // 返积分倍率：数据库是 0~1 的小数，编辑时按「百分比」展示更直观
+  const rawRate = editing.value.pointsAwardRate;
+  editing.value._pointsAwardRatePct =
+    rawRate === null || rawRate === undefined || rawRate === ''
+      ? ''
+      : String(+(Number(rawRate) * 100).toFixed(2));
   for (const s of editing.value.skus || []) {
     const attrs = s.attrs && typeof s.attrs === 'object' ? s.attrs : {};
     s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
@@ -66,6 +72,8 @@ function newProduct() {
     deliveryType: 'CARD_KEY',
     pointsAwardEnabled: true,
     pointsPayEnabled: true,
+    pointsAwardRate: null,
+    _pointsAwardRatePct: '',
   };
 }
 
@@ -116,6 +124,19 @@ async function save() {
 
   payload.pointsAwardEnabled = !!payload.pointsAwardEnabled;
   payload.pointsPayEnabled = !!payload.pointsPayEnabled;
+  // 把百分比输入转回 0~1 小数（空串 / 非法 = null = 走全局默认 10%）
+  const rateStr = String(payload._pointsAwardRatePct ?? '').trim();
+  if (rateStr === '') {
+    payload.pointsAwardRate = null;
+  } else {
+    const pct = Number(rateStr);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      ElMessage.error('返积分倍率必须为 0-100 之间的数字');
+      return;
+    }
+    payload.pointsAwardRate = +(pct / 100).toFixed(4);
+  }
+  delete payload._pointsAwardRatePct;
 
   if (payload.id) {
     await api.admin.productsUpdate(payload.id, payload);
@@ -228,7 +249,13 @@ function removeSku(i: number) {
               class="inline-block px-1.5 py-0.5 rounded border w-fit"
               :title="p.pointsAwardEnabled ? '购买可返积分' : '购买不返积分'"
             >
-              返积分 {{ p.pointsAwardEnabled ? '·开' : '·关' }}
+              返积分
+              <template v-if="p.pointsAwardEnabled">
+                · {{ p.pointsAwardRate != null
+                  ? (Number(p.pointsAwardRate) * 100).toFixed(p.pointsAwardRate * 100 % 1 ? 1 : 0) + '%'
+                  : '默认10%' }}
+              </template>
+              <template v-else>·关</template>
             </span>
             <span
               :class="p.pointsPayEnabled
@@ -382,6 +409,25 @@ function removeSku(i: number) {
               </div>
             </div>
           </label>
+        </div>
+        <div class="mt-3 bg-white border border-amber-100 rounded-md px-3 py-2">
+          <label class="block text-sm text-ink-800 font-medium">返积分倍率（按实付金额）</label>
+          <div class="mt-1 flex items-center gap-2">
+            <input
+              v-model="editing._pointsAwardRatePct"
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              placeholder="留空 = 默认 10"
+              class="w-28 px-2 py-1 text-sm border border-ink-200 rounded text-right"
+              :disabled="!editing.pointsAwardEnabled"
+            />
+            <span class="text-sm text-ink-600">%</span>
+            <span class="text-[11px] text-ink-400 ml-2">
+              示例：填 20 = 实付 100 元返 20 积分；留空走全站默认 10%
+            </span>
+          </div>
         </div>
       </div>
 

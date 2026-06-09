@@ -26,6 +26,7 @@ interface ForgeProductRow {
   enabled: boolean;
   pointsAwardEnabled: boolean;
   pointsPayEnabled: boolean;
+  pointsAwardRate: number | null;
   sort: number;
   customName?: string | null;
   customCategoryName?: string | null;
@@ -40,7 +41,9 @@ interface ForgeProductRow {
 const loading = ref(false);
 const syncing = ref(false);
 const items = ref<ForgeProductRow[]>([]);
-const editing = ref<Record<string, { displayPrice: string; sort: number }>>({});
+const editing = ref<
+  Record<string, { displayPrice: string; sort: number; pointsAwardRatePct: string }>
+>({});
 
 async function load() {
   loading.value = true;
@@ -50,6 +53,10 @@ async function load() {
       editing.value[it.typeKey] = {
         displayPrice: String(it.displayPrice),
         sort: it.sort,
+        pointsAwardRatePct:
+          it.pointsAwardRate === null || it.pointsAwardRate === undefined
+            ? ''
+            : String(+(Number(it.pointsAwardRate) * 100).toFixed(2)),
       };
     }
   } finally {
@@ -97,6 +104,39 @@ async function togglePointsPay(item: ForgeProductRow) {
     await api.forge.admin.updateProduct(item.typeKey, { pointsPayEnabled: next });
     item.pointsPayEnabled = next;
     ElMessage.success(next ? '已允许积分支付' : '已关闭积分支付');
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '更新失败');
+  }
+}
+
+async function savePointsAwardRate(item: ForgeProductRow) {
+  const raw = String(editing.value[item.typeKey].pointsAwardRatePct ?? '').trim();
+  let rate: number | null;
+  if (raw === '') {
+    rate = null;
+  } else {
+    const pct = Number(raw);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      ElMessage.warning('返积分倍率必须为 0-100');
+      // 回滚显示
+      editing.value[item.typeKey].pointsAwardRatePct =
+        item.pointsAwardRate === null || item.pointsAwardRate === undefined
+          ? ''
+          : String(+(Number(item.pointsAwardRate) * 100).toFixed(2));
+      return;
+    }
+    rate = +(pct / 100).toFixed(4);
+  }
+  // 没变就不打 API
+  const prevPct =
+    item.pointsAwardRate === null || item.pointsAwardRate === undefined
+      ? ''
+      : String(+(Number(item.pointsAwardRate) * 100).toFixed(2));
+  if (raw === prevPct) return;
+  try {
+    await api.forge.admin.updateProduct(item.typeKey, { pointsAwardRate: rate });
+    item.pointsAwardRate = rate;
+    ElMessage.success('已保存返积分倍率');
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error?.message || '更新失败');
   }
@@ -262,7 +302,7 @@ onMounted(load);
 
   <div v-else class="card p-0 overflow-hidden">
    <div class="overflow-auto max-h-[calc(100vh-300px)]">
-    <table class="w-full text-sm min-w-[1320px]">
+    <table class="w-full text-sm min-w-[1440px]">
       <thead class="bg-ink-50 text-ink-600 sticky top-0 z-10">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">商品</th>
@@ -271,6 +311,7 @@ onMounted(load);
           <th class="px-4 py-2.5 text-center font-medium">库存</th>
           <th class="px-4 py-2.5 text-center font-medium">接码</th>
           <th class="px-4 py-2.5 text-center font-medium">返积分</th>
+          <th class="px-4 py-2.5 text-center font-medium" title="留空 = 默认 10%">返倍率(%)</th>
           <th class="px-4 py-2.5 text-center font-medium">积分支付</th>
           <th class="px-4 py-2.5 text-center font-medium">排序</th>
           <th class="px-4 py-2.5 text-center font-medium">上架</th>
@@ -346,6 +387,19 @@ onMounted(load);
                 @change="togglePointsAward(it)"
               />
             </label>
+          </td>
+          <td class="px-4 py-2 text-center">
+            <input
+              v-model="editing[it.typeKey].pointsAwardRatePct"
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              placeholder="默认10"
+              class="w-16 px-2 py-1 border border-ink-200 rounded text-center text-sm disabled:bg-ink-50 disabled:text-ink-400"
+              :disabled="!it.pointsAwardEnabled"
+              @blur="savePointsAwardRate(it)"
+            />
           </td>
           <td class="px-4 py-2 text-center">
             <label class="inline-flex items-center cursor-pointer" :title="it.pointsPayEnabled ? '允许积分支付' : '不允许积分支付'">

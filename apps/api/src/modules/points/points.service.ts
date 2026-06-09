@@ -4,6 +4,7 @@ import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const inviteCodeRand = customAlphabet('23456789ABCDEFGHJKMNPQRSTUVWXYZ', 8);
+/** 全局默认返积分倍率：商品未单独配置 pointsAwardRate 时使用 */
 const POINT_REWARD_RATE = 0.1;
 
 type Tx = Prisma.TransactionClient;
@@ -16,8 +17,23 @@ export class PointsService {
     return `P${userId.toString(36).toUpperCase()}${inviteCodeRand()}`.slice(0, 16);
   }
 
-  rewardForAmount(amount: number) {
-    return Math.floor(Number(amount || 0) * POINT_REWARD_RATE);
+  /**
+   * 计算消费返积分数量。
+   * @param amount 实付金额（CNY）
+   * @param rateOverride 商品级覆盖倍率（Decimal 或 null/undefined）。
+   *                     null/undefined → 走全局默认 10%。
+   *                     越界值会被夹到 [0, 1] 范围。
+   */
+  rewardForAmount(amount: number, rateOverride?: Prisma.Decimal | number | null) {
+    const safeAmount = Number(amount || 0);
+    let rate = POINT_REWARD_RATE;
+    if (rateOverride !== undefined && rateOverride !== null) {
+      const r = Number(rateOverride);
+      if (Number.isFinite(r)) {
+        rate = Math.max(0, Math.min(1, r));
+      }
+    }
+    return Math.floor(safeAmount * rate);
   }
 
   pointsRequiredForAmount(amount: number) {
@@ -254,14 +270,17 @@ export class PointsService {
         payAmount: true,
         payMethod: true,
         status: true,
-        product: { select: { pointsAwardEnabled: true } },
+        product: { select: { pointsAwardEnabled: true, pointsAwardRate: true } },
       },
     });
     if (!order?.userId || order.status !== 'DELIVERED') return;
     // 商品维度关闭返积分 → 消费返积分 / 邀请首单奖励都跳过
     if (!order.product?.pointsAwardEnabled) return;
 
-    const reward = this.rewardForAmount(Number(order.payAmount));
+    const reward = this.rewardForAmount(
+      Number(order.payAmount),
+      order.product.pointsAwardRate,
+    );
     if (reward > 0 && order.payMethod !== 'POINTS') {
       await this.awardOnce(
         tx,
@@ -305,7 +324,7 @@ export class PointsService {
         totalAmount: true,
         paymentMethod: true,
         status: true,
-        product: { select: { pointsAwardEnabled: true } },
+        product: { select: { pointsAwardEnabled: true, pointsAwardRate: true } },
       },
     });
     if (!order?.userId || order.status !== 'DELIVERED') return;
@@ -315,7 +334,7 @@ export class PointsService {
     const paidAmount = order.payAmount !== null
       ? Number(order.payAmount)
       : Number(order.totalAmount);
-    const reward = this.rewardForAmount(paidAmount);
+    const reward = this.rewardForAmount(paidAmount, order.product.pointsAwardRate);
     if (reward <= 0) return;
 
     if (order.paymentMethod !== 'POINTS') {

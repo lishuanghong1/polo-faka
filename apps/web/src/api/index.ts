@@ -343,6 +343,7 @@ export const api = {
         emailCodeEnabled: boolean;
         pointsAwardEnabled: boolean;
         pointsPayEnabled: boolean;
+        pointsAwardRate: number | null;
         subtitle?: string | null;
         coverImage?: string | null;
         description?: string | null;
@@ -416,6 +417,7 @@ export const api = {
           enabled: boolean;
           pointsAwardEnabled: boolean;
           pointsPayEnabled: boolean;
+          pointsAwardRate: number | null;
           sort: number;
           customName?: string | null;
           customCategoryName?: string | null;
@@ -434,6 +436,7 @@ export const api = {
           sort?: number;
           pointsAwardEnabled?: boolean;
           pointsPayEnabled?: boolean;
+          pointsAwardRate?: number | null;
           customName?: string | null;
           customCategoryName?: string | null;
           subtitle?: string | null;

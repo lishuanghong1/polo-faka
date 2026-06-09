@@ -137,8 +137,23 @@ export class ProductsService {
   }
 
   // ====== Admin ======
+  /**
+   * 把前端传来的 pointsAwardRate 规整为 Decimal | null：
+   * - 空串 / null / undefined / NaN → null（走全局默认 10%）
+   * - 数字会被夹到 [0, 1] 范围
+   */
+  private normalizePointsAwardRate(raw: any): any {
+    if (raw === undefined) return undefined;
+    if (raw === null || raw === '' ) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(1, n));
+  }
+
   create(data: any) {
     const { skus = [], ...rest } = data;
+    const rate = this.normalizePointsAwardRate(rest.pointsAwardRate);
+    if (rate !== undefined) rest.pointsAwardRate = rate;
     return this.prisma.product.create({
       data: {
         ...rest,
@@ -155,6 +170,8 @@ export class ProductsService {
     delete rest.sales;
     delete rest.createdAt;
     delete rest.updatedAt;
+    const rate = this.normalizePointsAwardRate(rest.pointsAwardRate);
+    if (rate !== undefined) rest.pointsAwardRate = rate;
     await this.prisma.product.update({
       where: { id },
       data: rest,
