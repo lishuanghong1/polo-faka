@@ -10,10 +10,10 @@
 //!
 //! 我们优先走 RPC（更稳定）；失败再降级到 Cookie，最大化命中率。
 
-use base64::Engine;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::cursor::token_parser;
 use crate::error::{AppError, AppResult};
 
 const RPC_URL: &str =
@@ -79,14 +79,15 @@ pub struct UsageInfo {
 }
 
 /// 入口：根据 JWT 查询用量，先尝试 RPC 再降级 Cookie
-pub async fn query(jwt: &str) -> AppResult<UsageInfo> {
-    let jwt = jwt.trim();
-    if jwt.is_empty() {
+pub async fn query(token: &str) -> AppResult<UsageInfo> {
+    let token = token.trim();
+    if token.is_empty() {
         return Err(AppError::Other("token 为空".into()));
     }
+    let jwt = token_parser::jwt_part(token);
 
     let client = build_client()?;
-    let user_id = extract_user_id(jwt);
+    let user_id = token_parser::session_user_id(token);
 
     // 1. RPC（首选）
     match try_rpc(&client, jwt).await {
@@ -131,16 +132,9 @@ fn build_client() -> AppResult<reqwest::Client> {
         .map_err(|e| AppError::Other(format!("HTTP 客户端构建失败：{e}")))
 }
 
-/// 从 JWT payload 的 `sub` 字段提取 user_id；
-/// sub 形如 "auth0|user_01ABC..."，我们取 `|` 后面那段。
-pub fn extract_user_id(jwt: &str) -> Option<String> {
-    let payload_b64 = jwt.split('.').nth(1)?;
-    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(payload_b64)
-        .ok()?;
-    let json: Value = serde_json::from_slice(&decoded).ok()?;
-    let sub = json.get("sub")?.as_str()?;
-    sub.rsplit('|').next().map(|s| s.to_string())
+/// 从会话串或 JWT 提取 user_id（兼容 `user_xxx::jwt`）
+pub fn extract_user_id(token: &str) -> Option<String> {
+    token_parser::session_user_id(token)
 }
 
 async fn try_rpc(client: &reqwest::Client, jwt: &str) -> AppResult<UsageInfo> {
