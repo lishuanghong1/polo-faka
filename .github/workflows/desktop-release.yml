@@ -101,7 +101,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -159,21 +159,35 @@ jobs:
           EOF
 
       - name: List bundle to upload
-        run: ls -la artifacts/
+        run: ls -lah artifacts/
 
-      # 用 SCP 推到自己服务器（不要 GH Releases，因为仓库私有）
-      - name: SCP bundles to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: 'artifacts/*'
-          target: ${{ secrets.DEPLOY_STATIC_DIR }}
-          strip_components: 1
-          overwrite: true
-          rm: false
+      # 打成单个 tar.gz 再上传，避免 scp 多文件在慢链路上卡到超时
+      - name: Pack release archive
+        run: |
+          tar -czf desktop-release.tar.gz -C artifacts .
+          ls -lh desktop-release.tar.gz
+
+      - name: Upload and extract on server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_STATIC_DIR: ${{ secrets.DEPLOY_STATIC_DIR }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_BASE="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
+          REMOTE_ARCHIVE="/tmp/desktop-release-${{ github.run_id }}.tar.gz"
+
+          echo "Uploading archive to ${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE} ..."
+          scp $SSH_BASE -P "$DEPLOY_PORT" desktop-release.tar.gz "${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_ARCHIVE}"
+
+          echo "Extracting into ${DEPLOY_STATIC_DIR} ..."
+          ssh $SSH_BASE -p "$DEPLOY_PORT" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p '${DEPLOY_STATIC_DIR}' && tar -xzf '${REMOTE_ARCHIVE}' -C '${DEPLOY_STATIC_DIR}' && rm -f '${REMOTE_ARCHIVE}' && ls -lah '${DEPLOY_STATIC_DIR}'"
 
       - name: Notify done
         run: |
