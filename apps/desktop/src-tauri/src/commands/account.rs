@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tauri::State;
 
 use crate::cursor::{
     machine_id::{apply as apply_machine_ids, NewMachineIds},
@@ -7,8 +8,11 @@ use crate::cursor::{
     process,
     state_vscdb, storage_json,
     token_parser::{self, ParsedToken},
+    usage as usage_mod,
 };
 use crate::error::{AppError, AppResult};
+use crate::store::accounts::{self, NewAccount};
+use crate::store::Store;
 
 #[derive(Debug, Deserialize)]
 pub struct ImportPayload {
@@ -22,6 +26,8 @@ pub struct ImportPayload {
 #[derive(Debug, Serialize)]
 pub struct ImportResult {
     pub email: Option<String>,
+    #[serde(rename = "accountId")]
+    pub account_id: Option<i64>,
     #[serde(rename = "backupDir")]
     pub backup_dir: String,
     #[serde(rename = "resetMachineId")]
@@ -31,15 +37,58 @@ pub struct ImportResult {
     pub new_device_id: Option<String>,
 }
 
+impl ImportResult {
+    fn new(parsed_email: Option<String>, backup_dir: String, reset_machine_id: bool, relaunched: bool, new_device_id: Option<String>) -> Self {
+        Self {
+            email: parsed_email,
+            account_id: None,
+            backup_dir,
+            reset_machine_id,
+            relaunched,
+            new_device_id,
+        }
+    }
+}
+
 #[tauri::command]
 pub fn parse_token(raw: String) -> AppResult<ParsedToken> {
     token_parser::parse(&raw)
 }
 
 /// 端到端：粘贴内容 → 解析 → 关 Cursor → 备份 → 写 state.vscdb + storage.json
-/// （可选）重置机器码 → （可选）重启 Cursor
+/// （可选）重置机器码 → （可选）重启 Cursor → 写入本机账号库
 #[tauri::command]
-pub fn import_account(payload: ImportPayload) -> AppResult<ImportResult> {
+pub async fn import_account(
+    store: State<'_, Store>,
+    payload: ImportPayload,
+) -> AppResult<ImportResult> {
+    // 先单独解析一次拿原始 token；inner 函数自己也会解析，但解析很快、无副作用
+    let parsed = token_parser::parse(&payload.raw)?;
+    let mut result = import_account_inner(payload).await?;
+
+    let user_id = usage_mod::extract_user_id(&parsed.access_token);
+    let upserted = store.with_conn(|c| {
+        accounts::upsert(
+            c,
+            NewAccount {
+                email: parsed.email.as_deref(),
+                access_token: &parsed.access_token,
+                refresh_token: parsed.refresh_token.as_deref(),
+                user_id: user_id.as_deref(),
+                label: None,
+            },
+        )
+    });
+    if let Ok(account) = upserted {
+        let _ = store.with_conn(|c| accounts::mark_used(c, account.id));
+        result.account_id = Some(account.id);
+    }
+    Ok(result)
+}
+
+/// 不依赖 Tauri State 的核心实现，便于被 switch_to_account 等内部命令直接调用。
+/// 主流程：解析 → 关 Cursor → 备份 → 写双存储 → 可选重置机器码 → 可选重启。
+pub async fn import_account_inner(payload: ImportPayload) -> AppResult<ImportResult> {
     let parsed = token_parser::parse(&payload.raw)?;
 
     let paths = CursorPaths::detect()?;
@@ -47,23 +96,17 @@ pub fn import_account(payload: ImportPayload) -> AppResult<ImportResult> {
         return Err(AppError::CursorNotFound);
     }
 
-    // 关掉 Cursor 释放文件锁
     if process::is_running() {
         process::kill_all()?;
     }
 
-    // 备份
     let backup_dir = CursorPaths::new_backup_dir()?;
     storage_json::backup(&paths.storage_json, &backup_dir)?;
     state_vscdb::backup(&paths.state_db, &backup_dir)?;
 
-    // 1. 写 state.vscdb（Cursor 实际读这里的更多）
     write_account_to_state_db(&paths.state_db, &parsed)?;
-
-    // 2. 同步写 storage.json（双保险 + 兼容老版本）
     write_account_to_storage_json(&paths.storage_json, &parsed)?;
 
-    // 3. 可选：重置机器码
     let new_device_id = if payload.reset_machine_id {
         let ids = NewMachineIds::generate();
         apply_machine_ids(&paths, &ids)?;
@@ -72,20 +115,19 @@ pub fn import_account(payload: ImportPayload) -> AppResult<ImportResult> {
         None
     };
 
-    // 4. 可选：重新拉起 Cursor
     let relaunched = if payload.kill_and_relaunch {
         process::launch()?
     } else {
         false
     };
 
-    Ok(ImportResult {
-        email: parsed.email,
-        backup_dir: backup_dir.to_string_lossy().into_owned(),
-        reset_machine_id: payload.reset_machine_id,
+    Ok(ImportResult::new(
+        parsed.email,
+        backup_dir.to_string_lossy().into_owned(),
+        payload.reset_machine_id,
         relaunched,
         new_device_id,
-    })
+    ))
 }
 
 fn write_account_to_state_db(state_db_path: &std::path::Path, parsed: &ParsedToken) -> AppResult<()> {

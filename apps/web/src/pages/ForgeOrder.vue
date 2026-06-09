@@ -86,6 +86,16 @@ function copyAll() {
   copy(lines.join('\n'), '已复制全部账号');
 }
 
+// Polo 桌面工具 deep link：polo-tool://import?email=...&token=...
+// 用户点击会唤起本地已安装的桌面工具，自动填入账号信息。
+const showDesktopHint = ref(false);
+function buildDesktopLink(email: string | undefined | null, token: string) {
+  const params = new URLSearchParams();
+  if (email) params.set('email', email);
+  params.set('token', token);
+  return `polo-tool://import?${params.toString()}`;
+}
+
 const paying = ref(false);
 async function goPay() {
   if (paying.value) return;
@@ -358,6 +368,24 @@ const statusHeroClass = computed(() => {
               <code class="text-xs text-ink-700 break-all flex-1 font-mono leading-relaxed">{{ a.account_json.access_token }}</code>
               <button class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 mt-0.5 transition" @click="copy(a.account_json!.access_token as string, 'Token 已复制')">复制</button>
             </div>
+
+            <div v-if="a.account_json?.access_token" class="pt-2 border-t border-ink-100">
+              <a
+                :href="buildDesktopLink(a.account_json?.email || a.email, a.account_json.access_token as string)"
+                class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-md font-medium transition"
+                title="在已安装 Polo 桌面工具的电脑上打开，将自动填入账号信息"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 6h16M4 12h16M4 18h7" stroke-linecap="round" />
+                  <path d="m17 16 4 3-4 3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                在桌面工具中一键导入
+              </a>
+              <span class="ml-2 text-[11px] text-ink-400">
+                需先安装
+                <a href="#" class="text-brand-600 hover:underline" @click.prevent="showDesktopHint = true">Polo 账号工具</a>
+              </span>
+            </div>
           </li>
         </ul>
       </div>
@@ -375,5 +403,31 @@ const statusHeroClass = computed(() => {
         <BrandButton variant="secondary" size="sm" @click="router.push('/')">继续逛逛</BrandButton>
       </div>
     </template>
+
+    <!-- 桌面工具提示弹窗 -->
+    <div
+      v-if="showDesktopHint"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      @click.self="showDesktopHint = false"
+    >
+      <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <h3 class="text-base font-semibold text-ink-900 mb-2">Polo 桌面账号工具</h3>
+        <p class="text-sm text-ink-600 leading-relaxed">
+          一个本地工具，把卡密粘贴/链接打开 → 自动写入 Cursor 本机存储，无需手动改配置；同时支持：
+        </p>
+        <ul class="mt-3 space-y-1.5 text-sm text-ink-700">
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 一键导入并切换 Cursor 账号</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 实时查 Cursor 用量、剩余额度、重置时间</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 多账号管理 + 阈值预警</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 自动重置机器指纹</li>
+        </ul>
+        <p class="text-xs text-ink-500 mt-3">
+          所有操作均在本机完成，token 不会上传到任何服务器。
+        </p>
+        <div class="mt-5 flex items-center gap-2">
+          <BrandButton size="sm" @click="showDesktopHint = false">知道了</BrandButton>
+        </div>
+      </div>
+    </div>
   </section>
 </template>

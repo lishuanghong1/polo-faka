@@ -1,15 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "默认权限：前端可以调主进程命令、显示对话框、调用 shell 打开 Cursor",
+  "description": "默认权限：调主进程命令、对话框、Shell 拉起 Cursor、系统通知、deep link 监听",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
     "core:window:allow-minimize",
     "core:window:allow-maximize",
+    "core:window:allow-set-focus",
+    "core:event:default",
     "dialog:default",
     "shell:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "notification:default",
+    "deep-link:default"
   ]
 }

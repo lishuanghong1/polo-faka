@@ -29,6 +29,7 @@ export interface ImportPayload {
 
 export interface ImportResult {
   email: string | null;
+  accountId: number | null;
   backupDir: string;
   resetMachineId: boolean;
   relaunched: boolean;
@@ -73,4 +74,62 @@ export interface UsageInfo {
   requestsLimit: number | null;
 
   source: 'dashboard_rpc' | 'usage_summary' | 'auth_usage';
+}
+
+/** 账号库里的一条记录（缓存了上次查到的用量） */
+export interface Account {
+  id: number;
+  email: string | null;
+  accessToken: string;
+  refreshToken: string | null;
+  userId: string | null;
+  label: string | null;
+  tags: string[];
+
+  plan: string | null;
+  includedSpendUsd: number | null;
+  limitUsd: number | null;
+  remainingUsd: number | null;
+  totalPercent: number | null;
+  autoPercent: number | null;
+  apiPercent: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  usageSource: string | null;
+  lastUsageAt: number | null;
+
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface AppSettings {
+  autoRefreshSeconds: number;
+  quotaAlertEnabled: boolean;
+  warnPercent: number;
+  criticalPercent: number;
+  defaultResetMachineId: boolean;
+  defaultRelaunch: boolean;
+}
+
+/** 后台 refresh 任务推送的事件 */
+export interface UsageUpdateEvent {
+  id: number;
+  email: string | null;
+  totalPercent: number | null;
+  remainingUsd: number | null;
+}
+
+export interface QuotaAlertEvent {
+  id: number;
+  email: string | null;
+  plan: string | null;
+  percent: number;
+  level: 'warn' | 'critical';
+}
+
+export interface DeepLinkImportEvent {
+  email: string | null;
+  token: string | null;
+  raw: string;
+  action: string;
 }

@@ -163,6 +163,18 @@ function copyAll() {
   copy(formatCardKeysForCopy(order.value.cardKeys || []), '已复制全部交付内容');
 }
 
+// 桌面工具联动：仅 Cursor 类卡密展示「一键导入」按钮。
+// 简单判定规则：内容里含 JWT 形态 `eyJ...` 即视为 Cursor 类。
+const showDesktopHint = ref(false);
+function isCursorCardKey(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  return /eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]+/.test(raw);
+}
+/** 把整段卡密内容塞进 deep link 的 raw 参数，桌面端会再次解析 */
+function buildDesktopLinkRaw(raw: string) {
+  return `polo-tool://import?token=${encodeURIComponent(raw)}`;
+}
+
 async function claimPoolAccount() {
   if (!order.value || poolClaiming.value) return;
   poolClaiming.value = true;
@@ -554,16 +566,36 @@ const statusHeroClass = computed(() => {
           <li
             v-for="(c, i) in plainCardKeys"
             :key="i"
-            class="group p-3.5 bg-ink-50/70 hover:bg-ink-50 rounded-lg flex items-start justify-between gap-3 transition"
+            class="group p-3.5 bg-ink-50/70 hover:bg-ink-50 rounded-lg space-y-2 transition"
           >
-            <div class="flex items-start gap-3 flex-1 min-w-0">
-              <span class="text-[11px] text-ink-400 font-mono mt-0.5 shrink-0">#{{ i + 1 }}</span>
-              <code class="text-sm text-ink-800 break-all whitespace-pre-wrap flex-1 leading-relaxed">{{ formatCardKeyContent(c.content) }}</code>
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3 flex-1 min-w-0">
+                <span class="text-[11px] text-ink-400 font-mono mt-0.5 shrink-0">#{{ i + 1 }}</span>
+                <code class="text-sm text-ink-800 break-all whitespace-pre-wrap flex-1 leading-relaxed">{{ formatCardKeyContent(c.content) }}</code>
+              </div>
+              <button
+                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 transition opacity-70 group-hover:opacity-100"
+                @click="copy(formatCardKeyContent(c.content))"
+              >复制</button>
             </div>
-            <button
-              class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 transition opacity-70 group-hover:opacity-100"
-              @click="copy(formatCardKeyContent(c.content))"
-            >复制</button>
+
+            <div v-if="isCursorCardKey(c.content)" class="pt-2 border-t border-ink-200/70 flex items-center gap-2">
+              <a
+                :href="buildDesktopLinkRaw(formatCardKeyContent(c.content))"
+                class="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-md font-medium transition"
+                title="在已安装 Polo 桌面工具的电脑上打开，将自动写入 Cursor 本地存储"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 6h16M4 12h16M4 18h7" stroke-linecap="round" />
+                  <path d="m17 16 4 3-4 3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                在桌面工具中一键导入
+              </a>
+              <span class="text-[11px] text-ink-400">
+                需先安装
+                <a href="#" class="text-brand-600 hover:underline" @click.prevent="showDesktopHint = true">Polo 账号工具</a>
+              </span>
+            </div>
           </li>
         </ul>
       </div>
@@ -615,5 +647,31 @@ const statusHeroClass = computed(() => {
         <BrandButton variant="secondary" size="sm" @click="router.push('/')">继续逛逛</BrandButton>
       </div>
     </template>
+
+    <!-- 桌面工具提示弹窗 -->
+    <div
+      v-if="showDesktopHint"
+      class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      @click.self="showDesktopHint = false"
+    >
+      <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <h3 class="text-base font-semibold text-ink-900 mb-2">Polo 桌面账号工具</h3>
+        <p class="text-sm text-ink-600 leading-relaxed">
+          本地工具：把卡密链接打开 → 自动写入 Cursor 本机存储；同时支持：
+        </p>
+        <ul class="mt-3 space-y-1.5 text-sm text-ink-700">
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 一键导入并切换 Cursor 账号</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 实时查 Cursor 用量、剩余额度、重置时间</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 多账号管理 + 阈值预警</li>
+          <li class="flex gap-2"><span class="text-emerald-500">✓</span> 自动重置机器指纹</li>
+        </ul>
+        <p class="text-xs text-ink-500 mt-3">
+          所有操作均在本机完成，token 不会上传到任何服务器。
+        </p>
+        <div class="mt-5 flex items-center gap-2">
+          <BrandButton size="sm" @click="showDesktopHint = false">知道了</BrandButton>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

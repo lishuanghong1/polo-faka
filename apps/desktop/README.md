@@ -1,11 +1,15 @@
 # Polo 桌面账号工具
 
-一个纯本地的桌面工具：
+一个纯本地的 Cursor 账号工具：
 
-- 粘贴 token / 卡密 → 一键写入 Cursor 本地存储
-- 可选重置机器指纹（devDeviceId / machineId / macMachineId / sqmId）
-- 写入前自动备份原 `storage.json` 和 `state.vscdb` 到 `<用户数据目录>/PoloAccountTool/backups/<时间戳>`
-- 所有操作均在本机完成，不向任何服务器发送数据
+- **导入新账号**：粘贴 token / 卡密 → 一键写入 Cursor 本机存储
+- **多账号库**：每次导入自动入库，列表展示用量 / 剩余 / 重置时间，一键切回任意账号
+- **后台自动刷新**：可配置间隔（默认 10 分钟）扫一遍账号库，把最新用量写回
+- **阈值预警**：超过 80% / 95% 弹系统通知，避免账号悄悄爆额
+- **机器指纹重置**：可选生成新的 `devDeviceId` / `machineId` / `macMachineId` / `sqmId`
+- **写入前自动备份**：原 `storage.json` + `state.vscdb` 复制到 `<用户数据目录>/PoloAccountTool/backups/<时间戳>`
+- **商城联动**：商城订单页有「在桌面工具中一键导入」按钮，会通过 `polo-tool://` 唤起本工具自动填表
+- 所有操作均在本机完成，不向任何服务器发送 token
 
 ## 开发
 

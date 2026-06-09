@@ -36,5 +36,11 @@
     "shortDescription": "Polo 桌面账号工具",
     "longDescription": "一键导入 Cursor 账号并可选重置机器指纹的桌面工具。所有操作均在本地完成，不向任何服务器上传 token。"
   },
-  "plugins": {}
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["polo-tool"]
+      }
+    }
+  }
 }
