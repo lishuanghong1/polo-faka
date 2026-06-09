@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Polo 账号工具",
+  "version": "0.1.0",
+  "identifier": "com.polo.account-tool",
+  "build": {
+    "beforeDevCommand": "pnpm vite:dev",
+    "beforeBuildCommand": "pnpm vite:build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Polo 账号工具",
+        "width": 820,
+        "height": 720,
+        "minWidth": 640,
+        "minHeight": 560,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "category": "DeveloperTool",
+    "shortDescription": "Polo 桌面账号工具",
+    "longDescription": "一键导入 Cursor 账号并可选重置机器指纹的桌面工具。所有操作均在本地完成，不向任何服务器上传 token。"
+  },
+  "plugins": {}
+}

@@ -1,0 +1,44 @@
+[package]
+name = "polo-account-tool"
+version = "0.1.0"
+description = "Polo 桌面账号工具 - 一键导入 Cursor 账号"
+authors = ["Polo"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "polo_account_tool_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+thiserror = "1"
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.32"
+regex = "1"
+# 查用量需要发 HTTPS 请求；rustls 避免 openssl 依赖，Windows 编译更简单
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "gzip",
+] }
+base64 = "0.22"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
