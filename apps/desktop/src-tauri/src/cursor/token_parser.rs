@@ -29,28 +29,33 @@ pub struct ParsedToken {
 ///   5. email----token
 ///   6. email----emailPwd----cursorPwd----token
 pub fn parse(raw_input: &str) -> AppResult<ParsedToken> {
-    let raw = raw_input.trim();
-    if raw.is_empty() {
+    let raw_source = raw_input.trim().to_string();
+    if raw_source.is_empty() {
         return Err(AppError::TokenParse("内容为空".into()));
     }
+    // 商城/浏览器复制的会话串常带 %3A%3A，先还原成 ::
+    let raw = decode_session_encoding(&raw_source);
 
-    if let Some(parsed) = try_parse_json(raw) {
-        return Ok(parsed);
+    if let Some(parsed) = try_parse_json(&raw) {
+        return Ok(ParsedToken {
+            raw_source: raw_source.clone(),
+            ..parsed
+        });
     }
 
     // Cookie 格式：WorkosCursorSessionToken=user_xxx::eyJhbG...
-    if let Some(captures) = workos_cookie_re().captures(raw) {
+    if let Some(captures) = workos_cookie_re().captures(&raw) {
         let token = captures
             .name("token")
-            .map(|m| decode_cookie_token(m.as_str()))
+            .map(|m| decode_session_encoding(m.as_str()))
             .ok_or_else(|| AppError::TokenParse("Cookie 格式中未发现 token".into()))?;
         let token = normalize_access_token(&token)
             .ok_or_else(|| AppError::TokenParse("Cookie 中的 token 无效".into()))?;
-        return Ok(build_parsed(None, None, None, token, raw));
+        return Ok(build_parsed(None, None, None, token, &raw_source));
     }
 
     // 四段：email----emailPwd----cursorPwd----token（token 段可含 ----）
-    if let Some(parts) = split_four_segments(raw) {
+    if let Some(parts) = split_four_segments(&raw) {
         let (email, email_pwd, cursor_pwd, token_str) = parts;
         let token = normalize_access_token(&token_str)
             .ok_or_else(|| AppError::TokenParse("第四段不是合法 token".into()))?;
@@ -59,21 +64,21 @@ pub fn parse(raw_input: &str) -> AppResult<ParsedToken> {
             Some(email_pwd),
             Some(cursor_pwd),
             token,
-            raw,
+            &raw_source,
         ));
     }
 
     // 两段：email----token
-    if let Some(parts) = split_two_segments(raw) {
+    if let Some(parts) = split_two_segments(&raw) {
         let (email, token_str) = parts;
         let token = normalize_access_token(&token_str)
             .ok_or_else(|| AppError::TokenParse("第二段不是合法 token".into()))?;
-        return Ok(build_parsed(Some(email), None, None, token, raw));
+        return Ok(build_parsed(Some(email), None, None, token, &raw_source));
     }
 
     // 纯会话串 / 纯 JWT
-    if let Some(token) = normalize_access_token(raw) {
-        return Ok(build_parsed(None, None, None, token, raw));
+    if let Some(token) = normalize_access_token(&raw) {
+        return Ok(build_parsed(None, None, None, token, &raw_source));
     }
 
     Err(AppError::TokenParse(
@@ -162,7 +167,8 @@ fn is_session_token(s: &str) -> bool {
     uid.trim().starts_with("user_") && jwt.trim().starts_with("eyJ")
 }
 
-fn decode_cookie_token(s: &str) -> String {
+/// 把 URL 编码的会话分隔符还原（浏览器 Cookie / 商城复制常见）
+fn decode_session_encoding(s: &str) -> String {
     s.trim()
         .replace("%3A%3A", "::")
         .replace("%3a%3a", "::")
@@ -261,5 +267,16 @@ mod tests {
         let p = parse(&raw).unwrap();
         assert_eq!(p.email.as_deref(), Some("a@b.com"));
         assert_eq!(p.access_token, format!("user_01X::{jwt}"));
+    }
+
+    #[test]
+    fn percent_encoded_session_token() {
+        let jwt = "eyJhbGciOiJIUzI1NiJ9.abcdef01.ghijklmn02";
+        let pasted = format!("user_01KT4HQQDCVAMM0DQK80EWB06J%3A%3A{jwt}");
+        let p = parse(&pasted).unwrap();
+        assert_eq!(
+            p.access_token,
+            format!("user_01KT4HQQDCVAMM0DQK80EWB06J::{jwt}")
+        );
     }
 }
