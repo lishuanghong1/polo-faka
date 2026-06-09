@@ -244,6 +244,11 @@ model Product {
   warranty     String?       // 质保说明文本
   // 批量阶梯优惠：[{min:1,max:10,price:1.2}, ...]
   bulkPricing  Json?
+  // 积分相关开关：在商品维度独立控制是否返积分 / 是否允许积分下单
+  // pointsAwardEnabled = false 时本商品不产生消费返积分和邀请首单奖励
+  // pointsPayEnabled   = false 时本商品禁用积分支付通道
+  pointsAwardEnabled Boolean   @default(true)
+  pointsPayEnabled   Boolean   @default(false)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -563,6 +568,9 @@ model ForgeProduct {
   enabled           Boolean  @default(false)
   sort              Int      @default(0)
   // ── 自定义详情：留空则回退到三方原始数据 ─────────────
+  // 积分相关开关：在商品维度独立控制是否返积分 / 是否允许积分下单
+  pointsAwardEnabled Boolean  @default(true)
+  pointsPayEnabled   Boolean  @default(true)
   /// 自定义商品名（覆盖三方 typeName）
   customName        String?  @db.VarChar(128)
   /// 自定义分类名（覆盖三方 categoryName）

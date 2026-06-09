@@ -341,6 +341,8 @@ export const api = {
         stock: number;
         warrantyHours: number | null;
         emailCodeEnabled: boolean;
+        pointsAwardEnabled: boolean;
+        pointsPayEnabled: boolean;
         subtitle?: string | null;
         coverImage?: string | null;
         description?: string | null;
@@ -412,6 +414,8 @@ export const api = {
           warrantyHours: number | null;
           emailCodeEnabled: boolean;
           enabled: boolean;
+          pointsAwardEnabled: boolean;
+          pointsPayEnabled: boolean;
           sort: number;
           customName?: string | null;
           customCategoryName?: string | null;
@@ -428,6 +432,8 @@ export const api = {
           displayPrice?: number;
           enabled?: boolean;
           sort?: number;
+          pointsAwardEnabled?: boolean;
+          pointsPayEnabled?: boolean;
           customName?: string | null;
           customCategoryName?: string | null;
           subtitle?: string | null;

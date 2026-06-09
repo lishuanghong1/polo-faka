@@ -53,6 +53,14 @@ export class UpdateForgeProductDto {
   @IsInt()
   sort?: number;
 
+  @IsOptional()
+  @IsBoolean()
+  pointsAwardEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  pointsPayEnabled?: boolean;
+
   // ── 自定义详情：null/空串 = 清空回退到三方默认 ─────────
   @IsOptional()
   @IsString()

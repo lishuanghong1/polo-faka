@@ -21,6 +21,9 @@ interface PublicProductItem {
   stock: number;
   warrantyHours: number | null;
   emailCodeEnabled: boolean;
+  // 积分相关开关：前台据此显示/隐藏积分支付按钮和返积分提示
+  pointsAwardEnabled: boolean;
+  pointsPayEnabled: boolean;
   // ── 自定义详情：留空则不返回 ─────────
   subtitle?: string | null;
   coverImage?: string | null;
@@ -169,6 +172,12 @@ export class ForgeProductsService {
         }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
         ...(dto.sort !== undefined && { sort: dto.sort }),
+        ...(dto.pointsAwardEnabled !== undefined && {
+          pointsAwardEnabled: dto.pointsAwardEnabled,
+        }),
+        ...(dto.pointsPayEnabled !== undefined && {
+          pointsPayEnabled: dto.pointsPayEnabled,
+        }),
         ...(dto.customName !== undefined && { customName: norm(dto.customName) }),
         ...(dto.customCategoryName !== undefined && {
           customCategoryName: norm(dto.customCategoryName),
@@ -228,6 +237,8 @@ export class ForgeProductsService {
             stock: r.stock,
             warrantyHours: r.warrantyHours,
             emailCodeEnabled: r.emailCodeEnabled,
+            pointsAwardEnabled: r.pointsAwardEnabled,
+            pointsPayEnabled: r.pointsPayEnabled,
           },
           r,
         ),
@@ -250,6 +261,8 @@ export class ForgeProductsService {
           stock: Number.isInteger(t.stock) ? t.stock : 0,
           warrantyHours: t.warranty_hours ?? local.warrantyHours,
           emailCodeEnabled: !!t.email_code_enabled,
+          pointsAwardEnabled: local.pointsAwardEnabled,
+          pointsPayEnabled: local.pointsPayEnabled,
         };
         result.push(applyOverrides(item, local));
       }

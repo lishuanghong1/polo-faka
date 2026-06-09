@@ -32,6 +32,9 @@ const vipOverrides = ref<Record<string, number>>({}); // tier -> discount
 
 const currentSku = computed(() => product.value?.skus?.find((s: any) => s.id === skuId.value));
 const isPoolQuotaProduct = computed(() => product.value?.deliveryType === 'POOL_QUOTA');
+// 商品级积分开关（后端没下发时默认开启返积分、禁用积分支付以保守为先）
+const pointsAwardEnabled = computed(() => product.value?.pointsAwardEnabled !== false);
+const pointsPayEnabled = computed(() => product.value?.pointsPayEnabled === true);
 const bulk = computed<any[] | null>(() => product.value?.bulkPricing || null);
 const unitPrice = computed(() => {
   if (!currentSku.value) return 0;
@@ -73,6 +76,10 @@ async function load() {
   }
   if (!alipayEnabled.value && userStore.isLoggedIn) {
     payMethod.value = 'BALANCE';
+  }
+  // 该商品禁用积分支付时，确保默认支付方式不是积分
+  if (!pointsPayEnabled.value && payMethod.value === 'POINTS') {
+    payMethod.value = alipayEnabled.value ? 'ALIPAY' : 'BALANCE';
   }
   // VIP 折扣（登录才有 tier；商品 override 任何人都能取）
   if (userStore.isLoggedIn) {
@@ -128,7 +135,7 @@ async function buy() {
       router.push({ name: 'login', query: { redirect: route.fullPath } });
       return;
     }
-    if (isPoolQuotaProduct.value) {
+    if (!pointsPayEnabled.value) {
       ElMessage.warning('该商品暂不支持积分支付');
       return;
     }
@@ -254,7 +261,12 @@ async function buy() {
 
       <div class="mt-4">
         <div class="text-sm text-ink-700 mb-2">支付方式</div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div
+          :class="[
+            'grid gap-2',
+            pointsPayEnabled ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2',
+          ]"
+        >
           <button
             type="button"
             :class="[
@@ -306,16 +318,15 @@ async function buy() {
             </div>
           </button>
           <button
+            v-if="pointsPayEnabled"
             type="button"
             :class="[
               'text-left px-3 py-2.5 rounded-lg border-2 transition text-sm',
               payMethod === 'POINTS'
                 ? 'border-brand-500 bg-brand-50/40'
                 : 'border-ink-200 hover:border-ink-300 bg-white',
-              isPoolQuotaProduct && 'opacity-50 cursor-not-allowed',
             ]"
-            :disabled="isPoolQuotaProduct"
-            @click="!isPoolQuotaProduct && (payMethod = 'POINTS')"
+            @click="payMethod = 'POINTS'"
           >
             <div class="flex items-center justify-between">
               <div class="font-medium flex items-center gap-2">
@@ -330,8 +341,7 @@ async function buy() {
               <span v-else class="text-xs text-ink-400">未登录</span>
             </div>
             <div class="text-[11px] text-ink-500 mt-0.5">
-              <template v-if="isPoolQuotaProduct">该商品暂不支持</template>
-              <template v-else-if="!userStore.isLoggedIn">登录后可用</template>
+              <template v-if="!userStore.isLoggedIn">登录后可用</template>
               <template v-else-if="!pointsEnough">需 {{ pointsRequired }} 分，还差 {{ pointsRequired - userPoints }}</template>
               <template v-else>需 {{ pointsRequired }} 分，1 分 = 1 元</template>
             </div>
@@ -369,7 +379,7 @@ async function buy() {
             合计 <span class="text-2xl font-bold brand-gradient-text">¥{{ totalAmount.toFixed(2) }}</span>
           </template>
           <div
-            v-if="payMethod !== 'POINTS' && expectedPointsReward > 0"
+            v-if="pointsAwardEnabled && payMethod !== 'POINTS' && expectedPointsReward > 0"
             class="mt-1 text-[11px] text-amber-600"
           >
             成功发货预计返 {{ expectedPointsReward }} 积分
@@ -385,7 +395,7 @@ async function buy() {
             !skuId ||
             !currentSku ||
             (payMethod === 'ALIPAY' && !alipayEnabled) ||
-            (payMethod === 'POINTS' && (isPoolQuotaProduct || !userStore.isLoggedIn || !pointsEnough)) ||
+            (payMethod === 'POINTS' && (!pointsPayEnabled || !userStore.isLoggedIn || !pointsEnough)) ||
             (isPoolQuotaProduct && (!userStore.isLoggedIn || currentSku.stock <= 0))
           "
           @click="buy"

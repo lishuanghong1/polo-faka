@@ -253,6 +253,9 @@ export class ForgeOrdersService {
   }) {
     if (!input.userId) throw new BadRequestException('积分支付需要登录');
     const product = await this.products.getEnabledOrThrow(input.typeKey);
+    if (!product.pointsPayEnabled) {
+      throw new BadRequestException('该商品暂不支持积分支付');
+    }
     this.validateQty(input.quantity);
     const displayPrice = Number(product.displayPrice);
     const totalAmount = +(displayPrice * input.quantity).toFixed(2);

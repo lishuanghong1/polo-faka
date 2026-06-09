@@ -64,6 +64,8 @@ function newProduct() {
     skus: [{ name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '' }],
     status: 'ON_SALE',
     deliveryType: 'CARD_KEY',
+    pointsAwardEnabled: true,
+    pointsPayEnabled: true,
   };
 }
 
@@ -111,6 +113,9 @@ async function save() {
     delete s._poolValidityDays;
     return s;
   });
+
+  payload.pointsAwardEnabled = !!payload.pointsAwardEnabled;
+  payload.pointsPayEnabled = !!payload.pointsPayEnabled;
 
   if (payload.id) {
     await api.admin.productsUpdate(payload.id, payload);
@@ -170,7 +175,7 @@ function removeSku(i: number) {
     <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" min-width="1120px">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1240px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>
@@ -179,6 +184,7 @@ function removeSku(i: number) {
         <th class="!text-right">起价</th>
         <th class="!text-right">库存</th>
         <th class="!text-right">销量</th>
+        <th>积分</th>
         <th>状态</th>
         <th class="!text-right" style="width: 180px"></th>
       </tr>
@@ -213,6 +219,28 @@ function removeSku(i: number) {
           </span>
         </td>
         <td class="text-right text-ink-600">{{ p.sales }}</td>
+        <td class="whitespace-nowrap">
+          <div class="flex flex-col gap-0.5 text-[11px] leading-tight">
+            <span
+              :class="p.pointsAwardEnabled
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                : 'text-ink-400 bg-ink-50 border-ink-200'"
+              class="inline-block px-1.5 py-0.5 rounded border w-fit"
+              :title="p.pointsAwardEnabled ? '购买可返积分' : '购买不返积分'"
+            >
+              返积分 {{ p.pointsAwardEnabled ? '·开' : '·关' }}
+            </span>
+            <span
+              :class="p.pointsPayEnabled
+                ? 'text-amber-700 bg-amber-50 border-amber-200'
+                : 'text-ink-400 bg-ink-50 border-ink-200'"
+              class="inline-block px-1.5 py-0.5 rounded border w-fit"
+              :title="p.pointsPayEnabled ? '允许积分支付' : '不允许积分支付'"
+            >
+              积分付 {{ p.pointsPayEnabled ? '·开' : '·关' }}
+            </span>
+          </div>
+        </td>
         <td>
           <button
             class="text-xs px-2 py-0.5 rounded-md border whitespace-nowrap"
@@ -318,6 +346,43 @@ function removeSku(i: number) {
           class="w-full px-3 py-2 border border-ink-200 rounded-lg font-mono text-xs"
           placeholder='例如：[{"min":1,"max":9,"price":0.5},{"min":10,"max":30,"price":0.45}]'
         />
+      </div>
+
+      <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+        <div class="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 3l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.3 6.7 19l1-5.8-4.2-4.1 5.9-.9L12 3z" stroke-linejoin="round"/>
+          </svg>
+          积分设置
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="flex items-start gap-2 cursor-pointer bg-white border border-amber-100 rounded-md px-3 py-2 hover:border-amber-300">
+            <input
+              type="checkbox"
+              v-model="editing.pointsAwardEnabled"
+              class="mt-1"
+            />
+            <div class="min-w-0">
+              <div class="text-sm text-ink-800 font-medium">购买后返积分</div>
+              <div class="text-[11px] text-ink-500 mt-0.5">
+                关闭后，本商品消费不再产生积分奖励，邀请首单奖励也不会触发
+              </div>
+            </div>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer bg-white border border-amber-100 rounded-md px-3 py-2 hover:border-amber-300">
+            <input
+              type="checkbox"
+              v-model="editing.pointsPayEnabled"
+              class="mt-1"
+            />
+            <div class="min-w-0">
+              <div class="text-sm text-ink-800 font-medium">允许积分下单</div>
+              <div class="text-[11px] text-ink-500 mt-0.5">
+                开启后用户可使用积分支付本商品（1 积分 = 1 元）。号池 / 人工发货类商品建议谨慎开启
+              </div>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div class="border-t border-ink-100 pt-4">

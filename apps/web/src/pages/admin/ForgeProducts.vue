@@ -24,6 +24,8 @@ interface ForgeProductRow {
   warrantyHours: number | null;
   emailCodeEnabled: boolean;
   enabled: boolean;
+  pointsAwardEnabled: boolean;
+  pointsPayEnabled: boolean;
   sort: number;
   customName?: string | null;
   customCategoryName?: string | null;
@@ -73,6 +75,28 @@ async function toggleEnabled(item: ForgeProductRow) {
     await api.forge.admin.updateProduct(item.typeKey, { enabled: !item.enabled });
     item.enabled = !item.enabled;
     ElMessage.success(item.enabled ? '已上架' : '已下架');
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '更新失败');
+  }
+}
+
+async function togglePointsAward(item: ForgeProductRow) {
+  const next = !item.pointsAwardEnabled;
+  try {
+    await api.forge.admin.updateProduct(item.typeKey, { pointsAwardEnabled: next });
+    item.pointsAwardEnabled = next;
+    ElMessage.success(next ? '已开启返积分' : '已关闭返积分');
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || '更新失败');
+  }
+}
+
+async function togglePointsPay(item: ForgeProductRow) {
+  const next = !item.pointsPayEnabled;
+  try {
+    await api.forge.admin.updateProduct(item.typeKey, { pointsPayEnabled: next });
+    item.pointsPayEnabled = next;
+    ElMessage.success(next ? '已允许积分支付' : '已关闭积分支付');
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error?.message || '更新失败');
   }
@@ -238,7 +262,7 @@ onMounted(load);
 
   <div v-else class="card p-0 overflow-hidden">
    <div class="overflow-auto max-h-[calc(100vh-300px)]">
-    <table class="w-full text-sm min-w-[1120px]">
+    <table class="w-full text-sm min-w-[1320px]">
       <thead class="bg-ink-50 text-ink-600 sticky top-0 z-10">
         <tr>
           <th class="px-4 py-2.5 text-left font-medium">商品</th>
@@ -246,6 +270,8 @@ onMounted(load);
           <th class="px-4 py-2.5 text-right font-medium">售价 (¥)</th>
           <th class="px-4 py-2.5 text-center font-medium">库存</th>
           <th class="px-4 py-2.5 text-center font-medium">接码</th>
+          <th class="px-4 py-2.5 text-center font-medium">返积分</th>
+          <th class="px-4 py-2.5 text-center font-medium">积分支付</th>
           <th class="px-4 py-2.5 text-center font-medium">排序</th>
           <th class="px-4 py-2.5 text-center font-medium">上架</th>
           <th class="px-4 py-2.5 text-center font-medium">详情</th>
@@ -311,6 +337,24 @@ onMounted(load);
           <td class="px-4 py-2 text-center">
             <span v-if="it.emailCodeEnabled" class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded">支持</span>
             <span v-else class="px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded">不支持</span>
+          </td>
+          <td class="px-4 py-2 text-center">
+            <label class="inline-flex items-center cursor-pointer" :title="it.pointsAwardEnabled ? '购买后可返积分' : '购买不返积分'">
+              <input
+                type="checkbox"
+                :checked="it.pointsAwardEnabled"
+                @change="togglePointsAward(it)"
+              />
+            </label>
+          </td>
+          <td class="px-4 py-2 text-center">
+            <label class="inline-flex items-center cursor-pointer" :title="it.pointsPayEnabled ? '允许积分支付' : '不允许积分支付'">
+              <input
+                type="checkbox"
+                :checked="it.pointsPayEnabled"
+                @change="togglePointsPay(it)"
+              />
+            </label>
           </td>
           <td class="px-4 py-2 text-center">
             <input

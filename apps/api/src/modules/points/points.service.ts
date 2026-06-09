@@ -254,9 +254,12 @@ export class PointsService {
         payAmount: true,
         payMethod: true,
         status: true,
+        product: { select: { pointsAwardEnabled: true } },
       },
     });
     if (!order?.userId || order.status !== 'DELIVERED') return;
+    // 商品维度关闭返积分 → 消费返积分 / 邀请首单奖励都跳过
+    if (!order.product?.pointsAwardEnabled) return;
 
     const reward = this.rewardForAmount(Number(order.payAmount));
     if (reward > 0 && order.payMethod !== 'POINTS') {
@@ -302,9 +305,12 @@ export class PointsService {
         totalAmount: true,
         paymentMethod: true,
         status: true,
+        product: { select: { pointsAwardEnabled: true } },
       },
     });
     if (!order?.userId || order.status !== 'DELIVERED') return;
+    // 商品维度关闭返积分 → 消费返积分 / 邀请首单奖励都跳过
+    if (!order.product?.pointsAwardEnabled) return;
 
     const paidAmount = order.payAmount !== null
       ? Number(order.payAmount)

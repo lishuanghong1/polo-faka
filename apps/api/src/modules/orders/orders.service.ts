@@ -89,7 +89,7 @@ export class OrdersService {
       : 0;
     if (dto.payMethod === PayMethodDto.POINTS) {
       if (!userId) throw new BadRequestException('积分支付需要登录');
-      if (sku.product.deliveryType !== 'CARD_KEY') {
+      if (!sku.product.pointsPayEnabled) {
         throw new BadRequestException('该商品暂不支持积分支付');
       }
       const u = await this.prisma.user.findUnique({

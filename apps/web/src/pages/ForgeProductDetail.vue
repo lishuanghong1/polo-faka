@@ -59,6 +59,9 @@ const userPoints = computed(() => Number(userStore.profile?.points ?? 0));
 const pointsRequired = computed(() => Math.ceil(lineTotal.value));
 const pointsEnough = computed(() => userPoints.value >= pointsRequired.value);
 const expectedPointsReward = computed(() => Math.floor(lineTotal.value * 0.1));
+// 商品级积分开关：未下发时积分支付默认启用（保留现有三方默认行为）
+const pointsAwardEnabled = computed(() => product.value?.pointsAwardEnabled !== false);
+const pointsPayEnabled = computed(() => product.value?.pointsPayEnabled !== false);
 
 const canSubmit = computed(() => {
   if (!product.value) return false;
@@ -71,6 +74,7 @@ const canSubmit = computed(() => {
     if (!balanceEnough.value) return false;
   }
   if (payMethod.value === 'POINTS') {
+    if (!pointsPayEnabled.value) return false;
     if (!userStore.isLoggedIn) return false;
     if (!pointsEnough.value) return false;
   }
@@ -95,6 +99,14 @@ async function load() {
   } catch {
     alipayEnabled.value = false;
     payMethod.value = userStore.isLoggedIn ? 'BALANCE' : 'REDEEM';
+  }
+  // 商品禁用积分支付时，确保默认支付方式不是积分
+  if (!pointsPayEnabled.value && payMethod.value === 'POINTS') {
+    payMethod.value = alipayEnabled.value
+      ? 'ALIPAY'
+      : userStore.isLoggedIn
+      ? 'BALANCE'
+      : 'REDEEM';
   }
   // VIP
   if (userStore.isLoggedIn) {
@@ -302,7 +314,14 @@ onMounted(load);
         <!-- 支付方式 -->
         <div class="mt-6">
           <label class="block text-sm text-ink-700 mb-2">支付方式</label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div
+            :class="[
+              'grid gap-2',
+              pointsPayEnabled
+                ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+                : 'grid-cols-1 sm:grid-cols-3',
+            ]"
+          >
             <button
               :class="[
                 'p-3 rounded-lg border-2 text-left transition min-w-0',
@@ -326,6 +345,7 @@ onMounted(load);
             </button>
 
             <button
+              v-if="pointsPayEnabled"
               :class="[
                 'p-3 rounded-lg border-2 text-left transition min-w-0',
                 payMethod === 'POINTS' ? 'border-brand-500 bg-brand-50/30' : 'border-ink-100 hover:border-ink-300',
@@ -406,7 +426,7 @@ onMounted(load);
               @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
             >→ 去登录</button>
           </div>
-          <div v-if="payMethod === 'POINTS' && !userStore.isLoggedIn" class="mt-3">
+          <div v-if="payMethod === 'POINTS' && pointsPayEnabled && !userStore.isLoggedIn" class="mt-3">
             <button
               class="text-xs text-brand-600 hover:underline"
               @click="router.push({ name: 'login', query: { redirect: route.fullPath } })"
@@ -431,7 +451,7 @@ onMounted(load);
             <span class="text-2xl font-bold text-rose-600">¥{{ lineTotal.toFixed(2) }}</span>
           </div>
           <div
-            v-if="payMethod !== 'POINTS' && expectedPointsReward > 0"
+            v-if="pointsAwardEnabled && payMethod !== 'POINTS' && expectedPointsReward > 0"
             class="mb-3 text-[11px] text-amber-600"
           >
             登录用户成功发货预计返 {{ expectedPointsReward }} 积分
