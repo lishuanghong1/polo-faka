@@ -77,11 +77,8 @@ const platformGroups: PlatformGroup[] = [
   {
     os: 'windows',
     title: 'Windows',
-    hint: '64 位 · Win 10 / 11 自带 WebView2；MSI 装不了请换 EXE',
-    picks: [
-      { label: '推荐：MSI 安装包', matchKind: ['msi'], recommended: true },
-      { label: '备用：EXE 安装包（NSIS）', matchKind: ['nsis'], recommended: true },
-    ],
+    hint: '64 位 · Win 10 / 11 自带 WebView2，无需额外安装',
+    picks: [{ label: '推荐：EXE 安装包', matchKind: ['nsis'], recommended: true }],
   },
   {
     os: 'macos-arm',
@@ -254,7 +251,7 @@ sudo xattr -rd com.apple.quarantine "/Applications/Polo 账号工具.app"
         </div>
         <div>
           <div class="text-ink-800 font-medium mb-1">Q: 提示「系统策略禁止安装」？</div>
-          <p>部分公司/学校电脑会拦截 MSI。请改下「EXE 安装包（NSIS）」，或右键「以管理员身份运行」；个人家用电脑一般两种都能装。</p>
+          <p>部分公司/学校电脑会限制软件安装。可右键安装包 →「以管理员身份运行」，或换个人电脑安装；企业环境需联系 IT 放行。</p>
         </div>
         <div>
           <div class="text-ink-800 font-medium mb-1">Q: Windows Defender 报毒？</div>

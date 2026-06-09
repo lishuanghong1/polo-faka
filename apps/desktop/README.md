@@ -32,7 +32,7 @@ pnpm tauri icon path/to/source.png   # （可选）生成标准 ICO + 各尺寸 
 pnpm build                             # 生成安装包到 src-tauri/target/release/bundle/
 ```
 
-Windows 产物：`.msi` 或 `.exe` (NSIS)，约 5-10 MB
+Windows 产物：`.exe` (NSIS)，约 5-10 MB
 macOS 产物：`.dmg`，约 5-10 MB（未签名时需要右键打开）
 
 ## 工程结构
