@@ -425,7 +425,11 @@ const statusHeroClass = computed(() => {
           所有操作均在本机完成，token 不会上传到任何服务器。
         </p>
         <div class="mt-5 flex items-center gap-2">
-          <BrandButton size="sm" @click="showDesktopHint = false">知道了</BrandButton>
+          <BrandButton size="sm" @click="router.push('/tools/desktop')">立即下载</BrandButton>
+          <button
+            class="px-4 py-1.5 text-sm text-ink-500 hover:text-ink-700"
+            @click="showDesktopHint = false"
+          >以后再说</button>
         </div>
       </div>
     </div>

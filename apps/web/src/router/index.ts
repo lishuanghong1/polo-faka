@@ -38,6 +38,13 @@ const routes: RouteRecordRaw[] = [
         name: 'cursor-login-tool',
         component: () => import('@/pages/CursorLoginTool.vue'),
       },
+      {
+        path: 'tools/desktop',
+        name: 'desktop-tool',
+        component: () => import('@/pages/DesktopTool.vue'),
+      },
+      // 短链兼容：/download → /tools/desktop
+      { path: 'download', redirect: '/tools/desktop' },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
       {
         path: 'recharge',
