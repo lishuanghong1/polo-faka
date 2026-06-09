@@ -615,6 +615,128 @@ export class PoolService {
     return this.toGrantView(grant, false);
   }
 
+  /**
+   * 列出登录用户名下所有号池额度包订单及其 Grant 状态。
+   * 用于桌面工具登录后展示「我的号池」面板，不下发 token。
+   */
+  async listMyGrants(userId: number) {
+    const orders = await this.prisma.order.findMany({
+      where: {
+        userId,
+        product: { deliveryType: 'POOL_QUOTA' },
+        status: { in: ['PAID', 'DELIVERED'] },
+      },
+      select: {
+        orderNo: true,
+        productTitle: true,
+        skuName: true,
+        createdAt: true,
+        quantity: true,
+        payAmount: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (orders.length === 0) return [];
+
+    const grants = await this.prisma.poolGrant.findMany({
+      where: { orderNo: { in: orders.map((o) => o.orderNo) } },
+      include: { account: true },
+    });
+    const byOrderNo = new Map(grants.map((g) => [g.orderNo, g]));
+
+    return orders.map((o) => {
+      const grant = byOrderNo.get(o.orderNo);
+      if (grant) {
+        const view = this.toGrantView(grant, false);
+        return {
+          ...view,
+          orderNo: o.orderNo,
+          orderTitle: `${o.productTitle}${o.skuName ? ' · ' + o.skuName : ''}`,
+          orderCreatedAt: o.createdAt,
+          payAmount: Number(o.payAmount),
+          notProvisioned: false,
+        };
+      }
+      return {
+        id: null,
+        orderNo: o.orderNo,
+        orderTitle: `${o.productTitle}${o.skuName ? ' · ' + o.skuName : ''}`,
+        orderCreatedAt: o.createdAt,
+        payAmount: Number(o.payAmount),
+        quotaTotal: 0,
+        quotaUsed: 0,
+        quotaRemain: 0,
+        validityDays: 0,
+        startAt: null,
+        endAt: null,
+        active: false,
+        lastCheckAt: null,
+        createdAt: null,
+        updatedAt: null,
+        account: null,
+        notProvisioned: true,
+      };
+    });
+  }
+
+  /**
+   * 释放当前 Grant 绑定的号池账号：
+   *  - 释放前同步一次用量，保证 quotaUsed 准确
+   *  - 解绑：accountId = null（账号回到可分配池）
+   *  - 不修改 quotaTotal/Used，账号回收不等于额度归零
+   * 幂等：已经没有 accountId 时直接返回当前视图。
+   */
+  async releaseAccount(orderNo: string) {
+    const grant = await this.prisma.poolGrant.findUnique({
+      where: { orderNo },
+      include: { account: true },
+    });
+    if (!grant) throw new NotFoundException('未找到该订单的额度配额');
+    if (!grant.accountId) {
+      return this.toGrantView(grant, false);
+    }
+    const accountId = grant.accountId;
+    await this.syncAccountUsage(accountId).catch((e) => {
+      this.logger.warn(`final sync on release ${accountId}: ${e?.message ?? e}`);
+    });
+    const updated = await this.prisma.poolGrant.update({
+      where: { id: grant.id },
+      data: { accountId: null, lastCheckAt: new Date() },
+      include: { account: true },
+    });
+    return this.toGrantView(updated, false);
+  }
+
+  /**
+   * 一键换号：释放当前账号 → 申请新账号。
+   * 如果 Grant 已用尽/过期，不会分配新的，返回 { swapped: false, exhausted/expired: true }。
+   */
+  async swapAccount(orderNo: string) {
+    const grant0 = await this.prisma.poolGrant.findUnique({ where: { orderNo } });
+    if (!grant0) throw new NotFoundException('未找到该订单的额度配额');
+    await this.releaseAccount(orderNo);
+
+    const fresh = await this.prisma.poolGrant.findUnique({
+      where: { orderNo },
+      include: { account: true },
+    });
+    if (!fresh) throw new NotFoundException('未找到该订单的额度配额');
+
+    const expired = !!fresh.endAt && fresh.endAt.getTime() < Date.now();
+    const exhausted = this.quotaRemain(fresh.quotaTotal, fresh.quotaUsed) <= 0;
+    if (expired || exhausted) {
+      return {
+        swapped: false,
+        exhausted,
+        expired,
+        grant: this.toGrantView(fresh, false),
+      };
+    }
+
+    const claimed = await this.claimAccount(orderNo);
+    return { swapped: true, exhausted: false, expired: false, grant: claimed };
+  }
+
   /** 用户提交自己的 Cursor Token，绑定到订单上（保留旧模式） */
   async bindUserToken(orderNo: string, userToken: string) {
     const grant = await this.prisma.poolGrant.findUnique({ where: { orderNo } });

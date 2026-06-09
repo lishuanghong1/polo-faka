@@ -8,14 +8,17 @@ import type {
   CursorInfo,
   DeepLinkImportEvent,
   ImportResult,
+  PoolExhaustedEvent,
+  PoolSwappedEvent,
   QuotaAlertEvent,
   UsageUpdateEvent,
 } from './types';
 import Import from './views/Import.vue';
 import Library from './views/Library.vue';
+import Pool from './views/Pool.vue';
 import Settings from './views/Settings.vue';
 
-type Tab = 'import' | 'library' | 'settings';
+type Tab = 'import' | 'library' | 'pool' | 'settings';
 
 const tab = ref<Tab>('import');
 const info = ref<CursorInfo | null>(null);
@@ -73,6 +76,7 @@ async function reloadDbPath() {
 
 const counts = computed(() => ({
   library: accounts.value.length,
+  poolBound: accounts.value.filter((a) => a.poolGrantOrderNo).length,
 }));
 
 // ── 事件监听 ──────────────────────────────
@@ -106,10 +110,30 @@ onMounted(async () => {
         pushToast('error', 'deep link 缺少 token 参数');
         return;
       }
-      // 拼成 email----token 形式直接灌进 import 页
       importPrefill.value = email ? `${email}----${token}` : token;
       tab.value = 'import';
       pushToast('info', '已从外部链接预填账号，请确认后点导入');
+    }),
+  );
+  unlisteners.push(
+    await listen<PoolSwappedEvent>('pool-swapped', async (e) => {
+      pushToast(
+        'info',
+        `已自动换号：${e.payload.newEmail || '(无 email)'} · 订单 ${e.payload.orderNo}`,
+      );
+      await reloadAccounts();
+      await reloadInfo();
+    }),
+  );
+  unlisteners.push(
+    await listen<PoolExhaustedEvent>('pool-exhausted', async (e) => {
+      const cleared = e.payload.clearedCursor ? '+ 已清 Cursor 登录' : '';
+      pushToast(
+        'critical',
+        `号池额度用尽：${e.payload.email || '(无 email)'} 已释放号 ${cleared}`,
+      );
+      await reloadAccounts();
+      await reloadInfo();
     }),
   );
 });
@@ -142,16 +166,17 @@ function onImported(result: ImportResult) {
     </header>
 
     <!-- Tab 栏 -->
-    <nav class="flex items-center gap-1 mb-4 border-b border-ink-800">
+    <nav class="flex items-center gap-1 mb-4 border-b border-ink-800 overflow-x-auto">
       <button
         v-for="opt in [
           { id: 'import', label: '导入新账号' },
           { id: 'library', label: `账号库 (${counts.library})` },
+          { id: 'pool', label: counts.poolBound > 0 ? `号池 · ${counts.poolBound}` : '号池' },
           { id: 'settings', label: '设置' },
         ] as const"
         :key="opt.id"
         :class="[
-          'px-3 py-2 text-sm border-b-2 -mb-px transition',
+          'px-3 py-2 text-sm border-b-2 -mb-px transition whitespace-nowrap',
           tab === opt.id
             ? 'border-brand-500 text-ink-100'
             : 'border-transparent text-ink-500 hover:text-ink-300',
@@ -177,6 +202,13 @@ function onImported(result: ImportResult) {
       :current-email="info?.currentEmail ?? null"
       @reload="async () => { await reloadAccounts(); await reloadInfo(); }"
       @switch="() => pushToast('info', '切换完成，已重启 Cursor')"
+    />
+    <Pool
+      v-else-if="tab === 'pool'"
+      :settings="settings"
+      @settings-changed="(s) => (settings = s)"
+      @reload-accounts="async () => { await reloadAccounts(); await reloadInfo(); }"
+      @toast="(kind, text) => pushToast(kind, text)"
     />
     <Settings
       v-else

@@ -39,6 +39,26 @@ pub struct AppSettings {
     /// 默认导入后是否自动拉起 Cursor
     #[serde(rename = "defaultRelaunch")]
     pub default_relaunch: bool,
+
+    // ── 商城 / 号池联动 ─────────────
+    /// 商城后端 base URL，默认指向我们的线上站点
+    #[serde(rename = "shopBaseUrl")]
+    pub shop_base_url: String,
+    /// 缓存的登录 JWT（用于号池接口认证）；过期需要重新登录
+    #[serde(rename = "shopJwt")]
+    pub shop_jwt: Option<String>,
+    /// 缓存的登录用户名（仅展示用）
+    #[serde(rename = "shopUsername")]
+    pub shop_username: Option<String>,
+    /// 是否启用号池自动换号 / 自动下机调度
+    #[serde(rename = "poolAutoEnabled")]
+    pub pool_auto_enabled: bool,
+    /// 用量超过此阈值（%）→ 自动换号；0 = 关闭
+    #[serde(rename = "poolSwapThresholdPercent")]
+    pub pool_swap_threshold_percent: f64,
+    /// 用量到 100% 时除了释放号外，是否清掉 Cursor 本机登录态
+    #[serde(rename = "poolClearCursorOnExhausted")]
+    pub pool_clear_cursor_on_exhausted: bool,
 }
 
 impl Default for AppSettings {
@@ -50,8 +70,21 @@ impl Default for AppSettings {
             critical_percent: 95.0,
             default_reset_machine_id: true,
             default_relaunch: true,
+            shop_base_url: env_default_shop_url(),
+            shop_jwt: None,
+            shop_username: None,
+            pool_auto_enabled: true,
+            pool_swap_threshold_percent: 95.0,
+            pool_clear_cursor_on_exhausted: true,
         }
     }
+}
+
+fn env_default_shop_url() -> String {
+    std::env::var("POLO_SHOP_BASE_URL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "https://shop.polo.example".into())
 }
 
 pub fn load(conn: &Connection) -> AppResult<AppSettings> {
@@ -80,6 +113,24 @@ pub fn load(conn: &Connection) -> AppResult<AppSettings> {
     if let Some(v) = get_raw(conn, "default_relaunch")? {
         s.default_relaunch = v == "1";
     }
+    if let Some(v) = get_raw(conn, "shop_base_url")? {
+        if !v.trim().is_empty() {
+            s.shop_base_url = v;
+        }
+    }
+    s.shop_jwt = get_raw(conn, "shop_jwt")?.filter(|v| !v.is_empty());
+    s.shop_username = get_raw(conn, "shop_username")?.filter(|v| !v.is_empty());
+    if let Some(v) = get_raw(conn, "pool_auto_enabled")? {
+        s.pool_auto_enabled = v == "1";
+    }
+    if let Some(v) = get_raw(conn, "pool_swap_threshold_percent")? {
+        if let Ok(n) = v.parse::<f64>() {
+            s.pool_swap_threshold_percent = n;
+        }
+    }
+    if let Some(v) = get_raw(conn, "pool_clear_cursor_on_exhausted")? {
+        s.pool_clear_cursor_on_exhausted = v == "1";
+    }
     Ok(s)
 }
 
@@ -97,6 +148,20 @@ pub fn save(conn: &Connection, s: &AppSettings) -> AppResult<()> {
         conn,
         "default_relaunch",
         if s.default_relaunch { "1" } else { "0" },
+    )?;
+    set_raw(conn, "shop_base_url", &s.shop_base_url)?;
+    set_raw(conn, "shop_jwt", s.shop_jwt.as_deref().unwrap_or(""))?;
+    set_raw(conn, "shop_username", s.shop_username.as_deref().unwrap_or(""))?;
+    set_raw(conn, "pool_auto_enabled", if s.pool_auto_enabled { "1" } else { "0" })?;
+    set_raw(
+        conn,
+        "pool_swap_threshold_percent",
+        &s.pool_swap_threshold_percent.to_string(),
+    )?;
+    set_raw(
+        conn,
+        "pool_clear_cursor_on_exhausted",
+        if s.pool_clear_cursor_on_exhausted { "1" } else { "0" },
     )?;
     Ok(())
 }

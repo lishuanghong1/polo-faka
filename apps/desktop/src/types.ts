@@ -100,6 +100,13 @@ export interface Account {
 
   createdAt: number;
   lastUsedAt: number | null;
+
+  // 号池绑定
+  poolGrantOrderNo: string | null;
+  poolQuotaTotal: number | null;
+  poolQuotaUsed: number | null;
+  poolQuotaRemain: number | null;
+  poolGrantActive: boolean | null;
 }
 
 export interface AppSettings {
@@ -109,6 +116,53 @@ export interface AppSettings {
   criticalPercent: number;
   defaultResetMachineId: boolean;
   defaultRelaunch: boolean;
+
+  // 商城 & 号池
+  shopBaseUrl: string;
+  shopJwt: string | null;
+  shopUsername: string | null;
+  poolAutoEnabled: boolean;
+  poolSwapThresholdPercent: number;
+  poolClearCursorOnExhausted: boolean;
+}
+
+// ─────── 号池数据结构 ───────
+export interface PoolAccountView {
+  id: number;
+  email: string | null;
+  token: string | null;
+}
+
+export interface PoolGrantView {
+  id: number | null;
+  orderNo: string;
+  orderTitle?: string | null;
+  quotaTotal: number;
+  quotaUsed: number;
+  quotaRemain: number;
+  active: boolean;
+  endAt?: string | null;
+  lastCheckAt?: string | null;
+  account: PoolAccountView | null;
+  notProvisioned?: boolean;
+}
+
+export interface PoolApplyResult {
+  grant: PoolGrantView;
+  wroteToCursor: boolean;
+  accountId: number | null;
+}
+
+export interface CaptchaInfo {
+  id: string;
+  svg: string;
+  expiresIn: number;
+}
+
+export interface ShopProfile {
+  username: string | null;
+  email: string | null;
+  nickname: string | null;
 }
 
 /** 后台 refresh 任务推送的事件 */
@@ -132,4 +186,17 @@ export interface DeepLinkImportEvent {
   token: string | null;
   raw: string;
   action: string;
+}
+
+export interface PoolSwappedEvent {
+  oldAccountId: number;
+  newEmail: string | null;
+  orderNo: string;
+}
+
+export interface PoolExhaustedEvent {
+  accountId: number;
+  orderNo: string;
+  email: string | null;
+  clearedCursor: boolean;
 }

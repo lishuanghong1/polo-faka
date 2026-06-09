@@ -2,6 +2,7 @@ pub mod commands;
 pub mod cursor;
 pub mod error;
 pub mod refresh;
+pub mod shop_api;
 pub mod store;
 
 use std::sync::Arc;
@@ -10,8 +11,8 @@ use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 
 use commands::{
-    account, cursor as cursor_cmd, deep_link as deep_link_cmd, machine, settings as settings_cmd,
-    store as store_cmd, usage,
+    account, cursor as cursor_cmd, deep_link as deep_link_cmd, machine, pool as pool_cmd,
+    settings as settings_cmd, store as store_cmd, usage,
 };
 use refresh::RefreshController;
 use store::Store;
@@ -90,6 +91,15 @@ pub fn run() {
             // 设置
             settings_cmd::get_settings,
             settings_cmd::save_settings,
+            // 号池联动
+            pool_cmd::shop_get_captcha,
+            pool_cmd::shop_login,
+            pool_cmd::shop_logout,
+            pool_cmd::pool_list_my_grants,
+            pool_cmd::pool_claim,
+            pool_cmd::pool_swap,
+            pool_cmd::pool_release,
+            pool_cmd::cursor_logout,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

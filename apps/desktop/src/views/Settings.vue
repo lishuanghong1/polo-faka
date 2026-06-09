@@ -139,6 +139,57 @@ async function save() {
       </label>
     </section>
 
+    <section class="card p-4 space-y-3">
+      <div class="text-sm font-medium text-ink-100">商城 / 号池联动</div>
+      <div>
+        <label class="text-[11px] text-ink-500">商城后端地址</label>
+        <input
+          v-model="draft.shopBaseUrl"
+          placeholder="https://your-shop.com"
+          class="w-full mt-0.5 px-3 py-1.5 bg-ink-900 border border-ink-700 rounded text-ink-100 font-mono text-xs focus:outline-none focus:border-brand-500"
+        />
+        <p class="text-[11px] text-ink-500 mt-1">
+          桌面工具会去这里登录、查号池额度，必须能访问到。
+        </p>
+      </div>
+
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input v-model="draft.poolAutoEnabled" type="checkbox" class="mt-0.5" />
+        <div>
+          <div class="text-sm text-ink-100">启用号池自动调度</div>
+          <div class="text-[11px] text-ink-500 mt-0.5">
+            后台刷新到号池账号到达阈值时自动换号；额度用尽时自动释放
+          </div>
+        </div>
+      </label>
+
+      <div :class="!draft.poolAutoEnabled && 'opacity-50'">
+        <label class="text-[11px] text-ink-500">自动换号阈值 (%)</label>
+        <input
+          v-model.number="draft.poolSwapThresholdPercent"
+          type="number"
+          min="50"
+          max="100"
+          step="1"
+          :disabled="!draft.poolAutoEnabled"
+          class="w-full mt-0.5 px-3 py-1.5 bg-ink-900 border border-ink-700 rounded text-ink-100 text-right text-sm focus:outline-none focus:border-brand-500"
+        />
+        <p class="text-[11px] text-ink-500 mt-1">
+          Cursor 用量到这个百分比就触发换号；推荐 95，避免在你写代码的时候断
+        </p>
+      </div>
+
+      <label class="flex items-start gap-2 cursor-pointer">
+        <input v-model="draft.poolClearCursorOnExhausted" type="checkbox" class="mt-0.5" />
+        <div>
+          <div class="text-sm text-ink-100">额度用尽时同时清空 Cursor 本机登录</div>
+          <div class="text-[11px] text-ink-500 mt-0.5">
+            避免 Cursor 一直用失效 token 报错；下次手动申请新号即可
+          </div>
+        </div>
+      </label>
+    </section>
+
     <section v-if="dbPath" class="card p-4">
       <div class="text-sm font-medium text-ink-100 mb-1">数据存储</div>
       <div class="text-[11px] text-ink-500 mb-2">

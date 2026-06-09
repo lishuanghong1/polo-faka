@@ -69,12 +69,48 @@ export class PoolController {
     @Param('orderNo') orderNo: string,
     @CurrentUser('sub') userId: number,
   ) {
+    await this.assertOwnership(orderNo, userId);
+    return this.svc.claimAccount(orderNo);
+  }
+
+  /** 释放当前 Grant 绑定的账号（仍保留额度，可再申请别的号）。 */
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('grants/:orderNo/release-account')
+  async release(
+    @Param('orderNo') orderNo: string,
+    @CurrentUser('sub') userId: number,
+  ) {
+    await this.assertOwnership(orderNo, userId);
+    return this.svc.releaseAccount(orderNo);
+  }
+
+  /** 一键换号：释放当前 + 申请新的；额度用尽时不分配。 */
+  @ApiBearerAuth()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('grants/:orderNo/swap-account')
+  async swap(
+    @Param('orderNo') orderNo: string,
+    @CurrentUser('sub') userId: number,
+  ) {
+    await this.assertOwnership(orderNo, userId);
+    return this.svc.swapAccount(orderNo);
+  }
+
+  /** 当前登录用户名下所有号池额度包及其 Grant 状态 */
+  @ApiBearerAuth()
+  @Get('grants/mine')
+  async mine(@CurrentUser('sub') userId: number) {
+    return this.svc.listMyGrants(userId);
+  }
+
+  /** 抽出来的所有权校验 */
+  private async assertOwnership(orderNo: string, userId: number) {
     const order = await this.prisma.order.findUnique({ where: { orderNo } });
     if (!order) throw new NotFoundException('订单不存在');
     if (!order.userId || order.userId !== userId) {
       throw new ForbiddenException('订单不属于当前用户');
     }
-    return this.svc.claimAccount(orderNo);
   }
 
   /** Token 一键激活（公开，限流以防滥用） */

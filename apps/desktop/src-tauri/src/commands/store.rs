@@ -54,6 +54,7 @@ pub fn save_account_from_raw(store: State<'_, Store>, raw: String) -> AppResult<
                 refresh_token: parsed.refresh_token.as_deref(),
                 user_id: user_id.as_deref(),
                 label: None,
+                pool_grant_order_no: None,
             },
         )
     })

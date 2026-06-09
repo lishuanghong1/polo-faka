@@ -2,11 +2,15 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   Account,
   AppSettings,
+  CaptchaInfo,
   CursorInfo,
   ImportPayload,
   ImportResult,
   NewIds,
   ParsedToken,
+  PoolApplyResult,
+  PoolGrantView,
+  ShopProfile,
   UsageInfo,
 } from './types';
 
@@ -44,4 +48,35 @@ export const api = {
   getSettings: () => invoke<AppSettings>('get_settings'),
   saveSettings: (payload: AppSettings) =>
     invoke<AppSettings>('save_settings', { payload }),
+
+  // 商城 / 号池联动
+  shopGetCaptcha: () => invoke<CaptchaInfo>('shop_get_captcha'),
+  shopLogin: (payload: {
+    username: string;
+    password: string;
+    captchaId: string;
+    captchaCode: string;
+  }) => invoke<ShopProfile>('shop_login', { payload }),
+  shopLogout: () => invoke<void>('shop_logout'),
+  poolListMyGrants: () => invoke<PoolGrantView[]>('pool_list_my_grants'),
+  poolClaim: (
+    orderNo: string,
+    options: {
+      writeToCursor: boolean;
+      resetMachineId: boolean;
+      killAndRelaunch: boolean;
+    },
+  ) => invoke<PoolApplyResult>('pool_claim', { orderNo, options }),
+  poolSwap: (
+    orderNo: string,
+    options: {
+      writeToCursor: boolean;
+      resetMachineId: boolean;
+      killAndRelaunch: boolean;
+    },
+  ) => invoke<PoolApplyResult>('pool_swap', { orderNo, options }),
+  poolRelease: (orderNo: string) =>
+    invoke<PoolGrantView>('pool_release', { orderNo }),
+  cursorLogout: (kill = true) =>
+    invoke<boolean>('cursor_logout', { kill }),
 };

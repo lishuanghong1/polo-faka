@@ -36,8 +36,28 @@ CREATE INDEX IF NOT EXISTS idx_accounts_last_used ON accounts(last_used_at DESC)
 CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
 "#;
 
+/// SQLite 没有 IF NOT EXISTS for columns，得手动判断
+fn add_column_if_missing(conn: &Connection, col: &str, def: &str) -> AppResult<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(accounts)")?;
+    let has = stmt
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .any(|name| name == col);
+    if !has {
+        conn.execute(&format!("ALTER TABLE accounts ADD COLUMN {col} {def}"), [])?;
+    }
+    Ok(())
+}
+
 pub fn ensure_schema(conn: &Connection) -> AppResult<()> {
     conn.execute_batch(SCHEMA)?;
+    // 号池绑定字段：标识本地 account 实际是某个号池 Grant 申请下来的，
+    // refresh 任务遇到这种 account 会按号池阈值规则自动换号/释放
+    add_column_if_missing(conn, "pool_grant_order_no", "TEXT")?;
+    add_column_if_missing(conn, "pool_quota_total", "REAL")?;
+    add_column_if_missing(conn, "pool_quota_used", "REAL")?;
+    add_column_if_missing(conn, "pool_quota_remain", "REAL")?;
+    add_column_if_missing(conn, "pool_grant_active", "INTEGER")?;
     Ok(())
 }
 
@@ -80,6 +100,19 @@ pub struct Account {
     pub created_at: i64,
     #[serde(rename = "lastUsedAt")]
     pub last_used_at: Option<i64>,
+
+    // ── 号池绑定（来自商城后端的 Grant）─────────────
+    /// 如果此账号是通过号池申请来的，记录对应 PoolGrant 的 orderNo
+    #[serde(rename = "poolGrantOrderNo")]
+    pub pool_grant_order_no: Option<String>,
+    #[serde(rename = "poolQuotaTotal")]
+    pub pool_quota_total: Option<f64>,
+    #[serde(rename = "poolQuotaUsed")]
+    pub pool_quota_used: Option<f64>,
+    #[serde(rename = "poolQuotaRemain")]
+    pub pool_quota_remain: Option<f64>,
+    #[serde(rename = "poolGrantActive")]
+    pub pool_grant_active: Option<bool>,
 }
 
 fn parse_tags(s: Option<String>) -> Vec<String> {
@@ -109,12 +142,18 @@ fn row_to_account(row: &rusqlite::Row) -> rusqlite::Result<Account> {
         last_usage_at: row.get(17)?,
         created_at: row.get(18)?,
         last_used_at: row.get(19)?,
+        pool_grant_order_no: row.get(20)?,
+        pool_quota_total: row.get(21)?,
+        pool_quota_used: row.get(22)?,
+        pool_quota_remain: row.get(23)?,
+        pool_grant_active: row.get::<_, Option<i64>>(24)?.map(|v| v != 0),
     })
 }
 
 const SELECT_COLS: &str = "id, email, access_token, refresh_token, user_id, label, tags_json, \
     plan, included_spend_usd, limit_usd, remaining_usd, total_percent, auto_percent, api_percent, \
-    period_start, period_end, usage_source, last_usage_at, created_at, last_used_at";
+    period_start, period_end, usage_source, last_usage_at, created_at, last_used_at, \
+    pool_grant_order_no, pool_quota_total, pool_quota_used, pool_quota_remain, pool_grant_active";
 
 pub fn list(conn: &Connection) -> AppResult<Vec<Account>> {
     let mut stmt = conn.prepare(&format!(
@@ -154,9 +193,11 @@ pub struct NewAccount<'a> {
     pub refresh_token: Option<&'a str>,
     pub user_id: Option<&'a str>,
     pub label: Option<&'a str>,
+    /// 号池来源 orderNo（None = 不是号池账号）
+    pub pool_grant_order_no: Option<&'a str>,
 }
 
-/// 已存在则更新基础字段（email/refresh/user_id/label）+ 返回，否则插入
+/// 已存在则更新基础字段（email/refresh/user_id/label/pool_grant_order_no）+ 返回，否则插入
 pub fn upsert(conn: &Connection, n: NewAccount) -> AppResult<Account> {
     if let Some(existing) = find_by_token(conn, n.access_token)? {
         // 合并 email / refresh / user_id（取非空覆盖）
@@ -165,20 +206,90 @@ pub fn upsert(conn: &Connection, n: NewAccount) -> AppResult<Account> {
                 email = COALESCE(?1, email),
                 refresh_token = COALESCE(?2, refresh_token),
                 user_id = COALESCE(?3, user_id),
-                label = COALESCE(?4, label)
-               WHERE id = ?5"#,
-            params![n.email, n.refresh_token, n.user_id, n.label, existing.id],
+                label = COALESCE(?4, label),
+                pool_grant_order_no = COALESCE(?5, pool_grant_order_no)
+               WHERE id = ?6"#,
+            params![
+                n.email,
+                n.refresh_token,
+                n.user_id,
+                n.label,
+                n.pool_grant_order_no,
+                existing.id
+            ],
         )?;
         return get(conn, existing.id);
     }
     let now = now_secs();
     conn.execute(
-        r#"INSERT INTO accounts(email, access_token, refresh_token, user_id, label, created_at)
-            VALUES(?1, ?2, ?3, ?4, ?5, ?6)"#,
-        params![n.email, n.access_token, n.refresh_token, n.user_id, n.label, now],
+        r#"INSERT INTO accounts(email, access_token, refresh_token, user_id, label,
+                pool_grant_order_no, created_at)
+            VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+        params![
+            n.email,
+            n.access_token,
+            n.refresh_token,
+            n.user_id,
+            n.label,
+            n.pool_grant_order_no,
+            now
+        ],
     )?;
     let id = conn.last_insert_rowid();
     get(conn, id)
+}
+
+/// 把号池 Grant 的元数据更新到本地账号（refresh 用）
+pub fn save_pool_status(
+    conn: &Connection,
+    id: i64,
+    quota_total: Option<f64>,
+    quota_used: Option<f64>,
+    quota_remain: Option<f64>,
+    active: Option<bool>,
+) -> AppResult<()> {
+    conn.execute(
+        r#"UPDATE accounts SET
+            pool_quota_total = ?1,
+            pool_quota_used = ?2,
+            pool_quota_remain = ?3,
+            pool_grant_active = ?4
+           WHERE id = ?5"#,
+        params![
+            quota_total,
+            quota_used,
+            quota_remain,
+            active.map(|v| if v { 1i64 } else { 0i64 }),
+            id
+        ],
+    )?;
+    Ok(())
+}
+
+/// 解绑：清空 pool 字段（号池账号被释放/换号后调用）
+pub fn clear_pool_binding(conn: &Connection, id: i64) -> AppResult<()> {
+    conn.execute(
+        r#"UPDATE accounts SET
+            pool_grant_order_no = NULL,
+            pool_quota_total = NULL,
+            pool_quota_used = NULL,
+            pool_quota_remain = NULL,
+            pool_grant_active = NULL
+           WHERE id = ?1"#,
+        [id],
+    )?;
+    Ok(())
+}
+
+/// 查所有还绑定着号池的账号（refresh 任务自动调度的目标集合）
+pub fn list_with_pool_binding(conn: &Connection) -> AppResult<Vec<Account>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {SELECT_COLS} FROM accounts WHERE pool_grant_order_no IS NOT NULL"
+    ))?;
+    let rows = stmt
+        .query_map([], row_to_account)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 pub fn delete(conn: &Connection, id: i64) -> AppResult<()> {
