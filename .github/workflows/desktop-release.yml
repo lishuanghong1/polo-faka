@@ -12,24 +12,21 @@ permissions:
   actions: read
 
 jobs:
-  # ─────────── 构建：4 个平台并行 ───────────
+  # ─────────── 构建：Windows + macOS（arm / Intel），不含 Linux ───────────
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: 'macos-latest' # Apple Silicon (arm64)
-            args: '--target aarch64-apple-darwin'
+            args: '--target aarch64-apple-darwin --bundles dmg'
             rust_target: 'aarch64-apple-darwin'
           # macos-13 已退役；在 Apple Silicon runner 上交叉编译 Intel dmg
           - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
+            args: '--target x86_64-apple-darwin --bundles dmg'
             rust_target: 'x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
-            rust_target: ''
           - platform: 'windows-latest'
-            args: ''
+            args: '--bundles msi'
             rust_target: ''
 
     runs-on: ${{ matrix.platform }}
@@ -57,16 +54,6 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
           key: ${{ matrix.platform }}-${{ matrix.rust_target }}
-
-      - name: Linux deps
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
 
       - name: Install workspace deps
         run: pnpm install --frozen-lockfile
@@ -109,7 +96,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true # 4 个 platform 的产物压到一个目录
+          merge-multiple: true # 3 个 build 的产物压到一个目录
 
       - name: Generate latest.json manifest
         env:

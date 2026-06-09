@@ -95,16 +95,6 @@ const platformGroups: PlatformGroup[] = [
     hint: '旧款 Intel Mac 专用',
     picks: [{ label: 'DMG 安装包', matchKind: ['dmg'], recommended: true }],
   },
-  {
-    os: 'linux',
-    title: 'Linux',
-    hint: '需要 WebKitGTK 4.1；现代发行版基本自带',
-    picks: [
-      { label: '通用：AppImage', matchKind: ['appimage'], recommended: true },
-      { label: 'Debian / Ubuntu', matchKind: ['deb'] },
-      { label: 'RHEL / Fedora', matchKind: ['rpm'] },
-    ],
-  },
 ];
 
 function pickAsset(os: OsKey, kinds: ManifestAsset['kind'][]): ManifestAsset | null {
