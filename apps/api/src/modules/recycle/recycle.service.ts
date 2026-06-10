@@ -19,6 +19,7 @@ const USER_AGENT =
 export interface RecycleResult {
   ok: boolean;
   email: string | null;
+  invoiceNumber: string;
   purchaseDate: string | null;
   /** 实际发送给 Cursor 的正文 */
   message: string;
@@ -86,10 +87,14 @@ export class RecycleService {
   }
 
   /** 公开入口：邮箱匹配仓库账号后向 Cursor 提交退款请求 */
-  async submit(emailInput: string): Promise<RecycleResult> {
+  async submit(emailInput: string, invoiceInput: string): Promise<RecycleResult> {
     const emailLower = (emailInput || '').trim().toLowerCase();
     if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
       throw new BadRequestException('邮箱格式不正确');
+    }
+    const invoiceNumber = (invoiceInput || '').trim();
+    if (!invoiceNumber) {
+      throw new BadRequestException('请填写账单号');
     }
 
     const hit = await this.resolveWarehouse(emailLower);
@@ -98,7 +103,7 @@ export class RecycleService {
     }
 
     const purchaseDate = await this.fetchPurchaseDate(hit.token);
-    const message = this.buildMessage(hit.email, purchaseDate);
+    const message = this.buildMessage(hit.email, invoiceNumber, purchaseDate);
 
     let response: unknown = null;
     try {
@@ -129,7 +134,7 @@ export class RecycleService {
       );
     }
 
-    return { ok: true, email: hit.email, purchaseDate, message, response };
+    return { ok: true, email: hit.email, invoiceNumber, purchaseDate, message, response };
   }
 
   /** best-effort：从用量接口取账单周期起始当购买日期，失败返回 null */
@@ -169,7 +174,7 @@ export class RecycleService {
     return null;
   }
 
-  private buildMessage(email: string, date: string | null): string {
+  private buildMessage(email: string, invoice: string, date: string | null): string {
     const purchaseDate = date || '[Purchase Date]';
     return [
       'Hello Cursor Support,',
@@ -177,6 +182,8 @@ export class RecycleService {
       'I would like to request a refund for my Cursor Pro subscription.',
       '',
       `Account Email: ${email}`,
+      '',
+      `Invoice Number: ${invoice}`,
       '',
       'Payment Method: Alipay',
       '',

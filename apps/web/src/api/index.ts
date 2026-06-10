@@ -171,14 +171,15 @@ export const api = {
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
   // 回收（按邮箱匹配仓库账号，向 Cursor 提交退款请求）
-  recycle: (email: string) =>
+  recycle: (email: string, invoiceNumber: string) =>
     http.post<{
       ok: boolean;
       email: string | null;
+      invoiceNumber: string;
       purchaseDate: string | null;
       message: string;
       response: unknown;
-    }>('/recycle', { email }),
+    }>('/recycle', { email, invoiceNumber }),
 
   // 池
   poolQuery: (orderNo: string, silent = false) =>
