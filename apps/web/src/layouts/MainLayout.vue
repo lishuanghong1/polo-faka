@@ -44,7 +44,6 @@ function goAndClose(path: string) {
           <router-link to="/me" class="hover:text-brand-600">个人中心</router-link>
           <router-link to="/recharge" class="hover:text-brand-600">账户充值</router-link>
           <router-link to="/query" class="hover:text-brand-600">订单查询</router-link>
-          <router-link to="/recycle" class="hover:text-brand-600">回收</router-link>
         </nav>
 
         <div class="flex items-center gap-3">
@@ -100,7 +99,6 @@ function goAndClose(path: string) {
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recharge')">账户充值</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/query')">订单查询</button>
-          <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recycle')">回收</button>
           <template v-if="user.isLoggedIn">
             <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
             <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recharge')">账户充值</button>
