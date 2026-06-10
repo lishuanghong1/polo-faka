@@ -46,6 +46,7 @@ const routes: RouteRecordRaw[] = [
       // 短链兼容：/download → /tools/desktop
       { path: 'download', redirect: '/tools/desktop' },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
+      { path: 'recycle', name: 'recycle', component: () => import('@/pages/Recycle.vue') },
       {
         path: 'recharge',
         name: 'recharge',

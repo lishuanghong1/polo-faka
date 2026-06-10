@@ -10,7 +10,6 @@ import type {
   ParsedToken,
   PoolApplyResult,
   PoolGrantView,
-  RecycleResult,
   ShopProfile,
   UsageInfo,
 } from './types';
@@ -81,11 +80,4 @@ export const api = {
     invoke<PoolGrantView>('pool_release', { orderNo }),
   cursorLogout: (kill = true) =>
     invoke<boolean>('cursor_logout', { kill }),
-
-  // 回收（向 Cursor 提交退款请求）
-  recycleAccount: (email: string, invoiceNumber?: string) =>
-    invoke<RecycleResult>('submit_recycle', {
-      email,
-      invoiceNumber: invoiceNumber?.trim() || null,
-    }),
 };

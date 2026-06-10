@@ -178,17 +178,6 @@ export interface CaptchaInfo {
   expiresIn: number;
 }
 
-/** 「回收」提交退款请求的返回 */
-export interface RecycleResult {
-  email: string | null;
-  invoiceNumber: string | null;
-  purchaseDate: string | null;
-  /** 实际发送给 Cursor 的正文 */
-  message: string;
-  /** classify 接口返回的原始 JSON */
-  response: unknown;
-}
-
 export interface ShopProfile {
   username: string | null;
   email: string | null;

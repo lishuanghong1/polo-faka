@@ -16,10 +16,9 @@ import type {
 import Import from './views/Import.vue';
 import Library from './views/Library.vue';
 import Pool from './views/Pool.vue';
-import Recycle from './views/Recycle.vue';
 import Settings from './views/Settings.vue';
 
-type Tab = 'import' | 'library' | 'pool' | 'recycle' | 'settings';
+type Tab = 'import' | 'library' | 'pool' | 'settings';
 
 const tab = ref<Tab>('import');
 const info = ref<CursorInfo | null>(null);
@@ -167,7 +166,6 @@ function onImported(result: ImportResult) {
           { id: 'import', label: '导入新账号' },
           { id: 'library', label: `账号库 (${counts.library})` },
           { id: 'pool', label: counts.poolBound > 0 ? `号池 · ${counts.poolBound}` : '号池' },
-          { id: 'recycle', label: '回收' },
           { id: 'settings', label: '设置' },
         ] as const"
         :key="opt.id"
@@ -205,11 +203,6 @@ function onImported(result: ImportResult) {
       :settings="settings"
       @settings-changed="(s) => (settings = s)"
       @reload-accounts="async () => { await reloadAccounts(); await reloadInfo(); }"
-      @toast="(kind, text) => pushToast(kind, text)"
-    />
-    <Recycle
-      v-else-if="tab === 'recycle'"
-      :accounts="accounts"
       @toast="(kind, text) => pushToast(kind, text)"
     />
     <Settings

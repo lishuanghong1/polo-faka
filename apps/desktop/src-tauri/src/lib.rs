@@ -12,7 +12,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 use commands::{
     account, cursor as cursor_cmd, deep_link as deep_link_cmd, machine, pool as pool_cmd,
-    recycle as recycle_cmd, settings as settings_cmd, store as store_cmd, usage,
+    settings as settings_cmd, store as store_cmd, usage,
 };
 use refresh::RefreshController;
 use store::Store;
@@ -101,8 +101,6 @@ pub fn run() {
             pool_cmd::pool_swap,
             pool_cmd::pool_release,
             pool_cmd::cursor_logout,
-            // 回收（退款）
-            recycle_cmd::submit_recycle,
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

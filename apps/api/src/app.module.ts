@@ -14,6 +14,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { CardKeysModule } from './modules/card-keys/card-keys.module';
 import { WarehouseModule } from './modules/warehouse/warehouse.module';
+import { RecycleModule } from './modules/recycle/recycle.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
 import { SiteSettingsModule } from './modules/site-settings/site-settings.module';
 import { FeedbacksModule } from './modules/feedbacks/feedbacks.module';
@@ -51,6 +52,7 @@ import { PointsModule } from './modules/points/points.module';
     OrdersModule,
     CardKeysModule,
     WarehouseModule,
+    RecycleModule,
     AnnouncementsModule,
     SiteSettingsModule,
     FeedbacksModule,

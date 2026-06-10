@@ -170,6 +170,16 @@ export const api = {
   // 反馈
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
+  // 回收（按邮箱匹配仓库账号，向 Cursor 提交退款请求）
+  recycle: (email: string) =>
+    http.post<{
+      ok: boolean;
+      email: string | null;
+      purchaseDate: string | null;
+      message: string;
+      response: unknown;
+    }>('/recycle', { email }),
+
   // 池
   poolQuery: (orderNo: string, silent = false) =>
     http.get(`/pool/grants/${orderNo}`, silent ? ({ silent: true } as any) : undefined),
