@@ -16,9 +16,10 @@ import type {
 import Import from './views/Import.vue';
 import Library from './views/Library.vue';
 import Pool from './views/Pool.vue';
+import Recycle from './views/Recycle.vue';
 import Settings from './views/Settings.vue';
 
-type Tab = 'import' | 'library' | 'pool' | 'settings';
+type Tab = 'import' | 'library' | 'pool' | 'recycle' | 'settings';
 
 const tab = ref<Tab>('import');
 const info = ref<CursorInfo | null>(null);
@@ -86,14 +87,8 @@ onMounted(async () => {
   await Promise.all([reloadInfo(), reloadAccounts(), reloadSettings(), reloadDbPath()]);
 
   unlisteners.push(
-    await listen<UsageUpdateEvent>('usage-updated', (e) => {
-      // 实时更新对应账号的进度条
-      const acc = accounts.value.find((a) => a.id === e.payload.id);
-      if (acc) {
-        acc.totalPercent = e.payload.totalPercent ?? acc.totalPercent;
-        acc.remainingUsd = e.payload.remainingUsd ?? acc.remainingUsd;
-        acc.lastUsageAt = Math.floor(Date.now() / 1000);
-      }
+    await listen<UsageUpdateEvent>('usage-updated', () => {
+      reloadAccounts();
     }),
   );
   unlisteners.push(
@@ -172,6 +167,7 @@ function onImported(result: ImportResult) {
           { id: 'import', label: '导入新账号' },
           { id: 'library', label: `账号库 (${counts.library})` },
           { id: 'pool', label: counts.poolBound > 0 ? `号池 · ${counts.poolBound}` : '号池' },
+          { id: 'recycle', label: '回收' },
           { id: 'settings', label: '设置' },
         ] as const"
         :key="opt.id"
@@ -200,6 +196,7 @@ function onImported(result: ImportResult) {
       :accounts="accounts"
       :defaults="settings ?? undefined"
       :current-email="info?.currentEmail ?? null"
+      :current-user-id="info?.currentUserId ?? null"
       @reload="async () => { await reloadAccounts(); await reloadInfo(); }"
       @switch="() => pushToast('info', '切换完成，已重启 Cursor')"
     />
@@ -208,6 +205,11 @@ function onImported(result: ImportResult) {
       :settings="settings"
       @settings-changed="(s) => (settings = s)"
       @reload-accounts="async () => { await reloadAccounts(); await reloadInfo(); }"
+      @toast="(kind, text) => pushToast(kind, text)"
+    />
+    <Recycle
+      v-else-if="tab === 'recycle'"
+      :accounts="accounts"
       @toast="(kind, text) => pushToast(kind, text)"
     />
     <Settings

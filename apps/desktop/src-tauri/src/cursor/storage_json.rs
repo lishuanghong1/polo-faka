@@ -54,28 +54,47 @@ pub fn backup(path: &Path, backup_dir: &Path) -> AppResult<Option<PathBuf>> {
     Ok(Some(dst))
 }
 
-/// 读取当前账号 email：cursorAuth.cachedEmail 或 cursorAuth/cachedEmail
-pub fn current_email(root: &Value) -> Option<String> {
-    if let Some(s) = root
-        .get("cursorAuth.cachedEmail")
-        .and_then(|v| v.as_str())
-    {
-        return Some(s.to_string());
+fn pick_nonempty_str(v: Option<&Value>) -> Option<String> {
+    let s = v?.as_str()?.trim();
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
     }
-    if let Some(s) = root
-        .pointer("/cursorAuth/cachedEmail")
-        .and_then(|v| v.as_str())
-    {
-        return Some(s.to_string());
+}
+
+/// 读取当前账号 email（storage.json 顶层点号/斜杠键）
+pub fn current_email(root: &Value) -> Option<String> {
+    for key in [
+        "cursorAuth.cachedEmail",
+        "cursor.email",
+        "cursorAuth/cachedEmail",
+    ] {
+        if let Some(email) = pick_nonempty_str(root.get(key)) {
+            return Some(email);
+        }
     }
     None
 }
 
-/// 读取当前设备 ID：telemetry.devDeviceId
+/// 读取 accessToken（storage.json）
+pub fn current_access_token(root: &Value) -> Option<String> {
+    for key in ["cursorAuth.accessToken", "cursorAuth/accessToken", "cursor.accessToken"] {
+        if let Some(token) = pick_nonempty_str(root.get(key)) {
+            return Some(token);
+        }
+    }
+    None
+}
+
+/// 读取当前设备 ID：telemetry.devDeviceId / telemetry.machineId
 pub fn current_device_id(root: &Value) -> Option<String> {
-    root.get("telemetry.devDeviceId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    for key in ["telemetry.devDeviceId", "telemetry.machineId"] {
+        if let Some(id) = pick_nonempty_str(root.get(key)) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 /// 用「点号路径平铺写法」给 storage.json 写一个键。

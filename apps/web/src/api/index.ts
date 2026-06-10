@@ -238,6 +238,8 @@ export const api = {
     warehouseUnassign: (id: number) => http.post(`/warehouse/${id}/unassign`),
     warehouseRemove: (id: number) => http.delete(`/warehouse/${id}`),
     warehouseBulkImport: (items: any[]) => http.post('/warehouse/bulk-import', { items }),
+    warehouseManualAdd: (body: { content: string; remark?: string }) =>
+      http.post<{ total: number; created: number; duplicated: number }>('/warehouse/manual-add', body),
 
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),

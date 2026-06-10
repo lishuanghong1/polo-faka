@@ -416,16 +416,23 @@ export class OrdersService {
       throw new BadRequestException('未登录');
     }
     const where = { userId };
-    const [total, items] = await this.prisma.$transaction([
+    const [total, rawItems] = await this.prisma.$transaction([
       this.prisma.order.count({ where }),
       this.prisma.order.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { cardKeys: { select: { content: true } } },
+        include: {
+          cardKeys: { select: { content: true } },
+          product: { select: { deliveryType: true } },
+        },
       }),
     ]);
+    const items = rawItems.map(({ product, ...order }) => ({
+      ...order,
+      deliveryType: product?.deliveryType ?? null,
+    }));
     return { total, page, pageSize, items };
   }
 

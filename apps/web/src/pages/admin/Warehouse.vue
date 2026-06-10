@@ -20,6 +20,32 @@ const selectedProductId = ref<number | null>(null);
 const selectedSkuId = ref<number | null>(null);
 const productSkus = ref<{ id: number; name: string }[]>([]);
 
+// 后台手动添加账号入库
+const adding = ref<{ content: string; remark: string } | null>(null);
+const addLineCount = computed(
+  () => (adding.value?.content || '').split(/\r?\n/).filter((s) => s.trim()).length,
+);
+function openAdd() {
+  adding.value = { content: '', remark: '' };
+}
+async function doAdd() {
+  if (!adding.value?.content.trim()) {
+    ElMessage.warning('请填写账号内容');
+    return;
+  }
+  const r = await api.admin.warehouseManualAdd({
+    content: adding.value.content,
+    remark: adding.value.remark || undefined,
+  });
+  if (r.duplicated) {
+    ElMessage.success(`入库 ${r.created} 条，跳过 ${r.duplicated} 条重复`);
+  } else {
+    ElMessage.success(`成功入库 ${r.created} 条账号`);
+  }
+  adding.value = null;
+  load();
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -138,7 +164,7 @@ async function reveal(row: any) {
 </script>
 
 <template>
-  <AdminPageHeader title="仓库" subtitle="外部系统推送的账号库存，可分配到商品上架">
+  <AdminPageHeader title="仓库" subtitle="外部推送或后台手动入库的账号，可分配到商品上架">
     <template #actions>
       <select v-model="filterStatus" class="px-3 py-1.5 rounded-lg border border-ink-200 text-sm bg-white">
         <option value="">全部状态</option>
@@ -155,6 +181,9 @@ async function reveal(row: any) {
       />
       <button class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="load">
         刷新
+      </button>
+      <button class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="openAdd">
+        + 添加账号
       </button>
     </template>
   </AdminPageHeader>
@@ -312,6 +341,49 @@ async function reveal(row: any) {
         @click="doAssign"
       >
         确认分配
+      </button>
+    </template>
+  </el-dialog>
+
+  <el-dialog
+    :model-value="!!adding"
+    :show-close="true"
+    width="640px"
+    title="添加账号到仓库"
+    @update:model-value="(v: boolean) => !v && (adding = null)"
+    @close="adding = null"
+  >
+    <div v-if="adding" class="space-y-3 text-sm">
+      <div>
+        <label class="block text-xs text-ink-500 mb-1">备注（可选）</label>
+        <input v-model="adding.remark" placeholder="如：批次号 / 来源" class="w-full px-3 py-2 border border-ink-200 rounded-lg" />
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs text-ink-500">账号内容（一行一条，自动去重并解析邮箱）</label>
+          <span class="text-xs text-ink-400">{{ addLineCount }} 行</span>
+        </div>
+        <textarea
+          v-model="adding.content"
+          rows="12"
+          placeholder="一行一条账号&#10;格式：邮箱----邮箱密码----cursor密码----token&#10;也可只填邮箱&#10;例如：&#10;user1@example.com----pwd1----pwd2----eyJ...&#10;user2@example.com"
+          class="w-full px-3 py-2 border border-ink-200 rounded-lg font-mono text-xs"
+        />
+      </div>
+      <div class="text-xs text-ink-500">
+        入库后为「未分配」状态，需在列表中分配到商品/SKU 才会上架；售出时仅向买家发送邮箱（凭邮箱验证码登录）。
+      </div>
+    </div>
+    <template #footer>
+      <button class="px-4 py-1.5 mr-2 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="adding = null">
+        取消
+      </button>
+      <button
+        class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 rounded-lg text-white text-sm"
+        :disabled="!addLineCount"
+        @click="doAdd"
+      >
+        入库 {{ addLineCount }} 条
       </button>
     </template>
   </el-dialog>

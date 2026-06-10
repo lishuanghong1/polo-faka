@@ -99,20 +99,44 @@ async function refreshGrants() {
   }
 }
 
+const cursorOptions = () => ({
+  writeToCursor: true,
+  resetMachineId: props.settings?.defaultResetMachineId ?? true,
+  killAndRelaunch: props.settings?.defaultRelaunch ?? true,
+});
+
+function accountLabel(g: PoolGrantView) {
+  const a = g.account;
+  if (!a) return '';
+  return a.email || a.tokenMasked || `账号 #${a.id}`;
+}
+
 async function claim(g: PoolGrantView) {
   if (acting.value) return;
   acting.value = g.orderNo;
   try {
-    const r = await api.poolClaim(g.orderNo, {
-      writeToCursor: true,
-      resetMachineId: props.settings?.defaultResetMachineId ?? true,
-      killAndRelaunch: props.settings?.defaultRelaunch ?? true,
-    });
-    emit('toast', 'info', `已申请并写入：${r.grant.account?.email || '(无 email)'}`);
+    const r = await api.poolClaim(g.orderNo, cursorOptions());
+    emit('toast', 'info', `已申请并写入：${accountLabel(r.grant) || '(无标识)'}`);
     emit('reload-accounts');
     await refreshGrants();
   } catch (e: any) {
     emit('toast', 'error', `申请失败：${e?.message || e}`);
+  } finally {
+    acting.value = null;
+  }
+}
+
+/** 已分配账号：重新领取 token 并写入本机 Cursor（不换号） */
+async function loginAccount(g: PoolGrantView) {
+  if (acting.value) return;
+  acting.value = g.orderNo;
+  try {
+    const r = await api.poolClaim(g.orderNo, cursorOptions());
+    emit('toast', 'info', `已登录 Cursor：${accountLabel(r.grant) || '(无标识)'}`);
+    emit('reload-accounts');
+    await refreshGrants();
+  } catch (e: any) {
+    emit('toast', 'error', `登录失败：${e?.message || e}`);
   } finally {
     acting.value = null;
   }
@@ -123,11 +147,7 @@ async function swap(g: PoolGrantView) {
   if (!confirm(`确认换一个新号？\n会自动释放当前账号 → 申请新号 → 写入 Cursor`)) return;
   acting.value = g.orderNo;
   try {
-    const r = await api.poolSwap(g.orderNo, {
-      writeToCursor: true,
-      resetMachineId: props.settings?.defaultResetMachineId ?? true,
-      killAndRelaunch: props.settings?.defaultRelaunch ?? true,
-    });
+    const r = await api.poolSwap(g.orderNo, cursorOptions());
     if (r.wroteToCursor) {
       emit('toast', 'info', `已换号：${r.grant.account?.email || '(无 email)'}`);
       emit('reload-accounts');
@@ -167,11 +187,16 @@ onMounted(async () => {
 });
 
 watch(
-  () => isLoggedIn.value,
-  async (v) => {
-    if (v && grants.value.length === 0) await refreshGrants();
-    if (!v && !captcha.value) await refreshCaptcha();
+  () => props.settings,
+  async (s) => {
+    if (s?.shopJwt) {
+      await refreshGrants();
+    } else if (s && !captcha.value) {
+      grants.value = [];
+      await refreshCaptcha();
+    }
   },
+  { deep: true },
 );
 
 function fmtMoney(v: number | null | undefined) {
@@ -185,7 +210,8 @@ function fmtDate(s: string | null | undefined) {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 function fmtQuota(v: number | null | undefined) {
-  if (v === null || v === undefined || v === 0) return '—';
+  if (v === null || v === undefined) return '—';
+  if (v === 0) return '0';
   return v >= 100 ? v.toFixed(0) : v.toFixed(2);
 }
 function percentOf(g: PoolGrantView) {
@@ -273,8 +299,13 @@ function percentOf(g: PoolGrantView) {
       </section>
 
       <!-- 列表 -->
-      <div v-if="!grants.length && !loading" class="card p-10 text-center text-ink-400 text-sm">
-        当前账号名下没有号池额度包订单。
+      <div v-if="!grants.length && !loading" class="card p-10 text-center text-ink-400 text-sm space-y-2">
+        <p>当前商城账号名下没有号池额度包订单。</p>
+        <p class="text-[11px] text-ink-500 leading-relaxed">
+          请确认：① 用的是<strong class="text-ink-400">购买时同一个商城账号</strong>登录；
+          ② 设置里的商城地址正确（当前：<span class="font-mono">{{ settings?.shopBaseUrl }}</span>）；
+          ③ 买的是「号池额度包」类商品且已支付。
+        </p>
       </div>
 
       <ul v-else class="space-y-2">
@@ -290,22 +321,28 @@ function percentOf(g: PoolGrantView) {
                 <span v-else-if="!g.active" class="ml-2 text-amber-300">已停用</span>
               </div>
             </div>
-            <div class="flex flex-col gap-1.5">
+            <div class="flex flex-col gap-1.5 shrink-0">
               <button
                 v-if="!g.account && !g.notProvisioned && g.active"
-                class="btn-primary text-xs py-1 px-3"
+                class="btn-primary text-xs py-1 px-3 whitespace-nowrap"
                 :disabled="acting === g.orderNo"
                 @click="claim(g)"
-              >{{ acting === g.orderNo ? '申请中…' : '申请号 + 写 Cursor' }}</button>
+              >{{ acting === g.orderNo ? '申请中…' : '申请号' }}</button>
               <button
-                v-if="g.account"
-                class="btn-primary text-xs py-1 px-3"
+                v-if="g.account && g.active"
+                class="btn-primary text-xs py-1 px-3 whitespace-nowrap"
+                :disabled="acting === g.orderNo"
+                @click="loginAccount(g)"
+              >{{ acting === g.orderNo ? '写入中…' : '登录该账号' }}</button>
+              <button
+                v-if="g.account && g.active"
+                class="btn-ghost text-xs py-1 px-3 whitespace-nowrap"
                 :disabled="acting === g.orderNo"
                 @click="swap(g)"
-              >{{ acting === g.orderNo ? '换号中…' : '换一个号' }}</button>
+              >换一个号</button>
               <button
                 v-if="g.account"
-                class="btn-ghost text-xs py-1 px-3"
+                class="btn-ghost text-xs py-1 px-3 whitespace-nowrap"
                 :disabled="acting === g.orderNo"
                 @click="release(g)"
               >释放当前号</button>
@@ -325,7 +362,7 @@ function percentOf(g: PoolGrantView) {
             <div class="rounded-md bg-ink-900/60 border border-ink-700 px-3 py-1.5">
               <div class="text-ink-500">绑定账号</div>
               <div class="text-ink-200 font-mono truncate">
-                {{ g.account?.email || '—' }}
+                {{ g.account ? (g.account.email || g.account.tokenMasked || `#${g.account.id}`) : '—' }}
               </div>
             </div>
             <div class="rounded-md bg-ink-900/60 border border-ink-700 px-3 py-1.5">

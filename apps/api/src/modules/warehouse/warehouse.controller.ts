@@ -43,6 +43,22 @@ export class WarehouseController {
     return r;
   }
 
+  /**
+   * 后台手动添加账号入库。
+   * body: { content: 多行文本（一行一条）, remark? }
+   */
+  @Post('manual-add')
+  async manualAdd(
+    @Body() body: { content: string; remark?: string },
+    @Req() req: Request,
+  ) {
+    const r = await this.svc.manualAdd(body?.content, body?.remark);
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_MANUAL_ADD, {
+      detail: { total: r.total, created: r.created, duplicated: r.duplicated },
+    });
+    return r;
+  }
+
   /** 反查：按 sourceRef 列表返回每条状态（供外部系统同步用） */
   @Post('status-by-refs')
   statusByRefs(@Body() body: { refs: string[] }) {

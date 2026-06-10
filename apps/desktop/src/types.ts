@@ -8,6 +8,8 @@ export interface CursorInfo {
   machineIdFilePath: string | null;
   running: boolean;
   currentEmail: string | null;
+  /** auth0|user_xxx 已规范为 user_xxx */
+  currentUserId: string | null;
   currentDeviceId: string | null;
 }
 
@@ -55,7 +57,16 @@ export interface UsageInfo {
   includedSpendUsd: number | null;
   limitUsd: number | null;
   remainingUsd: number | null;
+  /** 赠送池总量 */
+  bonusQuotaUsd: number | null;
+  /** 赠送池已消耗 */
+  bonusUsedUsd: number | null;
+  /** @deprecated 等同 bonusUsedUsd */
   bonusSpendUsd: number | null;
+  /** API 高级模型花费 */
+  apiSpendUsd: number | null;
+  /** 超额 / 按需花费 */
+  overageSpendUsd: number | null;
 
   // 百分比（0~100）
   autoPercent: number | null;
@@ -73,7 +84,7 @@ export interface UsageInfo {
   requestsUsed: number | null;
   requestsLimit: number | null;
 
-  source: 'dashboard_rpc' | 'usage_summary' | 'auth_usage';
+  source: 'dashboard_rpc' | 'usage_summary' | 'usage_events' | 'auth_usage';
 }
 
 /** 账号库里的一条记录（缓存了上次查到的用量） */
@@ -87,12 +98,19 @@ export interface Account {
   tags: string[];
 
   plan: string | null;
+  totalSpendUsd: number | null;
   includedSpendUsd: number | null;
   limitUsd: number | null;
   remainingUsd: number | null;
   totalPercent: number | null;
   autoPercent: number | null;
   apiPercent: number | null;
+  bonusQuotaUsd: number | null;
+  bonusUsedUsd: number | null;
+  individualLimitUsd: number | null;
+  individualUsedUsd: number | null;
+  apiSpendUsd: number | null;
+  overageSpendUsd: number | null;
   periodStart: string | null;
   periodEnd: string | null;
   usageSource: string | null;
@@ -131,6 +149,7 @@ export interface PoolAccountView {
   id: number;
   email: string | null;
   token: string | null;
+  tokenMasked?: string | null;
 }
 
 export interface PoolGrantView {
@@ -157,6 +176,17 @@ export interface CaptchaInfo {
   id: string;
   svg: string;
   expiresIn: number;
+}
+
+/** 「回收」提交退款请求的返回 */
+export interface RecycleResult {
+  email: string | null;
+  invoiceNumber: string | null;
+  purchaseDate: string | null;
+  /** 实际发送给 Cursor 的正文 */
+  message: string;
+  /** classify 接口返回的原始 JSON */
+  response: unknown;
 }
 
 export interface ShopProfile {

@@ -19,7 +19,7 @@ pub enum AppError {
     LaunchCursor(String),
 
     #[error("IO 错误：{0}")]
-    Io(#[from] std::io::Error),
+    Io(std::io::Error),
 
     #[error("JSON 错误：{0}")]
     Json(#[from] serde_json::Error),
@@ -29,6 +29,23 @@ pub enum AppError {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl From<std::io::Error> for AppError {
+    fn from(e: std::io::Error) -> Self {
+        if e.raw_os_error() == Some(5) {
+            AppError::Other(
+                "无法写入 Cursor 配置文件（拒绝访问）。请先完全退出 Cursor 后再试；若仍失败，以管理员身份运行本工具"
+                    .into(),
+            )
+        } else if e.raw_os_error() == Some(32) {
+            AppError::Other(
+                "Cursor 配置文件仍被占用，请完全退出 Cursor（含托盘）后重试".into(),
+            )
+        } else {
+            AppError::Io(e)
+        }
+    }
 }
 
 impl From<String> for AppError {

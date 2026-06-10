@@ -2787,6 +2787,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
+ "encoding_rs",
  "hex",
  "rand 0.8.6",
  "regex",

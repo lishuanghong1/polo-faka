@@ -100,10 +100,11 @@ pub async fn import_account_inner(payload: ImportPayload) -> AppResult<ImportRes
     if process::is_running() {
         process::kill_all()?;
     }
+    process::wait_for_db_writable(&paths.state_db)?;
 
     let backup_dir = CursorPaths::new_backup_dir()?;
     storage_json::backup(&paths.storage_json, &backup_dir)?;
-    state_vscdb::backup(&paths.state_db, &backup_dir)?;
+    let _ = state_vscdb::backup(&paths.state_db, &backup_dir)?;
 
     write_account_to_state_db(&paths.state_db, &parsed)?;
     write_account_to_storage_json(&paths.storage_json, &parsed)?;
@@ -131,8 +132,20 @@ pub async fn import_account_inner(payload: ImportPayload) -> AppResult<ImportRes
     ))
 }
 
+fn resolve_write_email(parsed: &ParsedToken) -> String {
+    parsed
+        .email
+        .clone()
+        .or_else(|| {
+            crate::cursor::token_parser::email_from_jwt(crate::cursor::token_parser::jwt_part(
+                &parsed.access_token,
+            ))
+        })
+        .unwrap_or_default()
+}
+
 fn write_account_to_state_db(state_db_path: &std::path::Path, parsed: &ParsedToken) -> AppResult<()> {
-    let email = parsed.email.clone().unwrap_or_default();
+    let email = resolve_write_email(parsed);
     let access = &parsed.access_token;
     let refresh = parsed.refresh_token.as_deref().unwrap_or(access);
 
@@ -143,7 +156,8 @@ fn write_account_to_state_db(state_db_path: &std::path::Path, parsed: &ParsedTok
             ("cursorAuth/cachedEmail", email.as_str()),
             ("cursorAuth/accessToken", access.as_str()),
             ("cursorAuth/refreshToken", refresh),
-            // 不强制设置会员类型，让 Cursor 自己刷
+            ("cursor.email", email.as_str()),
+            ("cursor.accessToken", access.as_str()),
         ],
     )
 }
@@ -155,14 +169,16 @@ fn write_account_to_storage_json(
     storage_json::ensure_exists(storage_json_path)?;
     let mut root: Value = storage_json::read_or_empty(storage_json_path);
 
-    let email = parsed.email.clone().unwrap_or_default();
+    let email = resolve_write_email(parsed);
     let access = parsed.access_token.clone();
     let refresh = parsed.refresh_token.clone().unwrap_or_else(|| access.clone());
 
     storage_json::set_dotted(&mut root, "cursorAuth.cachedSignUpType", json!("Auth_0"));
     storage_json::set_dotted(&mut root, "cursorAuth.cachedEmail", json!(email));
+    storage_json::set_dotted(&mut root, "cursor.email", json!(email));
     storage_json::set_dotted(&mut root, "cursorAuth.accessToken", json!(access));
     storage_json::set_dotted(&mut root, "cursorAuth.refreshToken", json!(refresh));
+    storage_json::set_dotted(&mut root, "cursor.accessToken", json!(access));
 
     storage_json::write_atomic(storage_json_path, &root)?;
     Ok(())

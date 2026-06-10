@@ -195,13 +195,32 @@ pub fn extract_jwt_like(input: &str) -> Option<String> {
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
 
-fn extract_user_id_from_jwt(jwt: &str) -> Option<String> {
+/// 解码 JWT payload（不校验签名，仅用于读本地已登录 token 的声明）
+pub fn decode_jwt_payload(jwt: &str) -> Option<Value> {
     use base64::Engine;
     let payload_b64 = jwt.split('.').nth(1)?;
     let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(payload_b64)
         .ok()?;
-    let json: Value = serde_json::from_slice(&decoded).ok()?;
+    serde_json::from_slice(&decoded).ok()
+}
+
+/// 从 JWT 声明里尽量取出邮箱（Cursor accessToken 常带 email 字段）
+pub fn email_from_jwt(jwt: &str) -> Option<String> {
+    let json = decode_jwt_payload(jwt)?;
+    for key in ["email", "preferred_username", "name"] {
+        if let Some(s) = json.get(key).and_then(|v| v.as_str()) {
+            let trimmed = s.trim();
+            if trimmed.contains('@') {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn extract_user_id_from_jwt(jwt: &str) -> Option<String> {
+    let json = decode_jwt_payload(jwt)?;
     let sub = json.get("sub")?.as_str()?;
     sub.rsplit('|').next().map(|s| s.to_string())
 }

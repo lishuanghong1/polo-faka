@@ -16,14 +16,17 @@ interface BulkItem {
 /** 仓库 content = email----emailpwd----cursorpwd----token */
 const WAREHOUSE_SEPARATOR = '----';
 
-/** 售出发货只给 邮箱 + token（去掉邮箱密码 / cursor 密码） */
+/** 从仓库 content 解析邮箱（取第一段，需含 @），用于发货 / 入库自动回填 email 列 */
+function parseEmailFromContent(fullContent: string): string | null {
+  const first = (fullContent || '').split(WAREHOUSE_SEPARATOR)[0]?.trim() ?? '';
+  return first.includes('@') ? first.slice(0, 255) : null;
+}
+
+/** 售出发货只给 邮箱（买家用邮箱验证码登录，不下发邮箱密码 / cursor 密码 / token） */
 function buildDeliveryContent(fullContent: string): string {
-  const parts = (fullContent || '').split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
-  const email = parts[0] || '';
-  const token = parts.length >= 4 ? parts[3] : parts[parts.length - 1] || '';
-  if (email && token) return `${email}${WAREHOUSE_SEPARATOR}${token}`;
-  // 兜底：格式不符合预期时原样发货，避免发空
-  return fullContent;
+  const email = parseEmailFromContent(fullContent);
+  // 兜底：解析不到邮箱时原样发货，避免发空
+  return email || (fullContent || '').trim();
 }
 
 @Injectable()
@@ -97,6 +100,66 @@ export class WarehouseService {
       updated: updated.length,
       skipped: skipped.length,
       items: { created, updated, skipped },
+    };
+  }
+
+  // ====== 管理后台：手动添加账号入库（一行一条，自动解析邮箱） ======
+
+  /**
+   * 后台手动灌入仓库：raw 为多行文本，一行一条 content
+   * （如 email----emailpwd----cursorpwd----token，或只填 email）。
+   * 库内已存在相同 content 的自动跳过；email 列从 content 第一段解析回填。
+   */
+  async manualAdd(raw: string, remark?: string) {
+    if (typeof raw !== 'string' || !raw.trim()) {
+      throw new BadRequestException('请填写账号内容');
+    }
+    const lines = Array.from(
+      new Set(
+        raw
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!lines.length) {
+      throw new BadRequestException('请填写账号内容');
+    }
+    if (lines.length > 1000) {
+      throw new BadRequestException('单次最多添加 1000 条');
+    }
+    for (const l of lines) {
+      if (l.length > 4096) {
+        throw new BadRequestException('存在单条超过 4KB 的内容，请检查输入');
+      }
+    }
+
+    // 库内已存在相同 content 的（任意状态）跳过，避免重复入库
+    const existing = await this.prisma.warehouseAccount.findMany({
+      where: { content: { in: lines } },
+      select: { content: true },
+    });
+    const existSet = new Set(existing.map((e) => e.content));
+    const fresh = lines.filter((l) => !existSet.has(l));
+    if (!fresh.length) {
+      return { total: lines.length, created: 0, duplicated: lines.length };
+    }
+
+    const trimmedRemark =
+      typeof remark === 'string' && remark.trim() ? remark.trim().slice(0, 500) : null;
+    const r = await this.prisma.warehouseAccount.createMany({
+      data: fresh.map((content) => ({
+        sourceRef: null,
+        content,
+        email: parseEmailFromContent(content),
+        remark: trimmedRemark,
+        status: 'PENDING',
+      })),
+    });
+    return {
+      total: lines.length,
+      created: r.count,
+      duplicated: lines.length - r.count,
     };
   }
 

@@ -3,12 +3,20 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 import type { Account, AppSettings } from '../types';
 import UsageBar from '../components/UsageBar.vue';
+import UsageTotalSummary from '../components/UsageTotalSummary.vue';
+import {
+  accountToUsageInfo,
+  resolvePlanQuotaMoney,
+  resolveTotalPercent,
+} from '../utils/cursorUsage';
 
 const props = defineProps<{
   accounts: Account[];
   defaults?: AppSettings;
   /** 当前 Cursor 激活的账号 email，用来高亮 */
   currentEmail?: string | null;
+  /** 当前 Cursor 激活的 user_xxx，email 缺失时用于匹配 */
+  currentUserId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -146,8 +154,22 @@ function fmtRelative(ts: number | null | undefined) {
   return new Date(ts * 1000).toLocaleDateString('zh-CN');
 }
 
+function normalizeUserId(id?: string | null) {
+  if (!id) return null;
+  const t = id.trim();
+  const tail = t.includes('|') ? t.split('|').pop() : t;
+  return tail?.trim() || null;
+}
+
 function isActive(a: Account) {
-  return !!props.currentEmail && a.email === props.currentEmail;
+  if (props.currentEmail && a.email && a.email === props.currentEmail) return true;
+  const cur = normalizeUserId(props.currentUserId);
+  const acc = normalizeUserId(a.userId);
+  return !!(cur && acc && cur === acc);
+}
+
+function asUsage(a: Account) {
+  return accountToUsageInfo(a);
 }
 </script>
 
@@ -230,16 +252,23 @@ function isActive(a: Account) {
             <UsageBar
               class="mt-2"
               size="sm"
-              :percent="a.totalPercent"
-              :left-label="a.totalPercent !== null ? '已用 ' + fmtPercent(a.totalPercent) : '无用量数据'"
-              :right-label="a.includedSpendUsd !== null && a.limitUsd !== null
-                ? `${fmtMoney(a.includedSpendUsd)} / ${fmtMoney(a.limitUsd)}`
-                : ''"
+              :percent="resolveTotalPercent(asUsage(a))"
+              left-label="Total"
+              :right-label="fmtPercent(resolveTotalPercent(asUsage(a)))"
             />
-            <div class="flex items-baseline justify-between mt-1 text-[11px] text-ink-500">
-              <span>剩余 {{ fmtMoney(a.remainingUsd) }}</span>
-              <span v-if="a.lastUsageAt">用量更新 {{ fmtRelative(a.lastUsageAt) }}</span>
+            <div
+              v-if="resolvePlanQuotaMoney(asUsage(a))"
+              class="flex items-baseline justify-between mt-1 text-[11px] text-ink-500"
+            >
+              <span>
+                套餐
+                {{ fmtMoney(resolvePlanQuotaMoney(asUsage(a))!.used) }}
+                /
+                {{ fmtMoney(resolvePlanQuotaMoney(asUsage(a))!.limit) }}
+              </span>
+              <span v-if="a.lastUsageAt">更新 {{ fmtRelative(a.lastUsageAt) }}</span>
             </div>
+            <UsageTotalSummary class="mt-1.5" compact :usage="asUsage(a)" />
           </div>
 
           <div class="flex flex-col gap-1.5">

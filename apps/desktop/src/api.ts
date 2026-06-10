@@ -10,6 +10,7 @@ import type {
   ParsedToken,
   PoolApplyResult,
   PoolGrantView,
+  RecycleResult,
   ShopProfile,
   UsageInfo,
 } from './types';
@@ -25,6 +26,7 @@ export const api = {
   queryUsage: (token: string) => invoke<UsageInfo>('query_usage', { token }),
   queryUsageFromRaw: (raw: string) =>
     invoke<UsageInfo>('query_usage_from_raw', { raw }),
+  queryCurrentUsage: () => invoke<UsageInfo>('query_current_usage'),
 
   // 账号库
   listAccounts: () => invoke<Account[]>('list_accounts'),
@@ -79,4 +81,11 @@ export const api = {
     invoke<PoolGrantView>('pool_release', { orderNo }),
   cursorLogout: (kill = true) =>
     invoke<boolean>('cursor_logout', { kill }),
+
+  // 回收（向 Cursor 提交退款请求）
+  recycleAccount: (email: string, invoiceNumber?: string) =>
+    invoke<RecycleResult>('submit_recycle', {
+      email,
+      invoiceNumber: invoiceNumber?.trim() || null,
+    }),
 };

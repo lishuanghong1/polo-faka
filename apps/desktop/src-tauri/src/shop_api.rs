@@ -35,9 +35,11 @@ pub struct PoolAccountView {
     pub email: Option<String>,
     /// 申请/换号时这里有明文 token；普通查询会被打码或为空
     pub token: Option<String>,
+    #[serde(rename = "tokenMasked", default)]
+    pub token_masked: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PoolGrantView {
     /// 未发放时 id 可能为 null
     pub id: Option<i64>,
@@ -228,7 +230,66 @@ impl<'a> ShopApi<'a> {
     // ────────────── 号池接口（需 JWT）──────────────
 
     pub async fn list_my_grants(&self) -> AppResult<Vec<PoolGrantView>> {
-        self.get_json("/pool/grants/mine").await
+        let req = Self::client()?.get(self.url("/pool/grants/mine"));
+        let req = match self.jwt {
+            Some(jwt) => req.header("Authorization", format!("Bearer {jwt}")),
+            None => req,
+        };
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| AppError::Other(format!("商城接口请求失败：{e}")))?;
+
+        // 旧版商城未部署 grants/mine，回退到 orders/mine + 逐单查 grant
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return self.list_my_grants_via_orders().await;
+        }
+        Self::parse::<Vec<PoolGrantView>>(resp).await
+    }
+
+    /// 兼容旧商城：从「我的订单」只取 POOL_QUOTA，再逐个查 grant
+    async fn list_my_grants_via_orders(&self) -> AppResult<Vec<PoolGrantView>> {
+        let mut grants = Vec::new();
+        let mut page = 1u64;
+        let page_size = 50u64;
+
+        loop {
+            let path = format!("/orders/mine?page={page}&pageSize={page_size}");
+            let page_data: OrdersMinePage = self.get_json(&path).await?;
+            for order in &page_data.items {
+                if !order.is_pool_quota_order() {
+                    continue;
+                }
+                let title = order.display_title();
+                match self.query_grant(&order.order_no).await {
+                    Ok(mut grant) => {
+                        if grant.order_title.is_none() {
+                            grant.order_title = Some(title);
+                        }
+                        grant.not_provisioned = false;
+                        grants.push(grant);
+                    }
+                    Err(_) if order.delivery_type.is_some() => {
+                        // 已确认是额度包但 Grant 尚未创建
+                        grants.push(PoolGrantView {
+                            order_no: order.order_no.clone(),
+                            order_title: Some(title),
+                            not_provisioned: true,
+                            ..PoolGrantView::default()
+                        });
+                    }
+                    Err(_) => {
+                        // 旧接口无 deliveryType：查不到 grant 则跳过，避免混入普通订单
+                    }
+                }
+            }
+            if page * page_size >= page_data.total.max(1) {
+                break;
+            }
+            page += 1;
+        }
+
+        Ok(grants)
     }
 
     pub async fn claim_account(&self, order_no: &str) -> AppResult<PoolGrantView> {
@@ -257,4 +318,47 @@ impl<'a> ShopApi<'a> {
 
 fn urlencode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+#[derive(Debug, Deserialize)]
+struct OrdersMinePage {
+    total: u64,
+    items: Vec<OrderMineItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrderMineItem {
+    #[serde(rename = "orderNo")]
+    order_no: String,
+    status: String,
+    #[serde(rename = "deliveryType", default)]
+    delivery_type: Option<String>,
+    #[serde(rename = "productTitle", default)]
+    product_title: Option<String>,
+    #[serde(rename = "skuName", default)]
+    sku_name: Option<String>,
+    #[serde(rename = "cardKeys", default)]
+    card_keys: Vec<serde_json::Value>,
+}
+
+impl OrderMineItem {
+    fn is_pool_quota_order(&self) -> bool {
+        if !matches!(self.status.as_str(), "PAID" | "DELIVERED") {
+            return false;
+        }
+        match self.delivery_type.as_deref() {
+            Some("POOL_QUOTA") => true,
+            Some(_) => false,
+            // 旧商城无 deliveryType：先当候选，是否额度包由 query_grant 结果决定
+            None => self.card_keys.is_empty(),
+        }
+    }
+
+    fn display_title(&self) -> String {
+        match (&self.product_title, &self.sku_name) {
+            (Some(p), Some(s)) if !s.is_empty() => format!("{p} · {s}"),
+            (Some(p), _) => p.clone(),
+            _ => self.order_no.clone(),
+        }
+    }
 }

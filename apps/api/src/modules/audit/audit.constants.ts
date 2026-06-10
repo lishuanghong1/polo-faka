@@ -37,6 +37,7 @@ export const AuditActions = {
 
   // 仓库（外部账号入库 / 分配到商品）
   WAREHOUSE_BULK_IMPORT: 'WAREHOUSE_BULK_IMPORT',
+  WAREHOUSE_MANUAL_ADD: 'WAREHOUSE_MANUAL_ADD',
   WAREHOUSE_ASSIGN: 'WAREHOUSE_ASSIGN',
   WAREHOUSE_UNASSIGN: 'WAREHOUSE_UNASSIGN',
   WAREHOUSE_DELETE: 'WAREHOUSE_DELETE',
@@ -91,6 +92,7 @@ export const AuditActionLabels: Record<string, string> = {
   CARD_KEY_PURGE: '清理卡密',
   CARD_KEY_BULK_IMPORT: '导入卡密',
   WAREHOUSE_BULK_IMPORT: '仓库批量入库',
+  WAREHOUSE_MANUAL_ADD: '仓库手动添加账号',
   WAREHOUSE_ASSIGN: '仓库账号分配到商品',
   WAREHOUSE_UNASSIGN: '撤回仓库账号分配',
   WAREHOUSE_DELETE: '删除仓库账号',

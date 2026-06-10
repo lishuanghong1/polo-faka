@@ -9,6 +9,11 @@ import type {
   UsageInfo,
 } from '../types';
 import UsageBar from '../components/UsageBar.vue';
+import UsageTotalSummary from '../components/UsageTotalSummary.vue';
+import {
+  resolvePlanQuotaMoney,
+  resolveTotalPercent,
+} from '../utils/cursorUsage';
 
 const props = defineProps<{
   cursorInfo: CursorInfo | null;
@@ -36,6 +41,10 @@ const errorMsg = ref('');
 const usage = ref<UsageInfo | null>(null);
 const usageLoading = ref(false);
 const usageError = ref('');
+
+const currentUsage = ref<UsageInfo | null>(null);
+const currentUsageLoading = ref(false);
+const currentUsageError = ref('');
 
 let parseDebounce: any;
 function onInput() {
@@ -77,7 +86,25 @@ watch(
 
 onMounted(() => {
   if (rawInput.value) onInput();
+  queryCurrentUsage();
 });
+
+watch(
+  () =>
+    [
+      props.cursorInfo?.installed,
+      props.cursorInfo?.currentEmail,
+      props.cursorInfo?.currentUserId,
+    ] as const,
+  ([installed, email, userId]) => {
+    if (installed && (email || userId)) {
+      queryCurrentUsage();
+    } else {
+      currentUsage.value = null;
+      currentUsageError.value = '';
+    }
+  },
+);
 
 async function queryUsageOfPasted() {
   if (!parsed.value?.accessToken) return;
@@ -90,6 +117,21 @@ async function queryUsageOfPasted() {
     usageError.value = String(e?.message || e);
   } finally {
     usageLoading.value = false;
+  }
+}
+
+async function queryCurrentUsage() {
+  if (!props.cursorInfo?.installed) return;
+  if (!props.cursorInfo.currentEmail && !props.cursorInfo.currentUserId) return;
+  currentUsageLoading.value = true;
+  currentUsageError.value = '';
+  try {
+    currentUsage.value = await api.queryCurrentUsage();
+  } catch (e: any) {
+    currentUsage.value = null;
+    currentUsageError.value = String(e?.message || e);
+  } finally {
+    currentUsageLoading.value = false;
   }
 }
 
@@ -142,28 +184,38 @@ function fmtDate(s: string | null | undefined) {
   return d.toLocaleString('zh-CN', { hour12: false });
 }
 
-const usageProgress = computed(() => {
-  const u = usage.value;
-  if (!u) return null;
-  if (u.totalPercent !== null) return u.totalPercent;
-  if (u.limitUsd && u.includedSpendUsd !== null) {
-    return u.limitUsd > 0 ? (u.includedSpendUsd / u.limitUsd) * 100 : 0;
-  }
-  return null;
-});
+const usageTotalPercent = computed(() =>
+  usage.value ? resolveTotalPercent(usage.value) : null,
+);
 
-const hasAnyUsageField = computed(() => {
-  const u = usage.value;
+const usagePlanQuota = computed(() =>
+  usage.value ? resolvePlanQuotaMoney(usage.value) : null,
+);
+
+function hasUsageMetrics(u: UsageInfo | null | undefined) {
   if (!u) return false;
   return (
-    u.plan !== null ||
     u.totalSpendUsd !== null ||
+    u.includedSpendUsd !== null ||
     u.limitUsd !== null ||
+    u.remainingUsd !== null ||
     u.autoPercent !== null ||
     u.apiPercent !== null ||
+    u.totalPercent !== null ||
     u.requestsUsed !== null
   );
-});
+}
+
+const hasPastedUsageMetrics = computed(() => hasUsageMetrics(usage.value));
+const hasCurrentUsageMetrics = computed(() => hasUsageMetrics(currentUsage.value));
+
+const currentUsageTotalPercent = computed(() =>
+  currentUsage.value ? resolveTotalPercent(currentUsage.value) : null,
+);
+
+const currentUsagePlanQuota = computed(() =>
+  currentUsage.value ? resolvePlanQuotaMoney(currentUsage.value) : null,
+);
 </script>
 
 <template>
@@ -191,7 +243,7 @@ const hasAnyUsageField = computed(() => {
         <div class="flex items-baseline gap-2">
           <span class="text-ink-500 shrink-0">当前账号</span>
           <span class="font-mono text-ink-200 truncate">
-            {{ cursorInfo.currentEmail || '（未登录或未识别）' }}
+            {{ cursorInfo.currentEmail || cursorInfo.currentUserId || '（未登录或未识别）' }}
           </span>
         </div>
         <div class="flex items-baseline gap-2">
@@ -199,6 +251,81 @@ const hasAnyUsageField = computed(() => {
           <span class="font-mono text-ink-300 text-[11px] truncate">
             {{ cursorInfo.currentDeviceId || '（无）' }}
           </span>
+        </div>
+
+        <div
+          v-if="cursorInfo.currentEmail || cursorInfo.currentUserId"
+          class="mt-3 pt-3 border-t border-ink-800 space-y-2"
+        >
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs font-medium text-ink-200 flex items-center gap-2">
+              当前用量
+              <span v-if="currentUsageLoading" class="text-[11px] text-ink-500 font-normal">查询中…</span>
+              <span
+                v-else-if="currentUsage?.plan"
+                class="text-[11px] px-1.5 py-0.5 rounded bg-brand-500/15 text-brand-300 border border-brand-500/30 font-normal"
+              >{{ currentUsage.plan }}</span>
+            </div>
+            <button
+              class="btn-ghost text-[11px] py-0.5 px-2"
+              :disabled="currentUsageLoading"
+              @click="queryCurrentUsage"
+            >{{ currentUsageLoading ? '刷新中…' : '刷新' }}</button>
+          </div>
+
+          <div
+            v-if="currentUsageError && !currentUsage"
+            class="rounded-md bg-rose-500/10 border border-rose-500/30 px-2.5 py-2 text-[11px] text-rose-200"
+          >{{ currentUsageError }}</div>
+
+          <template v-else-if="currentUsage && hasCurrentUsageMetrics">
+            <UsageBar
+              v-if="currentUsageTotalPercent !== null"
+              :percent="currentUsageTotalPercent"
+              left-label="Total 用量"
+              :right-label="fmtPercent(currentUsageTotalPercent)"
+              size="sm"
+            />
+            <div
+              v-if="currentUsagePlanQuota"
+              class="text-[11px] text-ink-500 flex justify-between"
+            >
+              <span>套餐额度 {{ fmtMoney(currentUsagePlanQuota.used) }} / {{ fmtMoney(currentUsagePlanQuota.limit) }}</span>
+              <span>
+                剩余
+                {{
+                  currentUsage.remainingUsd != null && currentUsage.remainingUsd < 0
+                    ? `超额 ${fmtMoney(Math.abs(currentUsage.remainingUsd))}`
+                    : fmtMoney(currentUsage.remainingUsd)
+                }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <div class="rounded-md bg-ink-900/60 border border-ink-700 px-2.5 py-1.5">
+                <div class="text-[10px] text-ink-500">Auto</div>
+                <div class="text-xs text-ink-100 font-medium">{{ fmtPercent(currentUsage.autoPercent) }}</div>
+              </div>
+              <div class="rounded-md bg-ink-900/60 border border-ink-700 px-2.5 py-1.5">
+                <div class="text-[10px] text-ink-500">API</div>
+                <div class="text-xs text-ink-100 font-medium">{{ fmtPercent(currentUsage.apiPercent) }}</div>
+              </div>
+              <div class="rounded-md bg-ink-900/60 border border-ink-700 px-2.5 py-1.5">
+                <div class="text-[10px] text-ink-500">总花费</div>
+                <div class="text-xs text-ink-100 font-medium">{{ fmtMoney(currentUsage.totalSpendUsd) }}</div>
+              </div>
+              <div class="rounded-md bg-ink-900/60 border border-ink-700 px-2.5 py-1.5">
+                <div class="text-[10px] text-ink-500">赠送池</div>
+                <div class="text-xs text-ink-100 font-medium">
+                  {{ fmtMoney(currentUsage.bonusQuotaUsd ?? currentUsage.bonusSpendUsd) }}
+                </div>
+              </div>
+            </div>
+            <UsageTotalSummary compact :usage="currentUsage" />
+          </template>
+
+          <div v-else-if="currentUsage && !hasCurrentUsageMetrics" class="text-[11px] text-ink-500">
+            已识别计划「{{ currentUsage.plan || '未知' }}」，用量明细未返回，可点刷新重试。
+          </div>
         </div>
       </div>
       <div v-else class="text-xs text-ink-400 mt-1">
@@ -294,18 +421,27 @@ const hasAnyUsageField = computed(() => {
         {{ usageError }}
       </div>
 
-      <div v-else-if="usage && hasAnyUsageField" class="space-y-3">
+      <div v-else-if="usage && hasPastedUsageMetrics" class="space-y-3">
         <UsageBar
-          v-if="usageProgress !== null"
-          :percent="usageProgress"
-          :left-label="'本周期已用'"
-          :right-label="usage.includedSpendUsd !== null && usage.limitUsd !== null
-            ? `${fmtMoney(usage.includedSpendUsd)} / ${fmtMoney(usage.limitUsd)}`
-            : fmtPercent(usageProgress)"
+          v-if="usageTotalPercent !== null"
+          :percent="usageTotalPercent"
+          left-label="Total 用量"
+          :right-label="fmtPercent(usageTotalPercent)"
         />
-        <div v-if="usageProgress !== null" class="text-[11px] text-ink-500 flex justify-between -mt-1">
-          <span>剩余 {{ fmtMoney(usage.remainingUsd) }}</span>
-          <span>{{ fmtPercent(usageProgress) }}</span>
+        <div
+          v-if="usagePlanQuota"
+          class="text-[11px] text-ink-500 flex justify-between"
+          :class="usageTotalPercent !== null ? '-mt-1' : ''"
+        >
+          <span>套餐额度 {{ fmtMoney(usagePlanQuota.used) }} / {{ fmtMoney(usagePlanQuota.limit) }}</span>
+          <span>
+            剩余
+            {{
+              usage.remainingUsd != null && usage.remainingUsd < 0
+                ? `超额 ${fmtMoney(Math.abs(usage.remainingUsd))}`
+                : fmtMoney(usage.remainingUsd)
+            }}
+          </span>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -322,10 +458,17 @@ const hasAnyUsageField = computed(() => {
             <div class="text-sm text-ink-100 font-medium mt-0.5">{{ fmtMoney(usage.totalSpendUsd) }}</div>
           </div>
           <div class="rounded-md bg-ink-900/60 border border-ink-700 px-3 py-2">
-            <div class="text-[11px] text-ink-500">赠送额度</div>
-            <div class="text-sm text-ink-100 font-medium mt-0.5">{{ fmtMoney(usage.bonusSpendUsd) }}</div>
+            <div class="text-[11px] text-ink-500">赠送池</div>
+            <div class="text-sm text-ink-100 font-medium mt-0.5">
+              {{ fmtMoney(usage.bonusQuotaUsd ?? usage.bonusSpendUsd) }}
+            </div>
+            <div v-if="usage.bonusUsedUsd != null && usage.bonusUsedUsd > 0" class="text-[10px] text-amber-400 mt-0.5">
+              已用 {{ fmtMoney(usage.bonusUsedUsd) }}
+            </div>
           </div>
         </div>
+
+        <UsageTotalSummary v-if="usage" :usage="usage" />
 
         <div
           v-if="usage.periodStart || usage.periodEnd"
@@ -335,8 +478,8 @@ const hasAnyUsageField = computed(() => {
         </div>
       </div>
 
-      <div v-else-if="usage && !hasAnyUsageField" class="text-xs text-ink-400">
-        接口返回了响应，但没识别出可展示的字段。可能是免费账号或新版接口字段变了。
+      <div v-else-if="usage && !hasPastedUsageMetrics" class="text-xs text-ink-400">
+        已识别计划「{{ usage.plan || '未知' }}」，但用量明细未返回。可点「刷新用量」重试，或确认 token 是否仍有效。
       </div>
     </section>
 

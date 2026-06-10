@@ -58,6 +58,13 @@ pub fn ensure_schema(conn: &Connection) -> AppResult<()> {
     add_column_if_missing(conn, "pool_quota_used", "REAL")?;
     add_column_if_missing(conn, "pool_quota_remain", "REAL")?;
     add_column_if_missing(conn, "pool_grant_active", "INTEGER")?;
+    add_column_if_missing(conn, "total_spend_usd", "REAL")?;
+    add_column_if_missing(conn, "bonus_quota_usd", "REAL")?;
+    add_column_if_missing(conn, "bonus_used_usd", "REAL")?;
+    add_column_if_missing(conn, "individual_limit_usd", "REAL")?;
+    add_column_if_missing(conn, "individual_used_usd", "REAL")?;
+    add_column_if_missing(conn, "api_spend_usd", "REAL")?;
+    add_column_if_missing(conn, "overage_spend_usd", "REAL")?;
     Ok(())
 }
 
@@ -75,6 +82,8 @@ pub struct Account {
     pub tags: Vec<String>,
 
     pub plan: Option<String>,
+    #[serde(rename = "totalSpendUsd")]
+    pub total_spend_usd: Option<f64>,
     #[serde(rename = "includedSpendUsd")]
     pub included_spend_usd: Option<f64>,
     #[serde(rename = "limitUsd")]
@@ -87,6 +96,18 @@ pub struct Account {
     pub auto_percent: Option<f64>,
     #[serde(rename = "apiPercent")]
     pub api_percent: Option<f64>,
+    #[serde(rename = "bonusQuotaUsd")]
+    pub bonus_quota_usd: Option<f64>,
+    #[serde(rename = "bonusUsedUsd")]
+    pub bonus_used_usd: Option<f64>,
+    #[serde(rename = "individualLimitUsd")]
+    pub individual_limit_usd: Option<f64>,
+    #[serde(rename = "individualUsedUsd")]
+    pub individual_used_usd: Option<f64>,
+    #[serde(rename = "apiSpendUsd")]
+    pub api_spend_usd: Option<f64>,
+    #[serde(rename = "overageSpendUsd")]
+    pub overage_spend_usd: Option<f64>,
     #[serde(rename = "periodStart")]
     pub period_start: Option<String>,
     #[serde(rename = "periodEnd")]
@@ -147,13 +168,22 @@ fn row_to_account(row: &rusqlite::Row) -> rusqlite::Result<Account> {
         pool_quota_used: row.get(22)?,
         pool_quota_remain: row.get(23)?,
         pool_grant_active: row.get::<_, Option<i64>>(24)?.map(|v| v != 0),
+        total_spend_usd: row.get(25)?,
+        bonus_quota_usd: row.get(26)?,
+        bonus_used_usd: row.get(27)?,
+        individual_limit_usd: row.get(28)?,
+        individual_used_usd: row.get(29)?,
+        api_spend_usd: row.get(30)?,
+        overage_spend_usd: row.get(31)?,
     })
 }
 
 const SELECT_COLS: &str = "id, email, access_token, refresh_token, user_id, label, tags_json, \
     plan, included_spend_usd, limit_usd, remaining_usd, total_percent, auto_percent, api_percent, \
     period_start, period_end, usage_source, last_usage_at, created_at, last_used_at, \
-    pool_grant_order_no, pool_quota_total, pool_quota_used, pool_quota_remain, pool_grant_active";
+    pool_grant_order_no, pool_quota_total, pool_quota_used, pool_quota_remain, pool_grant_active, \
+    total_spend_usd, bonus_quota_usd, bonus_used_usd, individual_limit_usd, individual_used_usd, \
+    api_spend_usd, overage_spend_usd";
 
 pub fn list(conn: &Connection) -> AppResult<Vec<Account>> {
     let mut stmt = conn.prepare(&format!(
@@ -329,26 +359,40 @@ pub fn save_usage(conn: &Connection, id: i64, usage: &UsageInfo) -> AppResult<()
     conn.execute(
         r#"UPDATE accounts SET
             plan = ?1,
-            included_spend_usd = ?2,
-            limit_usd = ?3,
-            remaining_usd = ?4,
-            total_percent = ?5,
-            auto_percent = ?6,
-            api_percent = ?7,
-            period_start = ?8,
-            period_end = ?9,
-            usage_source = ?10,
-            last_usage_at = ?11,
-            user_id = COALESCE(?12, user_id)
-           WHERE id = ?13"#,
+            total_spend_usd = ?2,
+            included_spend_usd = ?3,
+            limit_usd = ?4,
+            remaining_usd = ?5,
+            total_percent = ?6,
+            auto_percent = ?7,
+            api_percent = ?8,
+            bonus_quota_usd = ?9,
+            bonus_used_usd = ?10,
+            individual_limit_usd = ?11,
+            individual_used_usd = ?12,
+            api_spend_usd = ?13,
+            overage_spend_usd = ?14,
+            period_start = ?15,
+            period_end = ?16,
+            usage_source = ?17,
+            last_usage_at = ?18,
+            user_id = COALESCE(?19, user_id)
+           WHERE id = ?20"#,
         params![
             usage.plan,
+            usage.total_spend_usd,
             usage.included_spend_usd,
             usage.limit_usd,
             usage.remaining_usd,
             usage.total_percent,
             usage.auto_percent,
             usage.api_percent,
+            usage.bonus_quota_usd,
+            usage.bonus_used_usd,
+            usage.individual_limit_usd,
+            usage.individual_used_usd,
+            usage.api_spend_usd,
+            usage.overage_spend_usd,
             usage.period_start,
             usage.period_end,
             usage.source,
