@@ -134,6 +134,13 @@ export class RecycleService {
       );
     }
 
+    // 把发送给 Cursor 的退款请求返回打印到服务端控制台，便于排查
+    this.logger.log(
+      `[recycle] classify response for ${hit.email} (invoice ${invoiceNumber}): ${JSON.stringify(
+        response,
+      )}`,
+    );
+
     return { ok: true, email: hit.email, invoiceNumber, purchaseDate, message, response };
   }
 

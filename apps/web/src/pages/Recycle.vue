@@ -24,6 +24,8 @@ async function submit() {
   try {
     const r = await api.recycle(value, invoice);
     result.value = r;
+    // 打印发送邮件（Cursor 退款请求）的返回，便于在控制台排查
+    console.log('[recycle] 发送邮件返回:', r.response);
     ElMessage.success('已提交回收申请');
   } catch {
     // 错误已由全局拦截器提示
