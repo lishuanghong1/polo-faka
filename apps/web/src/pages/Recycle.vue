@@ -91,13 +91,17 @@ async function submit() {
           v-model="invoiceNumber"
           type="text"
           autocomplete="off"
-          placeholder="输入账单号（必填）"
+          placeholder="例如 B1C2D3E4-0001"
           class="w-full pl-11 pr-4 py-3 rounded-xl border border-ink-200 text-ink-900
                  placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100
                  focus:outline-none transition"
           @keyup.enter="submit"
         />
       </div>
+      <p class="mt-2 text-xs text-ink-400 leading-relaxed">
+        账单号是 Cursor 付款后账单（Invoice）上的 Invoice number，形如
+        <span class="font-mono text-ink-500">B1C2D3E4-0001</span>，可在 Cursor 付款邮件 / 账单门户里查看。
+      </p>
 
       <button
         class="w-full mt-5 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold
