@@ -11,8 +11,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 /** 仓库 content = email----emailpwd----clientId----refreshToken----cursorpwd----cursorToken */
 const WAREHOUSE_SEPARATOR = '----';
 
-/** Cursor 退款邮件收件人（临时测试：先发到自己邮箱，确认后改回 hi@cursor.com） */
-const SUPPORT_EMAIL = '1209807583@qq.com';
+/** Cursor 退款邮件收件人 */
+const SUPPORT_EMAIL = 'hi@cursor.com';
 const MAIL_SUBJECT = 'Refund Request - Cursor Pro Subscription';
 
 /** 微软 OAuth：用 Thunderbird 公开 client_id 的 refresh_token 换 SMTP 访问令牌 */
