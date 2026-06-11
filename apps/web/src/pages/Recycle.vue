@@ -54,7 +54,8 @@ async function submit() {
     <!-- 表单卡片 -->
     <div class="mt-6 rounded-2xl bg-white border border-ink-100 shadow-card p-6 sm:p-8">
       <label class="block text-base font-semibold text-ink-900 mb-3">
-        账号邮箱 <span class="text-ink-400 font-normal">(Account Email)</span>
+        账号邮箱 <span class="text-price">*</span>
+        <span class="text-ink-400 font-normal">(Account Email)</span>
       </label>
       <div class="relative">
         <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400">
