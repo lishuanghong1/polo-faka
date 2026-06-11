@@ -170,13 +170,13 @@ export const api = {
   // 反馈
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
-  // 回收（按邮箱匹配仓库账号，向 Cursor 提交退款请求）
+  // 回收（按邮箱匹配仓库账号，用该邮箱给 Cursor 发退款邮件）
   recycle: (email: string, invoiceNumber: string) =>
     http.post<{
       ok: boolean;
-      email: string | null;
+      email: string;
       invoiceNumber: string;
-      purchaseDate: string | null;
+      to: string;
       message: string;
       response: unknown;
     }>('/recycle', { email, invoiceNumber }),

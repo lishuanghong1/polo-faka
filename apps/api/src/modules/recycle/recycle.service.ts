@@ -5,25 +5,41 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import axios from 'axios';
+import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** Cursor 帮助中心「问题分类」入口，提交退款（回收）正文 */
-const CLASSIFY_URL = 'https://cursor.com/api/help/support/classify';
-/** 取账单周期起始当作购买日期（best-effort） */
-const USAGE_SUMMARY_URL = 'https://cursor.com/api/usage-summary';
-/** 仓库 content = email----emailpwd----cursorpwd----token */
+/** 仓库 content = email----emailpwd----clientId----refreshToken----cursorpwd----cursorToken */
 const WAREHOUSE_SEPARATOR = '----';
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+
+/** Cursor 退款邮件收件人（临时测试：先发到自己邮箱，确认后改回 hi@cursor.com） */
+const SUPPORT_EMAIL = '1209807583@qq.com';
+const MAIL_SUBJECT = 'Refund Request - Cursor Pro Subscription';
+
+/** 微软 OAuth：用 Thunderbird 公开 client_id 的 refresh_token 换 SMTP 访问令牌 */
+const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+const SMTP_SCOPE = 'https://outlook.office.com/SMTP.Send offline_access';
+/** outlook.com 个人账号用 smtp-mail.outlook.com；M365 用 smtp.office365.com，按序兜底 */
+const SMTP_HOSTS = ['smtp-mail.outlook.com', 'smtp.office365.com'];
+const SMTP_PORT = 587;
+
+const GUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+interface MailboxCreds {
+  email: string;
+  clientId: string;
+  refreshToken: string;
+}
 
 export interface RecycleResult {
   ok: boolean;
-  email: string | null;
+  email: string;
   invoiceNumber: string;
-  purchaseDate: string | null;
-  /** 实际发送给 Cursor 的正文 */
+  /** 收件人 */
+  to: string;
+  /** 实际发送的正文 */
   message: string;
-  /** classify 接口返回的原始 JSON */
+  /** SMTP 返回（messageId / accepted 等） */
   response: unknown;
 }
 
@@ -34,12 +50,11 @@ export class RecycleService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * 在仓库里按邮箱找到账号，取出 content 里的「原始邮箱 + token」。
-   * content = email----emailpwd----cursorpwd----token。找不到返回 null。
+   * 在仓库里按邮箱找到账号 content，解析出发信所需的微软邮箱令牌。
+   * content = email----emailpwd----clientId----refreshToken----cursorpwd----cursorToken
+   * 用特征匹配（@ / GUID / M. 前缀）取字段，避免顺序变动时解析错位。
    */
-  private async resolveWarehouse(
-    emailLower: string,
-  ): Promise<{ email: string; token: string } | null> {
+  private async resolveMailbox(emailLower: string): Promise<MailboxCreds | null> {
     let content: string | null = null;
     try {
       const byEmail = await this.prisma.warehouseAccount.findFirst({
@@ -54,7 +69,6 @@ export class RecycleService {
         });
         content = byContent?.content ?? null;
       }
-      // 兜底：扫描全部账号按 content 第一段 / email 字段做大小写无关匹配
       if (!content) {
         const all = await this.prisma.warehouseAccount.findMany({
           select: { content: true, email: true },
@@ -70,23 +84,22 @@ export class RecycleService {
         content = hit?.content ?? null;
       }
     } catch (e) {
-      this.logger.warn(`resolveWarehouse failed: ${(e as Error)?.message}`);
+      this.logger.warn(`resolveMailbox failed: ${(e as Error)?.message}`);
       return null;
     }
     if (!content) return null;
 
     const parts = content.split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
-    const email = parts[0] || emailLower;
-    // token 段可能自身含 ----，从第 4 段起整体拼回
-    const token =
-      parts.length >= 4
-        ? parts.slice(3).join(WAREHOUSE_SEPARATOR)
-        : parts[parts.length - 1] || '';
-    if (!token) return null;
-    return { email, token };
+    const email = parts.find((p) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) || parts[0] || emailLower;
+    const clientId = parts.find((p) => GUID_RE.test(p));
+    // 微软 refresh_token 以 "M." 开头且较长
+    const refreshToken = parts.find((p) => /^M\.[A-Za-z0-9]/.test(p) && p.length > 40);
+
+    if (!clientId || !refreshToken) return null;
+    return { email, clientId, refreshToken };
   }
 
-  /** 公开入口：邮箱匹配仓库账号后向 Cursor 提交退款请求 */
+  /** 公开入口：邮箱匹配仓库账号后，用该邮箱给 Cursor 发退款邮件 */
   async submit(emailInput: string, invoiceInput: string): Promise<RecycleResult> {
     const emailLower = (emailInput || '').trim().toLowerCase();
     if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
@@ -97,92 +110,96 @@ export class RecycleService {
       throw new BadRequestException('请填写账单号');
     }
 
-    const hit = await this.resolveWarehouse(emailLower);
-    if (!hit) {
-      throw new NotFoundException('没有找到这个邮箱对应的账号，请确认是在本站购买的账号');
-    }
-
-    const purchaseDate = await this.fetchPurchaseDate(hit.token);
-    const message = this.buildMessage(hit.email, invoiceNumber, purchaseDate);
-
-    let response: unknown = null;
-    try {
-      const resp = await axios.post(
-        CLASSIFY_URL,
-        { message },
-        {
-          timeout: 20000,
-          headers: {
-            Accept: '*/*',
-            'Content-Type': 'application/json',
-            Origin: 'https://cursor.com',
-            Referer: 'https://cursor.com/cn/help',
-            'User-Agent': USER_AGENT,
-            Cookie: `WorkosCursorSessionToken=${hit.token}`,
-            Authorization: `Bearer ${hit.token}`,
-          },
-        },
-      );
-      response = resp.data;
-    } catch (e: any) {
-      const status = e?.response?.status;
-      this.logger.warn(`classify failed: status=${status} msg=${e?.message}`);
-      throw new BadRequestException(
-        status
-          ? `提交回收请求失败（Cursor 返回 ${status}），账号 token 可能已失效`
-          : '提交回收请求失败，请稍后再试',
+    const box = await this.resolveMailbox(emailLower);
+    if (!box) {
+      throw new NotFoundException(
+        '没有找到这个邮箱对应的账号，或账号缺少可用的邮箱令牌，请确认是在本站购买的账号',
       );
     }
 
-    // 把发送给 Cursor 的退款请求返回打印到服务端控制台，便于排查
+    const accessToken = await this.getAccessToken(box.clientId, box.refreshToken);
+    const message = this.buildMessage(box.email, invoiceNumber);
+    const response = await this.sendMail(box.email, accessToken, message);
+
     this.logger.log(
-      `[recycle] classify response for ${hit.email} (invoice ${invoiceNumber}): ${JSON.stringify(
+      `[recycle] refund mail sent from ${box.email} to ${SUPPORT_EMAIL} (invoice ${invoiceNumber}): ${JSON.stringify(
         response,
       )}`,
     );
 
-    return { ok: true, email: hit.email, invoiceNumber, purchaseDate, message, response };
+    return {
+      ok: true,
+      email: box.email,
+      invoiceNumber,
+      to: SUPPORT_EMAIL,
+      message,
+      response,
+    };
   }
 
-  /** best-effort：从用量接口取账单周期起始当购买日期，失败返回 null */
-  private async fetchPurchaseDate(token: string): Promise<string | null> {
+  /** refresh_token → access_token（Thunderbird 公开 client_id，无需 client_secret） */
+  private async getAccessToken(clientId: string, refreshToken: string): Promise<string> {
+    const params = new URLSearchParams();
+    params.set('client_id', clientId);
+    params.set('grant_type', 'refresh_token');
+    params.set('refresh_token', refreshToken);
+    params.set('scope', SMTP_SCOPE);
+
     try {
-      const resp = await axios.get(USAGE_SUMMARY_URL, {
-        timeout: 12000,
-        headers: {
-          Accept: 'application/json',
-          Cookie: `WorkosCursorSessionToken=${token}`,
-          Authorization: `Bearer ${token}`,
-          Referer: 'https://cursor.com/dashboard/usage',
-          'User-Agent': USER_AGENT,
-        },
+      const resp = await axios.post(TOKEN_URL, params.toString(), {
+        timeout: 15000,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
-      const b = resp.data || {};
-      const raw =
-        b.billingCycleStart ||
-        b.periodStart ||
-        b.startDate ||
-        b?.billingPeriod?.startDate ||
-        b?.data?.billingCycleStart ||
-        b?.data?.startDate;
-      if (typeof raw === 'string') return this.formatDate(raw);
-    } catch {
-      // best-effort，忽略
+      const token = resp.data?.access_token;
+      if (!token) {
+        throw new Error('token endpoint 未返回 access_token');
+      }
+      return token as string;
+    } catch (e: any) {
+      const detail =
+        e?.response?.data?.error_description || e?.response?.data?.error || e?.message;
+      this.logger.warn(`getAccessToken failed: ${detail}`);
+      throw new BadRequestException('该账号的邮箱令牌已失效，无法发送邮件');
     }
-    return null;
   }
 
-  private formatDate(raw: string): string | null {
-    const s = (raw || '').trim();
-    if (!s) return null;
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    if (s.length >= 10 && s[4] === '-' && s[7] === '-') return s.slice(0, 10);
-    return null;
+  /** SMTP XOAUTH2 发信；个人/企业 SMTP 主机按序兜底 */
+  private async sendMail(
+    email: string,
+    accessToken: string,
+    message: string,
+  ): Promise<{ messageId?: string; accepted?: unknown; host: string }> {
+    let lastErr: unknown = null;
+    for (const host of SMTP_HOSTS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host,
+          port: SMTP_PORT,
+          secure: false, // STARTTLS
+          auth: {
+            type: 'OAuth2',
+            user: email,
+            accessToken,
+          },
+        });
+        const info = await transporter.sendMail({
+          from: email,
+          to: SUPPORT_EMAIL,
+          subject: MAIL_SUBJECT,
+          text: message,
+        });
+        return { messageId: info.messageId, accepted: info.accepted, host };
+      } catch (e) {
+        lastErr = e;
+        this.logger.warn(`sendMail via ${host} failed: ${(e as Error)?.message}`);
+      }
+    }
+    throw new BadRequestException(
+      `发送邮件失败：${(lastErr as Error)?.message || '请稍后再试'}`,
+    );
   }
 
-  private buildMessage(email: string, invoice: string, date: string | null): string {
-    const purchaseDate = date || '[Purchase Date]';
+  private buildMessage(email: string, invoice: string): string {
     return [
       'Hello Cursor Support,',
       '',
@@ -193,8 +210,6 @@ export class RecycleService {
       `Invoice Number: ${invoice}`,
       '',
       'Payment Method: Alipay',
-      '',
-      `Purchase Date: ${purchaseDate}`,
       '',
       'I am requesting this refund within 24 hours of purchase.',
       '',
