@@ -262,6 +262,7 @@ export const api = {
           id: number;
           email: string;
           invoiceNumber: string;
+          orderNo: string | null;
           plan: string | null;
           status: 'PENDING' | 'SUCCESS' | 'UNKNOWN';
           mailMessageId: string | null;

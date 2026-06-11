@@ -762,6 +762,8 @@ model RecycleRequest {
   id            Int       @id @default(autoincrement())
   email         String    @db.VarChar(255)
   invoiceNumber String    @db.VarChar(128)
+  /// 关联订单号（账号售出时回填到仓库账号的 orderNo）
+  orderNo       String?   @db.VarChar(64)
   /// 最近一次查到的订阅类型：free / pro / pro_plus / ultra ...
   plan          String?   @db.VarChar(32)
   /// 状态：PENDING(回收中) / SUCCESS(成功) / UNKNOWN(未知)
@@ -774,5 +776,6 @@ model RecycleRequest {
 
   @@index([email])
   @@index([status])
+  @@index([orderNo])
   @@map("recycle_requests")
 }

@@ -38,6 +38,8 @@ interface MailboxCreds {
   refreshToken: string;
   /** Cursor 会话 token（user_xxx::jwt），用于查订阅 */
   cursorToken: string | null;
+  /** 关联订单号（仓库账号售出时回填的 orderNo） */
+  orderNo: string | null;
 }
 
 export interface RecycleResult {
@@ -78,22 +80,25 @@ export class RecycleService {
    */
   private async resolveMailbox(emailLower: string): Promise<MailboxCreds | null> {
     let content: string | null = null;
+    let orderNo: string | null = null;
     try {
       const byEmail = await this.prisma.warehouseAccount.findFirst({
         where: { email: emailLower },
         orderBy: { id: 'desc' },
       });
       content = byEmail?.content ?? null;
+      orderNo = byEmail?.orderNo ?? null;
       if (!content) {
         const byContent = await this.prisma.warehouseAccount.findFirst({
           where: { content: { startsWith: emailLower } },
           orderBy: { id: 'desc' },
         });
         content = byContent?.content ?? null;
+        orderNo = byContent?.orderNo ?? null;
       }
       if (!content) {
         const all = await this.prisma.warehouseAccount.findMany({
-          select: { content: true, email: true },
+          select: { content: true, email: true, orderNo: true },
           take: 5000,
         });
         const hit = all.find((r) => {
@@ -104,6 +109,7 @@ export class RecycleService {
           return e0 === emailLower || (r.email || '').trim().toLowerCase() === emailLower;
         });
         content = hit?.content ?? null;
+        orderNo = hit?.orderNo ?? null;
       }
     } catch (e) {
       this.logger.warn(`resolveMailbox failed: ${(e as Error)?.message}`);
@@ -119,7 +125,7 @@ export class RecycleService {
       parts.find((p) => /^user_[A-Za-z0-9]+(::|%3A%3A)/.test(p)) || null;
 
     if (!clientId || !refreshToken) return null;
-    return { email, clientId, refreshToken, cursorToken };
+    return { email, clientId, refreshToken, cursorToken, orderNo };
   }
 
   /** 公开入口：邮箱匹配仓库账号后，用该邮箱给 Cursor 发退款邮件，并记录回收申请 */
@@ -153,6 +159,7 @@ export class RecycleService {
         data: {
           email: box.email,
           invoiceNumber,
+          orderNo: box.orderNo,
           plan: plan ?? null,
           status,
           mailMessageId: response.messageId ?? null,
@@ -215,7 +222,12 @@ export class RecycleService {
     const status = classifyPlan(plan);
     return this.prisma.recycleRequest.update({
       where: { id },
-      data: { plan: plan ?? req.plan, status, lastCheckedAt: new Date() },
+      data: {
+        plan: plan ?? req.plan,
+        status,
+        orderNo: box.orderNo ?? req.orderNo,
+        lastCheckedAt: new Date(),
+      },
     });
   }
 

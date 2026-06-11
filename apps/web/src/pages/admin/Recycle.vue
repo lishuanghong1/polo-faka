@@ -116,6 +116,7 @@ async function del(row: any) {
       <tr>
         <th style="width: 60px">ID</th>
         <th>账号邮箱</th>
+        <th>关联订单</th>
         <th>账单号</th>
         <th>订阅</th>
         <th>状态</th>
@@ -128,6 +129,14 @@ async function del(row: any) {
       <tr v-for="row in list" :key="row.id">
         <td class="text-ink-400 font-mono text-xs">#{{ row.id }}</td>
         <td class="text-sm text-ink-800">{{ row.email }}</td>
+        <td class="font-mono text-xs">
+          <router-link
+            v-if="row.orderNo"
+            :to="`/admin/orders?orderNo=${row.orderNo}`"
+            class="text-brand-600 hover:underline"
+          >{{ row.orderNo }}</router-link>
+          <span v-else class="text-ink-400">—</span>
+        </td>
         <td class="font-mono text-xs text-ink-600">{{ row.invoiceNumber }}</td>
         <td class="text-xs text-ink-600">{{ row.plan || '—' }}</td>
         <td>
