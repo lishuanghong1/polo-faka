@@ -252,6 +252,26 @@ export const api = {
     warehouseManualAdd: (body: { content: string; remark?: string }) =>
       http.post<{ total: number; created: number; duplicated: number }>('/warehouse/manual-add', body),
 
+    // 回收申请列表
+    recycleList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
+      http.get<{
+        total: number;
+        page: number;
+        pageSize: number;
+        items: Array<{
+          id: number;
+          email: string;
+          invoiceNumber: string;
+          plan: string | null;
+          status: 'PENDING' | 'SUCCESS' | 'UNKNOWN';
+          mailMessageId: string | null;
+          lastCheckedAt: string | null;
+          createdAt: string;
+        }>;
+      }>('/recycle', { params }),
+    recycleRefresh: (id: number) => http.post(`/recycle/${id}/refresh`),
+    recycleRemove: (id: number) => http.delete(`/recycle/${id}`),
+
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
 

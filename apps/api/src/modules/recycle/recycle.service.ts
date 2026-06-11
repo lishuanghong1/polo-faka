@@ -22,6 +22,13 @@ const SMTP_SCOPE = 'https://outlook.office.com/SMTP.Send offline_access';
 const SMTP_HOSTS = ['smtp-mail.outlook.com', 'smtp.office365.com'];
 const SMTP_PORT = 587;
 
+/** Cursor 订阅查询接口 */
+const STRIPE_PROFILE_URL = 'https://api2.cursor.sh/auth/full_stripe_profile';
+const STRIPE_WEB_URL = 'https://cursor.com/api/auth/stripe';
+const USAGE_SUMMARY_URL = 'https://cursor.com/api/usage-summary';
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+
 const GUID_RE =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
@@ -29,6 +36,8 @@ interface MailboxCreds {
   email: string;
   clientId: string;
   refreshToken: string;
+  /** Cursor 会话 token（user_xxx::jwt），用于查订阅 */
+  cursorToken: string | null;
 }
 
 export interface RecycleResult {
@@ -41,6 +50,20 @@ export interface RecycleResult {
   message: string;
   /** SMTP 返回（messageId / accepted 等） */
   response: unknown;
+  /** 当前订阅 / 状态 */
+  plan: string | null;
+  status: 'PENDING' | 'SUCCESS' | 'UNKNOWN';
+}
+
+/** free/hobby = 已回收成功；pro 等 = 回收中；空 = 未知 */
+function classifyPlan(plan?: string | null): 'PENDING' | 'SUCCESS' | 'UNKNOWN' {
+  if (!plan) return 'UNKNOWN';
+  const p = plan.trim().toLowerCase();
+  if (!p) return 'UNKNOWN';
+  if (p === 'free' || p === 'hobby' || p === 'none' || p === 'free_tier') {
+    return 'SUCCESS';
+  }
+  return 'PENDING';
 }
 
 @Injectable()
@@ -50,9 +73,8 @@ export class RecycleService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * 在仓库里按邮箱找到账号 content，解析出发信所需的微软邮箱令牌。
+   * 在仓库里按邮箱找到账号 content，解析出发信所需的微软邮箱令牌 + Cursor token。
    * content = email----emailpwd----clientId----refreshToken----cursorpwd----cursorToken
-   * 用特征匹配（@ / GUID / M. 前缀）取字段，避免顺序变动时解析错位。
    */
   private async resolveMailbox(emailLower: string): Promise<MailboxCreds | null> {
     let content: string | null = null;
@@ -92,14 +114,15 @@ export class RecycleService {
     const parts = content.split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
     const email = parts.find((p) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) || parts[0] || emailLower;
     const clientId = parts.find((p) => GUID_RE.test(p));
-    // 微软 refresh_token 以 "M." 开头且较长
     const refreshToken = parts.find((p) => /^M\.[A-Za-z0-9]/.test(p) && p.length > 40);
+    const cursorToken =
+      parts.find((p) => /^user_[A-Za-z0-9]+(::|%3A%3A)/.test(p)) || null;
 
     if (!clientId || !refreshToken) return null;
-    return { email, clientId, refreshToken };
+    return { email, clientId, refreshToken, cursorToken };
   }
 
-  /** 公开入口：邮箱匹配仓库账号后，用该邮箱给 Cursor 发退款邮件 */
+  /** 公开入口：邮箱匹配仓库账号后，用该邮箱给 Cursor 发退款邮件，并记录回收申请 */
   async submit(emailInput: string, invoiceInput: string): Promise<RecycleResult> {
     const emailLower = (emailInput || '').trim().toLowerCase();
     if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
@@ -121,8 +144,27 @@ export class RecycleService {
     const message = this.buildMessage(box.email, invoiceNumber);
     const response = await this.sendMail(box.email, accessToken, message);
 
+    // 提交后立即查一次订阅，决定初始状态（free=成功 / pro=回收中）
+    const plan = box.cursorToken ? await this.fetchPlan(box.cursorToken) : null;
+    const status = classifyPlan(plan);
+
+    try {
+      await this.prisma.recycleRequest.create({
+        data: {
+          email: box.email,
+          invoiceNumber,
+          plan: plan ?? null,
+          status,
+          mailMessageId: response.messageId ?? null,
+          lastCheckedAt: box.cursorToken ? new Date() : null,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`save recycle request failed: ${(e as Error)?.message}`);
+    }
+
     this.logger.log(
-      `[recycle] refund mail sent from ${box.email} to ${SUPPORT_EMAIL} (invoice ${invoiceNumber}): ${JSON.stringify(
+      `[recycle] refund mail sent from ${box.email} to ${SUPPORT_EMAIL} (invoice ${invoiceNumber}), plan=${plan}, status=${status}: ${JSON.stringify(
         response,
       )}`,
     );
@@ -134,8 +176,113 @@ export class RecycleService {
       to: SUPPORT_EMAIL,
       message,
       response,
+      plan,
+      status,
     };
   }
+
+  // ====== 管理后台：回收列表 / 重新核验 / 删除 ======
+
+  async list(params: { status?: string; keyword?: string; page?: number; pageSize?: number }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const pageSize = Math.min(200, Math.max(1, Number(params.pageSize) || 50));
+    const where: any = {};
+    if (params.status) where.status = params.status;
+    if (params.keyword) where.email = { contains: params.keyword.trim() };
+
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.recycleRequest.count({ where }),
+      this.prisma.recycleRequest.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { total, page, pageSize, items };
+  }
+
+  /** 重新核验某条回收申请的订阅状态 */
+  async refresh(id: number) {
+    const req = await this.prisma.recycleRequest.findUnique({ where: { id } });
+    if (!req) throw new NotFoundException('回收申请不存在');
+
+    const box = await this.resolveMailbox(req.email.toLowerCase());
+    if (!box?.cursorToken) {
+      throw new BadRequestException('该账号已不在仓库或缺少 Cursor 令牌，无法核验');
+    }
+    const plan = await this.fetchPlan(box.cursorToken);
+    const status = classifyPlan(plan);
+    return this.prisma.recycleRequest.update({
+      where: { id },
+      data: { plan: plan ?? req.plan, status, lastCheckedAt: new Date() },
+    });
+  }
+
+  async remove(id: number) {
+    const req = await this.prisma.recycleRequest.findUnique({ where: { id } });
+    if (!req) throw new NotFoundException('回收申请不存在');
+    await this.prisma.recycleRequest.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  // ====== Cursor 订阅查询 ======
+
+  /** 查 membershipType：full_stripe_profile(JWT) → /api/auth/stripe(cookie) → usage-summary */
+  private async fetchPlan(cursorToken: string): Promise<string | null> {
+    const token = cursorToken.replace(/%3A%3A/gi, '::').trim();
+    const jwt = token.includes('::') ? token.split('::')[1] : token;
+
+    // 1) api2.cursor.sh/auth/full_stripe_profile（Bearer JWT）
+    try {
+      const r = await axios.get(STRIPE_PROFILE_URL, {
+        timeout: 12000,
+        headers: { Authorization: `Bearer ${jwt}`, 'User-Agent': BROWSER_UA },
+      });
+      const m = r.data?.membershipType;
+      if (typeof m === 'string' && m) return m;
+    } catch {
+      /* 继续兜底 */
+    }
+
+    // 2) cursor.com/api/auth/stripe（Cookie 会话串）
+    try {
+      const r = await axios.get(STRIPE_WEB_URL, {
+        timeout: 12000,
+        headers: {
+          Cookie: `WorkosCursorSessionToken=${token}`,
+          Authorization: `Bearer ${token}`,
+          Referer: 'https://cursor.com/dashboard',
+          'User-Agent': BROWSER_UA,
+        },
+      });
+      const m = r.data?.membershipType;
+      if (typeof m === 'string' && m) return m;
+    } catch {
+      /* 继续兜底 */
+    }
+
+    // 3) usage-summary 里的 membershipType
+    try {
+      const r = await axios.get(USAGE_SUMMARY_URL, {
+        timeout: 12000,
+        headers: {
+          Cookie: `WorkosCursorSessionToken=${token}`,
+          Authorization: `Bearer ${token}`,
+          Referer: 'https://cursor.com/dashboard/usage',
+          'User-Agent': BROWSER_UA,
+        },
+      });
+      const m = r.data?.membershipType || r.data?.plan;
+      if (typeof m === 'string' && m) return m;
+    } catch {
+      /* 查不到 */
+    }
+
+    return null;
+  }
+
+  // ====== 微软邮箱发信 ======
 
   /** refresh_token → access_token（Thunderbird 公开 client_id，无需 client_secret） */
   private async getAccessToken(clientId: string, refreshToken: string): Promise<string> {

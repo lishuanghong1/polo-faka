@@ -93,6 +93,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'announcements', name: 'admin-anns', component: () => import('@/pages/admin/Announcements.vue') },
       { path: 'pool', name: 'admin-pool', component: () => import('@/pages/admin/Pool.vue') },
       { path: 'warehouse', name: 'admin-warehouse', component: () => import('@/pages/admin/Warehouse.vue') },
+      { path: 'recycle', name: 'admin-recycle', component: () => import('@/pages/admin/Recycle.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('@/pages/admin/Settings.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/pages/admin/Audit.vue') },
       { path: 'abuse', name: 'admin-abuse', component: () => import('@/pages/admin/Abuse.vue') },

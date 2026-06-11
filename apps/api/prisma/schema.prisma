@@ -752,3 +752,27 @@ model WarehouseAccount {
   @@index([skuId, status])
   @@map("warehouse_accounts")
 }
+
+// ===================== 回收（退款申请） =====================
+
+/// 用户在前台「回收」页提交的退款申请记录。
+/// 提交时用账号微软邮箱给 Cursor 发退款邮件，并记录当前订阅类型；
+/// 之后通过查 Cursor 订阅（free=成功 / pro 等=回收中）判断回收是否完成。
+model RecycleRequest {
+  id            Int       @id @default(autoincrement())
+  email         String    @db.VarChar(255)
+  invoiceNumber String    @db.VarChar(128)
+  /// 最近一次查到的订阅类型：free / pro / pro_plus / ultra ...
+  plan          String?   @db.VarChar(32)
+  /// 状态：PENDING(回收中) / SUCCESS(成功) / UNKNOWN(未知)
+  status        String    @default("PENDING") @db.VarChar(16)
+  /// 发信成功时的 messageId（排查用）
+  mailMessageId String?   @db.VarChar(255)
+  lastCheckedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@map("recycle_requests")
+}
