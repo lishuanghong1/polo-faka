@@ -205,7 +205,7 @@ function asUsage(a: Account) {
         :key="a.id"
         :class="[
           'card p-3 transition',
-          isActive(a) ? 'border-brand-500/60 bg-brand-500/5' : '',
+          isActive(a) ? 'border-brand-300 bg-brand-50' : '',
         ]"
       >
         <div class="flex items-start gap-3">
@@ -216,7 +216,7 @@ function asUsage(a: Account) {
               </span>
               <span
                 v-if="isActive(a)"
-                class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 border border-brand-500/40"
+                class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200"
               >当前账号</span>
               <span
                 v-if="a.plan"
@@ -232,13 +232,13 @@ function asUsage(a: Account) {
                 @keydown.enter="saveLabel(a)"
                 @keydown.esc="editingId = null"
               />
-              <button class="text-[11px] text-brand-300 hover:text-brand-200" @click="saveLabel(a)">保存</button>
+              <button class="text-[11px] text-brand-600 hover:text-brand-700" @click="saveLabel(a)">保存</button>
               <button class="text-[11px] text-ink-500 hover:text-ink-300" @click="editingId = null">取消</button>
             </div>
             <div v-else class="mt-0.5 text-[11px] text-ink-400 flex items-center gap-1.5">
               <span v-if="a.label" class="text-ink-300">{{ a.label }}</span>
               <button
-                class="text-[11px] text-ink-500 hover:text-brand-300"
+                class="text-[11px] text-ink-500 hover:text-brand-600"
                 @click="startEditLabel(a)"
               >
                 {{ a.label ? '改备注' : '加备注' }}
@@ -280,7 +280,7 @@ function asUsage(a: Account) {
               {{ switchingId === a.id ? '切换中…' : '切到此账号' }}
             </button>
             <button class="btn-ghost text-xs py-1 px-3" @click="refreshOne(a)">刷用量</button>
-            <button class="text-[11px] text-ink-500 hover:text-rose-400" @click="removeOne(a)">删除</button>
+            <button class="text-[11px] text-ink-500 hover:text-rose-600" @click="removeOne(a)">删除</button>
           </div>
         </div>
       </li>

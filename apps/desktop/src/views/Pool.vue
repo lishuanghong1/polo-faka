@@ -281,14 +281,14 @@ function percentOf(g: PoolGrantView) {
           <button class="btn-ghost text-xs" :disabled="loading" @click="refreshGrants">
             {{ loading ? '刷新中…' : '刷新列表' }}
           </button>
-          <button class="text-[11px] text-rose-400 hover:underline" @click="logout">退出</button>
+          <button class="text-[11px] text-rose-600 hover:underline" @click="logout">退出</button>
         </div>
       </section>
 
       <!-- 调度状态 -->
       <section v-if="settings" class="card p-3 text-xs leading-relaxed text-ink-400">
         <span class="text-ink-200 font-medium">自动调度</span>：
-        <span :class="settings.poolAutoEnabled ? 'text-emerald-300' : 'text-rose-300'">
+        <span :class="settings.poolAutoEnabled ? 'text-emerald-600' : 'text-rose-600'">
           {{ settings.poolAutoEnabled ? '已开启' : '已关闭' }}
         </span>
         · 阈值
@@ -317,8 +317,8 @@ function percentOf(g: PoolGrantView) {
               </div>
               <div class="text-[11px] text-ink-500 mt-0.5 font-mono">
                 {{ g.orderNo }}
-                <span v-if="g.notProvisioned" class="ml-2 text-rose-300">未发放</span>
-                <span v-else-if="!g.active" class="ml-2 text-amber-300">已停用</span>
+                <span v-if="g.notProvisioned" class="ml-2 text-rose-600">未发放</span>
+                <span v-else-if="!g.active" class="ml-2 text-amber-600">已停用</span>
               </div>
             </div>
             <div class="flex flex-col gap-1.5 shrink-0">

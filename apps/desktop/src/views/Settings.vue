@@ -204,7 +204,7 @@ async function save() {
       <button class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? '保存中…' : '保存设置' }}
       </button>
-      <span v-if="saved" class="text-[11px] text-emerald-400">已保存</span>
+      <span v-if="saved" class="text-[11px] text-emerald-600">已保存</span>
     </div>
   </div>
 </template>

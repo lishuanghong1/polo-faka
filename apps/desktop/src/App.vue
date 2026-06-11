@@ -224,11 +224,11 @@ function onImported(result: ImportResult) {
           v-for="t in toasts"
           :key="t.id"
           :class="[
-            'px-3 py-2 rounded-lg border text-xs shadow-lg backdrop-blur',
-            t.kind === 'critical' && 'bg-rose-500/15 border-rose-500/40 text-rose-100',
-            t.kind === 'warn' && 'bg-amber-500/15 border-amber-500/40 text-amber-100',
-            t.kind === 'info' && 'bg-brand-500/15 border-brand-500/40 text-brand-100',
-            t.kind === 'error' && 'bg-rose-700/20 border-rose-700/40 text-rose-100',
+            'px-3 py-2 rounded-lg border text-xs shadow-lg',
+            t.kind === 'critical' && 'bg-rose-50 border-rose-200 text-rose-700',
+            t.kind === 'warn' && 'bg-amber-50 border-amber-200 text-amber-700',
+            t.kind === 'info' && 'bg-brand-50 border-brand-200 text-brand-700',
+            t.kind === 'error' && 'bg-rose-50 border-rose-300 text-rose-700',
           ]"
         >
           {{ t.text }}

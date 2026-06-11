@@ -226,16 +226,16 @@ const currentUsagePlanQuota = computed(() =>
         <div class="text-sm font-medium text-ink-100">Cursor 状态</div>
         <span
           v-if="cursorInfo?.running"
-          class="text-[11px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30"
+          class="text-[11px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200"
           title="导入前会自动关闭 Cursor"
         >运行中</span>
         <span
           v-else-if="cursorInfo?.installed"
-          class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+          class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
         >已安装·未运行</span>
         <span
           v-else
-          class="text-[11px] px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30"
+          class="text-[11px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"
         >未检测到</span>
       </div>
 
@@ -263,7 +263,7 @@ const currentUsagePlanQuota = computed(() =>
               <span v-if="currentUsageLoading" class="text-[11px] text-ink-500 font-normal">查询中…</span>
               <span
                 v-else-if="currentUsage?.plan"
-                class="text-[11px] px-1.5 py-0.5 rounded bg-brand-500/15 text-brand-300 border border-brand-500/30 font-normal"
+                class="text-[11px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200 font-normal"
               >{{ currentUsage.plan }}</span>
             </div>
             <button
@@ -275,7 +275,7 @@ const currentUsagePlanQuota = computed(() =>
 
           <div
             v-if="currentUsageError && !currentUsage"
-            class="rounded-md bg-rose-500/10 border border-rose-500/30 px-2.5 py-2 text-[11px] text-rose-200"
+            class="rounded-md bg-rose-50 border border-rose-200 px-2.5 py-2 text-[11px] text-rose-700"
           >{{ currentUsageError }}</div>
 
           <template v-else-if="currentUsage && hasCurrentUsageMetrics">
@@ -352,8 +352,8 @@ const currentUsagePlanQuota = computed(() =>
         @input="onInput"
       />
 
-      <div v-if="parsed" class="mt-3 rounded-lg bg-ink-900/80 border border-emerald-500/30 p-3 text-xs space-y-1">
-        <div class="flex items-center gap-2 text-emerald-300 font-medium">
+      <div v-if="parsed" class="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-1">
+        <div class="flex items-center gap-2 text-emerald-700 font-medium">
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
@@ -366,7 +366,7 @@ const currentUsagePlanQuota = computed(() =>
           <span class="font-mono text-ink-200">{{ maskToken(parsed.accessToken) }}</span>
         </div>
       </div>
-      <div v-else-if="parseError" class="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-200">
+      <div v-else-if="parseError" class="mt-3 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
         {{ parseError }}
       </div>
 
@@ -399,7 +399,7 @@ const currentUsagePlanQuota = computed(() =>
         >
           {{ usageLoading ? '查询中…' : '刷新用量' }}
         </button>
-        <span v-if="cursorInfo?.running" class="text-[11px] text-amber-300 ml-auto">
+        <span v-if="cursorInfo?.running" class="text-[11px] text-amber-600 ml-auto">
           ⚠️ 检测到 Cursor 在运行，会先自动关闭
         </span>
       </div>
@@ -411,13 +411,13 @@ const currentUsagePlanQuota = computed(() =>
         <div class="text-sm font-medium text-ink-100 flex items-center gap-2">
           账号用量
           <span v-if="usageLoading" class="text-[11px] text-ink-400">查询中…</span>
-          <span v-else-if="usage?.plan" class="text-[11px] px-1.5 py-0.5 rounded bg-brand-500/15 text-brand-300 border border-brand-500/30">
+          <span v-else-if="usage?.plan" class="text-[11px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
             {{ usage.plan }}
           </span>
         </div>
       </div>
 
-      <div v-if="usageError && !usage" class="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-200">
+      <div v-if="usageError && !usage" class="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
         {{ usageError }}
       </div>
 
@@ -462,7 +462,7 @@ const currentUsagePlanQuota = computed(() =>
             <div class="text-sm text-ink-100 font-medium mt-0.5">
               {{ fmtMoney(usage.bonusQuotaUsd ?? usage.bonusSpendUsd) }}
             </div>
-            <div v-if="usage.bonusUsedUsd != null && usage.bonusUsedUsd > 0" class="text-[10px] text-amber-400 mt-0.5">
+            <div v-if="usage.bonusUsedUsd != null && usage.bonusUsedUsd > 0" class="text-[10px] text-amber-600 mt-0.5">
               已用 {{ fmtMoney(usage.bonusUsedUsd) }}
             </div>
           </div>
@@ -483,8 +483,8 @@ const currentUsagePlanQuota = computed(() =>
       </div>
     </section>
 
-    <section v-if="result" class="card p-4 border-emerald-500/40">
-      <div class="text-sm font-medium text-emerald-300 mb-2">导入成功</div>
+    <section v-if="result" class="card p-4 border-emerald-300">
+      <div class="text-sm font-medium text-emerald-700 mb-2">导入成功</div>
       <div class="text-xs text-ink-300 space-y-1">
         <div>账号：<span class="font-mono text-ink-100">{{ result.email || '（未识别 email）' }}</span></div>
         <div v-if="result.resetMachineId">机器码已重置 · 新设备 ID <span class="font-mono text-ink-200 text-[11px]">{{ result.newDeviceId }}</span></div>
@@ -493,9 +493,9 @@ const currentUsagePlanQuota = computed(() =>
       </div>
     </section>
 
-    <section v-if="errorMsg" class="card p-4 border-rose-500/40">
-      <div class="text-sm font-medium text-rose-300 mb-1">操作失败</div>
-      <div class="text-xs text-rose-200 whitespace-pre-wrap break-all">{{ errorMsg }}</div>
+    <section v-if="errorMsg" class="card p-4 border-rose-300">
+      <div class="text-sm font-medium text-rose-700 mb-1">操作失败</div>
+      <div class="text-xs text-rose-700 whitespace-pre-wrap break-all">{{ errorMsg }}</div>
     </section>
   </div>
 </template>

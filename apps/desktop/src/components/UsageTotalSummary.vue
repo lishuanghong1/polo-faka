@@ -31,10 +31,10 @@ function fmtMoney(v: number) {
 
     <div
       v-else
-      class="rounded-lg bg-brand-500/10 border border-brand-500/30 px-3 py-2.5"
+      class="rounded-lg bg-brand-50 border border-brand-200 px-3 py-2.5"
     >
       <div class="flex items-baseline justify-between mb-2">
-        <div class="text-xs font-medium text-brand-300">总计（高级模型）</div>
+        <div class="text-xs font-medium text-brand-700">总计（高级模型）</div>
         <div class="text-lg font-semibold text-ink-100">{{ fmtMoney(total.total) }}</div>
       </div>
       <div class="text-[11px] text-ink-500 mb-2">API + 超额 + 奖励</div>

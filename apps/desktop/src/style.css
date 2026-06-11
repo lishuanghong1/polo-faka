@@ -11,8 +11,8 @@ body,
 }
 
 body {
-  background: linear-gradient(180deg, #0b0c10 0%, #13161d 100%);
-  color: #dde1e9;
+  background: linear-gradient(180deg, #f7f8fa 0%, #ffffff 40%);
+  color: #1c1917;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -24,17 +24,17 @@ textarea {
   user-select: text;
 }
 
-/* 滚动条美化 */
+/* 滚动条美化（浅色） */
 *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.28);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -45,14 +45,14 @@ textarea {
     text-sm font-medium transition select-none whitespace-nowrap;
 }
 .btn-primary {
-  @apply btn bg-brand-500 hover:bg-brand-400 text-white shadow-sm
-    disabled:bg-ink-700 disabled:text-ink-400 disabled:cursor-not-allowed;
+  @apply btn bg-brand-600 hover:bg-brand-700 text-white shadow-sm
+    disabled:bg-ink-700 disabled:text-ink-500 disabled:cursor-not-allowed;
 }
 .btn-ghost {
-  @apply btn border border-ink-700 text-ink-200 hover:border-ink-500
+  @apply btn border border-ink-700 text-ink-300 hover:border-ink-500
     hover:bg-ink-800/60 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .card {
-  @apply bg-ink-900/60 border border-ink-800 rounded-xl;
+  @apply bg-white border border-ink-700 rounded-xl shadow-sm;
 }
