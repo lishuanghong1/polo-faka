@@ -170,6 +170,11 @@ export class RecycleService {
       this.logger.warn(`save recycle request failed: ${(e as Error)?.message}`);
     }
 
+    // 提交即已判定回收成功（账号已是 free）→ 自动从仓库删除对应账号
+    if (status === 'SUCCESS') {
+      await this.autoDeleteWarehouseForRecycled(box.email.toLowerCase(), box.orderNo);
+    }
+
     this.logger.log(
       `[recycle] refund mail sent from ${box.email} to ${SUPPORT_EMAIL} (invoice ${invoiceNumber}), plan=${plan}, status=${status}: ${JSON.stringify(
         response,
@@ -216,19 +221,28 @@ export class RecycleService {
 
     const box = await this.resolveMailbox(req.email.toLowerCase());
     if (!box?.cursorToken) {
+      // 账号已不在仓库：若此前已判定回收成功（账号被自动清理），直接返回旧记录，避免误报
+      if (req.status === 'SUCCESS') return req;
       throw new BadRequestException('该账号已不在仓库或缺少 Cursor 令牌，无法核验');
     }
     const plan = await this.fetchPlan(box.cursorToken);
     const status = classifyPlan(plan);
-    return this.prisma.recycleRequest.update({
+    const orderNo = box.orderNo ?? req.orderNo;
+    const updated = await this.prisma.recycleRequest.update({
       where: { id },
       data: {
         plan: plan ?? req.plan,
         status,
-        orderNo: box.orderNo ?? req.orderNo,
+        orderNo,
         lastCheckedAt: new Date(),
       },
     });
+
+    // 回收成功 → 账号已退款，自动从仓库删除对应账号（保留订单 / 卡密）
+    if (status === 'SUCCESS') {
+      await this.autoDeleteWarehouseForRecycled(req.email.toLowerCase(), orderNo);
+    }
+    return updated;
   }
 
   async remove(id: number) {
@@ -236,6 +250,45 @@ export class RecycleService {
     if (!req) throw new NotFoundException('回收申请不存在');
     await this.prisma.recycleRequest.delete({ where: { id } });
     return { ok: true };
+  }
+
+  /**
+   * 回收成功后把对应仓库账号从库存自动删除：账号已退款，不应再作为库存留存。
+   * - 有订单号：按 orderNo 精确匹配（最可靠）；
+   * - 无订单号：回退按邮箱匹配，且仅限「已售出(SOLD)」账号，避免误删尚未售出的新库存。
+   * 仅删除 warehouse_accounts 行，保留对应 CardKey 与订单记录。
+   * best-effort：失败只记日志，不影响回收主流程。
+   */
+  private async autoDeleteWarehouseForRecycled(
+    emailLower: string,
+    orderNo: string | null | undefined,
+  ): Promise<number> {
+    try {
+      const where: any = orderNo
+        ? { orderNo }
+        : {
+            status: 'SOLD',
+            OR: [{ email: emailLower }, { content: { startsWith: emailLower } }],
+          };
+      const accounts = await this.prisma.warehouseAccount.findMany({
+        where,
+        select: { id: true },
+      });
+      if (!accounts.length) return 0;
+      const ids = accounts.map((a) => a.id);
+      const r = await this.prisma.warehouseAccount.deleteMany({
+        where: { id: { in: ids } },
+      });
+      this.logger.log(
+        `[recycle] auto-removed ${r.count} warehouse account(s) for ${emailLower} (order=${orderNo ?? '-'})`,
+      );
+      return r.count;
+    } catch (e) {
+      this.logger.warn(
+        `autoDeleteWarehouseForRecycled failed: ${(e as Error)?.message}`,
+      );
+      return 0;
+    }
   }
 
   // ====== Cursor 订阅查询 ======

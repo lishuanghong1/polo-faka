@@ -146,7 +146,11 @@ async function unassign(row: any) {
 }
 
 async function del(row: any) {
-  await ElMessageBox.confirm(`确认删除仓库账号 #${row.id}？`, '删除', { type: 'warning' });
+  const tip =
+    row.status === 'SOLD'
+      ? `确认从仓库删除已售出账号 #${row.id}？订单与卡密会保留，仅移除仓库记录`
+      : `确认删除仓库账号 #${row.id}？`;
+  await ElMessageBox.confirm(tip, '删除', { type: 'warning' });
   await api.admin.warehouseRemove(row.id);
   ElMessage.success('已删除');
   load();
@@ -259,7 +263,6 @@ async function reveal(row: any) {
             撤回
           </button>
           <button
-            v-if="row.status !== 'SOLD'"
             class="text-ink-500 hover:text-rose-600 text-sm"
             @click="del(row)"
           >
