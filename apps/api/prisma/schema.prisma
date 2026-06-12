@@ -304,7 +304,9 @@ model CardKey {
   remark    String?       // 内部备注
   status    CardKeyStatus @default(AVAILABLE)
   soldAt    DateTime?
-  orderNo   String?       @unique
+  // 一个订单可包含多张卡密（quantity > 1），故此处不能是 @unique，
+  // 否则发货时给多张卡密写同一 orderNo 会触发唯一约束冲突导致整单发货失败。
+  orderNo   String?
   expireAt  DateTime?     // 卡密自带的过期时间
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -314,6 +316,7 @@ model CardKey {
   order   Order?  @relation(fields: [orderNo], references: [orderNo])
 
   @@index([skuId, status])
+  @@index([orderNo])
   @@map("card_keys")
 }
 
