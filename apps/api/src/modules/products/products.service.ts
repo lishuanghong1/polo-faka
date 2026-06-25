@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 interface ListQuery {
@@ -187,7 +187,7 @@ export class ProductsService {
           where: { skuId: { in: toRemove }, status: { in: ['SOLD', 'LOCKED'] } },
         });
         if (sold > 0) {
-          throw new Error('部分被删除的规格仍有售出/锁定卡密，请先处理');
+          throw new BadRequestException('部分被删除的规格仍有售出/锁定卡密，请先处理');
         }
         await this.prisma.cardKey.deleteMany({ where: { skuId: { in: toRemove } } });
         await this.prisma.sku.deleteMany({ where: { id: { in: toRemove } } });
@@ -205,9 +205,24 @@ export class ProductsService {
   }
 
   async remove(id: number) {
-    await this.prisma.cardKey.deleteMany({ where: { productId: id } });
-    await this.prisma.sku.deleteMany({ where: { productId: id } });
-    return this.prisma.product.delete({ where: { id } });
+    const product = await this.prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundException('商品不存在');
+
+    // 历史订单通过外键引用了商品 / 规格，直接删除会触发约束错误（前台表现为"删除报错"）。
+    // 订单是财务与售后凭证，不应随商品级联删除，因此提示管理员改用「下架」。
+    const orderCount = await this.prisma.order.count({ where: { productId: id } });
+    if (orderCount > 0) {
+      throw new BadRequestException(
+        `该商品存在 ${orderCount} 笔历史订单，无法删除。如需停售请改用「下架」，订单记录将完整保留。`,
+      );
+    }
+
+    // 无订单引用时，连同规格与卡密一起清理（同一事务，保证原子性）
+    return this.prisma.$transaction(async (tx) => {
+      await tx.cardKey.deleteMany({ where: { productId: id } });
+      await tx.sku.deleteMany({ where: { productId: id } });
+      return tx.product.delete({ where: { id } });
+    });
   }
 
   setStatus(id: number, status: 'ON_SALE' | 'OFF_SHELF' | 'DRAFT') {

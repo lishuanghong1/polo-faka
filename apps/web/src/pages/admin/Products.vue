@@ -64,6 +64,7 @@ function newProduct() {
     description: '',
     cover: '',
     basePrice: 0,
+    sort: 0,
     _tagsStr: '',
     _bulkStr: '',
     warranty: '',
@@ -166,6 +167,22 @@ async function toggleStatus(p: any) {
   load();
 }
 
+// 列表内联调整排序权重（数字越大越靠前）。出错时回滚到服务端真实顺序。
+async function updateSort(p: any) {
+  const sort = Number(p.sort);
+  if (!Number.isFinite(sort)) {
+    load();
+    return;
+  }
+  try {
+    await api.admin.productsUpdate(p.id, { sort: Math.trunc(sort) });
+    ElMessage.success('排序已更新');
+    load();
+  } catch {
+    load();
+  }
+}
+
 function addSku() {
   editing.value.skus.push({ name: '', price: 0, sort: editing.value.skus.length, visible: true, _poolValidityDays: '' });
 }
@@ -205,6 +222,7 @@ function removeSku(i: number) {
         <th class="!text-right">起价</th>
         <th class="!text-right">库存</th>
         <th class="!text-right">销量</th>
+        <th class="!text-right" style="width: 90px">排序</th>
         <th>积分</th>
         <th>状态</th>
         <th class="!text-right" style="width: 180px"></th>
@@ -240,6 +258,15 @@ function removeSku(i: number) {
           </span>
         </td>
         <td class="text-right text-ink-600">{{ p.sales }}</td>
+        <td class="text-right">
+          <input
+            v-model.number="p.sort"
+            type="number"
+            class="w-16 px-2 py-1 border border-ink-200 rounded-md text-right text-sm focus:border-brand-400 focus:outline-none"
+            title="数字越大越靠前，修改后失焦自动保存"
+            @change="updateSort(p)"
+          />
+        </td>
         <td class="whitespace-nowrap">
           <div class="flex flex-col gap-0.5 text-[11px] leading-tight">
             <span
@@ -348,10 +375,14 @@ function removeSku(i: number) {
         <label class="block text-xs text-ink-500 mb-1">详细描述（前台商品详情显示，支持富文本）</label>
         <RichTextEditor v-model="editing.description" height="280px" />
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
           <label class="block text-xs text-ink-500 mb-1">起价（列表展示用）</label>
           <input v-model.number="editing.basePrice" type="number" step="0.01" class="w-full px-3 py-2 border border-ink-200 rounded-lg" />
+        </div>
+        <div>
+          <label class="block text-xs text-ink-500 mb-1">排序（数字越大越靠前）</label>
+          <input v-model.number="editing.sort" type="number" step="1" class="w-full px-3 py-2 border border-ink-200 rounded-lg" placeholder="0" />
         </div>
         <div>
           <label class="block text-xs text-ink-500 mb-1">标签（逗号分隔）</label>
