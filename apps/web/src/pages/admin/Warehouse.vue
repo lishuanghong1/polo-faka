@@ -170,7 +170,7 @@ async function reveal(row: any) {
 <template>
   <AdminPageHeader title="仓库" subtitle="外部推送或后台手动入库的账号，可分配到商品上架">
     <template #actions>
-      <select v-model="filterStatus" class="px-3 py-1.5 rounded-lg border border-ink-200 text-sm bg-white">
+      <select v-model="filterStatus" class="admin-select">
         <option value="">全部状态</option>
         <option value="PENDING">未分配</option>
         <option value="ASSIGNED">已上架</option>
@@ -180,13 +180,13 @@ async function reveal(row: any) {
       <input
         v-model="sourceRefFilter"
         placeholder="按来源过滤"
-        class="px-3 py-1.5 rounded-lg border border-ink-200 text-sm w-40"
+        class="admin-input w-40"
         @keyup.enter="load"
       />
-      <button class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="load">
+      <button class="px-3 h-9 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="load">
         刷新
       </button>
-      <button class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="openAdd">
+      <button class="px-3 h-9 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="openAdd">
         + 添加账号
       </button>
     </template>

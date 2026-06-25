@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import BrandButton from '@/components/BrandButton.vue';
+import Skeleton from '@/components/Skeleton.vue';
 
 interface ConfigRow {
   tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -107,7 +108,19 @@ onMounted(refresh);
       </template>
     </AdminPageHeader>
 
-    <div v-if="loading" class="text-ink-500 text-sm">加载中…</div>
+    <div v-if="loading" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div v-for="i in 3" :key="i" class="card p-5 space-y-4">
+        <div class="flex items-center gap-3">
+          <Skeleton variant="circle" width="48px" height="48px" />
+          <div class="flex-1 space-y-2">
+            <Skeleton variant="line" width="40%" height="11px" />
+            <Skeleton variant="line" width="70%" height="16px" />
+          </div>
+        </div>
+        <Skeleton variant="text" :rows="4" />
+        <Skeleton variant="line" width="100%" height="36px" />
+      </div>
+    </div>
 
     <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div

@@ -53,13 +53,22 @@ export class UsersService {
           inviteCode: true,
           totalRecharged: true,
           vipTier: true,
+          customDiscount: true,
           role: true,
           status: true,
           createdAt: true,
           lastLogin: true,
         },
       }),
-    ]).then(([total, items]) => ({ total, page, pageSize, items }));
+    ]).then(([total, items]) => ({
+      total,
+      page,
+      pageSize,
+      items: items.map((u) => ({
+        ...u,
+        customDiscount: u.customDiscount != null ? Number(u.customDiscount) : null,
+      })),
+    }));
   }
 
   /**
@@ -84,6 +93,7 @@ export class UsersService {
         inviter: { select: { id: true, username: true, nickname: true } },
         totalRecharged: true,
         vipTier: true,
+        customDiscount: true,
         vipUpgradedAt: true,
         createdAt: true,
         lastLogin: true,
@@ -175,8 +185,10 @@ export class UsersService {
         }),
       ]);
 
+    const customDiscount = user.customDiscount != null ? Number(user.customDiscount) : null;
+
     return {
-      user,
+      user: { ...user, customDiscount },
       wallet: {
         balance: Number(user.balance),
         points: user.points,
@@ -184,6 +196,7 @@ export class UsersService {
         inviter: user.inviter,
         totalRecharged: Number(user.totalRecharged),
         vipTier: user.vipTier,
+        customDiscount,
         vipUpgradedAt: user.vipUpgradedAt,
         paidRechargeCount: rechargeAgg._count._all,
         paidRechargeSum: Number(rechargeAgg._sum.amount ?? 0),

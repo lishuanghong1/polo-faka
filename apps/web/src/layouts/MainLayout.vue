@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { useSiteStore } from '@/stores/site';
 import { ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
+import BackToTop from '@/components/BackToTop.vue';
 void ElDropdown; void ElDropdownMenu; void ElDropdownItem;
 
 const router = useRouter();
+const route = useRoute();
 const user = useUserStore();
 const site = useSiteStore();
 
@@ -126,8 +128,12 @@ function goAndClose(path: string) {
     </header>
 
     <main class="flex-1">
-      <router-view />
+      <div :key="route.path" class="route-fade">
+        <router-view />
+      </div>
     </main>
+
+    <BackToTop />
 
     <footer class="border-t border-ink-100 bg-white">
       <div class="max-w-7xl mx-auto px-4 py-5 text-center text-xs text-ink-400 space-y-1">

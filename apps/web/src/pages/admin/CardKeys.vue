@@ -234,12 +234,12 @@ function quickFilter(skuId: number) {
   </div>
 
   <!-- 明细列表 -->
-  <div class="card p-3 mb-3 flex items-center gap-2 text-sm flex-wrap">
-    <select v-model="filter.productId" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white w-full sm:w-56" @change="filter.skuId = undefined">
+  <div class="card p-3 mb-3 admin-filter-bar">
+    <select v-model="filter.productId" class="admin-select w-full sm:w-56" @change="filter.skuId = undefined">
       <option :value="undefined">全部商品</option>
       <option v-for="p in products" :key="p.id" :value="p.id">{{ p.title }}</option>
     </select>
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none">
+    <select v-model="filter.status" class="admin-select flex-1 sm:flex-none">
       <option :value="undefined">全部状态</option>
       <option value="AVAILABLE">可售</option>
       <option value="SOLD">已售</option>
@@ -247,7 +247,7 @@ function quickFilter(skuId: number) {
       <option value="EXPIRED">失效</option>
       <option value="REFUNDED">退款</option>
     </select>
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
+    <button class="px-4 h-9 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
     <span v-if="filter.skuId" class="text-xs text-ink-500">
       已按 SKU #{{ filter.skuId }} 筛选
       <button class="ml-1 text-brand-700 hover:underline" @click="filter.skuId = undefined; load()">×清除</button>

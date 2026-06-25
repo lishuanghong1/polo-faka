@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElDrawer, ElMessage, ElMessageBox } from 'element-plus';
 import api, { type AdminUserDetail } from '@/api';
 import StatusTag from '@/components/admin/StatusTag.vue';
+import Skeleton from '@/components/Skeleton.vue';
 
 // 响应式抽屉宽度：移动端全屏、桌面端定宽
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024);
@@ -123,6 +124,39 @@ async function adjustPoints() {
   emit('changed');
 }
 
+function fmtDiscount(d: number | null | undefined) {
+  if (d == null) return '无（按 VIP）';
+  return `${(d * 10).toFixed(1)} 折`;
+}
+
+async function setDiscount() {
+  if (!data.value) return;
+  const u = data.value.user;
+  const current = u.customDiscount;
+  const { value } = await ElMessageBox.prompt(
+    `给 ${u.username} (#${u.id}) 设置专属折扣。\n填 0.5 ~ 1（如 0.9 = 9 折），留空则清除。\n下单时取「专属折扣」与「VIP 折扣」中更优的一个。`,
+    '设置专属折扣',
+    {
+      inputValue: current != null ? String(current) : '',
+      inputPlaceholder: '例如 0.85（八五折），留空清除',
+      inputValidator: (v: string) => {
+        const s = (v ?? '').trim();
+        if (s === '') return true;
+        const n = Number(s);
+        if (!Number.isFinite(n)) return '请输入 0.5 ~ 1 的数字，或留空清除';
+        if (n < 0.5 || n > 1) return '折扣需在 0.5（五折）~ 1（不折扣）之间';
+        return true;
+      },
+    },
+  );
+  const s = (value ?? '').trim();
+  const discount = s === '' ? null : Number(s);
+  await api.vip.adminSetUserDiscount(u.id, { discount, note: '管理员设置专属折扣' });
+  ElMessage.success(discount === null ? '已清除专属折扣' : `已设置专属折扣 ${fmtDiscount(discount)}`);
+  await load();
+  emit('changed');
+}
+
 function copy(text: string) {
   navigator.clipboard?.writeText(text).then(() => ElMessage.success('已复制'));
 }
@@ -141,7 +175,20 @@ function fmt(n: number) {
     :with-header="false"
     @update:model-value="(v: boolean) => !v && close()"
   >
-    <div v-if="loading" class="p-10 text-center text-ink-400 text-sm">加载中...</div>
+    <div v-if="loading" class="p-5 space-y-5">
+      <div class="flex items-center gap-3">
+        <Skeleton variant="circle" width="40px" height="40px" />
+        <div class="flex-1 space-y-2">
+          <Skeleton variant="line" width="50%" height="14px" />
+          <Skeleton variant="line" width="70%" height="11px" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <Skeleton v-for="i in 5" :key="i" variant="block" height="62px" />
+      </div>
+      <Skeleton variant="text" :rows="5" />
+      <Skeleton variant="block" height="120px" />
+    </div>
 
     <div v-else-if="data" class="flex flex-col h-full">
       <!-- Header -->
@@ -216,6 +263,12 @@ function fmt(n: number) {
             <div v-if="data.user.nickname" class="flex justify-between"><dt class="text-ink-500">昵称</dt><dd>{{ data.user.nickname }}</dd></div>
             <div class="flex justify-between"><dt class="text-ink-500">注册时间</dt><dd class="text-xs">{{ new Date(data.user.createdAt).toLocaleString() }}</dd></div>
             <div class="flex justify-between"><dt class="text-ink-500">最后登录</dt><dd class="text-xs">{{ data.user.lastLogin ? new Date(data.user.lastLogin).toLocaleString() : '从未登录' }}</dd></div>
+            <div class="flex justify-between">
+              <dt class="text-ink-500">专属折扣</dt>
+              <dd :class="data.user.customDiscount != null ? 'text-rose-600 font-medium' : 'text-ink-400'">
+                {{ fmtDiscount(data.user.customDiscount) }}
+              </dd>
+            </div>
             <div v-if="data.wallet.vipUpgradedAt" class="flex justify-between"><dt class="text-ink-500">VIP 升级时间</dt><dd class="text-xs">{{ new Date(data.wallet.vipUpgradedAt).toLocaleString() }}</dd></div>
             <div v-if="data.wallet.inviteCode" class="flex justify-between"><dt class="text-ink-500">邀请码</dt><dd class="font-mono text-xs">{{ data.wallet.inviteCode }}</dd></div>
             <div v-if="data.wallet.inviter" class="flex justify-between"><dt class="text-ink-500">邀请人</dt><dd class="text-xs">#{{ data.wallet.inviter.id }} {{ data.wallet.inviter.nickname || data.wallet.inviter.username }}</dd></div>
@@ -388,6 +441,10 @@ function fmt(n: number) {
           class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm"
           @click="adjustPoints"
         >调整积分</button>
+        <button
+          class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm"
+          @click="setDiscount"
+        >专属折扣</button>
         <button
           class="px-3 py-1.5 rounded-lg border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm"
           @click="load"

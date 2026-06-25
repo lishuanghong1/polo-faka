@@ -1,4 +1,5 @@
-//! Deep link 入口：商城 / 浏览器里点 polo-tool://import?token=...&email=... 会拉起本工具。
+//! Deep link 入口：商城 / 浏览器里点 polo-cockpit://import?token=...&email=...
+//! 会拉起本工具。
 //!
 //! 我们不直接执行导入（避免 URL 一进来就改用户配置），只是把解析结果 emit 给前端，
 //! 前端把字段填到粘贴框，由用户确认后再点「导入」。
@@ -28,12 +29,12 @@ pub fn handle_urls(app: &AppHandle, urls: Vec<String>) {
 
 fn parse(raw: &str) -> Option<DeepLinkImportEvent> {
     let url = Url::parse(raw).ok()?;
-    if url.scheme() != "polo-tool" {
+    if !matches!(url.scheme(), "polo-cockpit" | "polo-tool") {
         return None;
     }
     // 支持两种 URL 形态：
-    //   polo-tool://import?token=...&email=...
-    //   polo-tool:///import?token=...
+    //   polo-cockpit://import?token=...&email=...
+    //   polo-cockpit:///import?token=...
     let action = if !url.path().is_empty() && url.path() != "/" {
         url.path().trim_start_matches('/').to_string()
     } else {

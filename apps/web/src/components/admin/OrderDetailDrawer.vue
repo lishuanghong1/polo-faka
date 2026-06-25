@@ -49,8 +49,10 @@ async function load() {
 }
 
 const payMethodLabel: Record<string, string> = {
-  ALIPAY: '支付宝', WECHAT: '微信', BALANCE: '余额', USDT: 'USDT', MOCK: 'Mock 支付',
+  ALIPAY: '支付宝', WECHAT: '微信', BALANCE: '余额', POINTS: '积分', REDEEM: '兑换码', USDT: 'USDT', MOCK: 'Mock 支付',
 };
+
+const vipName: Record<string, string> = { GOLD: '黄金', DIAMOND: '钻石', SUPREME: '超级' };
 
 async function markPaid() {
   await ElMessageBox.confirm('确认将此订单标记为已支付并尝试发货？', '提示', { type: 'warning' });
@@ -236,12 +238,26 @@ function close() {
             <div v-if="order.paidAt" class="flex justify-between"><dt class="text-ink-500">支付时间</dt><dd class="text-xs">{{ new Date(order.paidAt).toLocaleString() }}</dd></div>
             <div v-if="order.deliveredAt" class="flex justify-between"><dt class="text-ink-500">发货时间</dt><dd class="text-xs">{{ new Date(order.deliveredAt).toLocaleString() }}</dd></div>
             <div v-if="order.contact" class="flex justify-between"><dt class="text-ink-500">联系方式</dt><dd>{{ order.contact }}</dd></div>
-            <div v-if="order.userId" class="flex justify-between"><dt class="text-ink-500">用户 ID</dt><dd>#{{ order.userId }}</dd></div>
-            <div v-else class="flex justify-between"><dt class="text-ink-500">用户</dt><dd class="text-ink-400">游客订单</dd></div>
+            <div class="flex justify-between gap-3">
+              <dt class="text-ink-500 shrink-0">下单用户</dt>
+              <dd v-if="order.user" class="text-right min-w-0">
+                <div class="text-ink-900 truncate">
+                  {{ order.user.nickname || order.user.username }}
+                  <span class="text-ink-400 text-xs font-mono">#{{ order.user.id }}</span>
+                  <span
+                    v-if="order.user.vipTier && order.user.vipTier !== 'NONE'"
+                    class="ml-1 inline-flex px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] align-middle"
+                  >{{ vipName[order.user.vipTier] }}VIP</span>
+                </div>
+                <div v-if="order.user.email" class="text-[11px] text-ink-400 truncate">{{ order.user.email }}</div>
+              </dd>
+              <dd v-else-if="order.userId" class="text-ink-700">#{{ order.userId }}</dd>
+              <dd v-else class="text-ink-400">游客下单（未登录）</dd>
+            </div>
             <div v-if="order.ip" class="flex justify-between"><dt class="text-ink-500">IP</dt><dd class="font-mono text-xs">{{ order.ip }}</dd></div>
             <div v-if="order.thirdTradeNo" class="flex justify-between"><dt class="text-ink-500">支付宝单号</dt><dd class="font-mono text-xs">{{ order.thirdTradeNo }}</dd></div>
             <div v-if="order.redeemCode" class="flex justify-between"><dt class="text-ink-500">兑换码</dt><dd class="font-mono text-xs">{{ order.redeemCode }}</dd></div>
-            <div v-if="order.buyerLogonId" class="flex justify-between"><dt class="text-ink-500">买家</dt><dd class="text-xs">{{ order.buyerLogonId }}</dd></div>
+            <div v-if="order.buyerLogonId" class="flex justify-between gap-3"><dt class="text-ink-500 shrink-0">支付宝账号</dt><dd class="text-xs text-right break-all">{{ order.buyerLogonId }}</dd></div>
             <div v-if="order.refundedAt" class="flex justify-between"><dt class="text-ink-500">退款时间</dt><dd class="text-xs">{{ new Date(order.refundedAt).toLocaleString() }}</dd></div>
             <div v-if="order.refundReason" class="flex justify-between"><dt class="text-ink-500">退款原因</dt><dd class="text-xs">{{ order.refundReason }}</dd></div>
             <div v-if="order.remark" class="flex justify-between"><dt class="text-ink-500">备注</dt><dd class="text-xs">{{ order.remark }}</dd></div>

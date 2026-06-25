@@ -5,6 +5,7 @@ import { ElMessage, ElRadioGroup, ElRadio, ElInputNumber, ElButton } from 'eleme
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
 import RichContent from '@/components/RichContent.vue';
+import Skeleton from '@/components/Skeleton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +26,7 @@ const vipMe = ref<{
   tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
   tierName: string;
   defaultDiscount: number;
+  customDiscount: number | null;
   tierColor: string | null;
   tierIcon: string | null;
 } | null>(null);
@@ -45,12 +47,26 @@ const unitPrice = computed(() => {
   return Number(currentSku.value.price);
 });
 const originalAmount = computed(() => +(unitPrice.value * qty.value).toFixed(2));
-const effectiveDiscount = computed(() => {
+// VIP 体系折扣（等级默认 / 商品级覆盖）
+const vipDiscount = computed(() => {
   if (!vipMe.value || vipMe.value.tier === 'NONE') return 1;
   const t = vipMe.value.tier;
   if (vipOverrides.value[t] !== undefined) return vipOverrides.value[t];
   return vipMe.value.defaultDiscount;
 });
+// 专属折扣只在比 VIP 折扣更优时生效（与后端 getDiscount 取更优一致）
+const isCustomDiscount = computed(() => {
+  const c = vipMe.value?.customDiscount;
+  return c != null && c < vipDiscount.value;
+});
+const effectiveDiscount = computed(() =>
+  isCustomDiscount.value ? (vipMe.value!.customDiscount as number) : vipDiscount.value,
+);
+const discountLabel = computed(() =>
+  isCustomDiscount.value
+    ? '专属折扣'
+    : `${vipMe.value?.tierIcon ?? ''} ${vipMe.value?.tierName ?? ''}`.trim(),
+);
 const discountAmount = computed(() => {
   if (effectiveDiscount.value >= 1) return 0;
   return +(originalAmount.value * (1 - effectiveDiscount.value)).toFixed(2);
@@ -195,7 +211,19 @@ async function buy() {
 </script>
 
 <template>
-  <div v-if="!product" class="text-center py-20 text-ink-400">加载中...</div>
+  <div v-if="!product" class="max-w-4xl mx-auto px-4 py-8 space-y-4">
+    <Skeleton variant="line" width="64px" height="14px" />
+    <div class="card p-6 space-y-4">
+      <Skeleton variant="line" width="40%" height="24px" />
+      <Skeleton variant="text" :rows="2" />
+      <Skeleton variant="block" height="80px" />
+      <div class="flex gap-2">
+        <Skeleton variant="line" width="96px" height="36px" />
+        <Skeleton variant="line" width="96px" height="36px" />
+      </div>
+      <Skeleton variant="block" height="56px" />
+    </div>
+  </div>
   <div v-else class="max-w-4xl mx-auto px-4 py-8">
     <button class="text-sm text-ink-500 hover:text-brand-600 mb-3" @click="router.back()">
       ← 返回
@@ -380,7 +408,7 @@ async function buy() {
               <span
                 class="inline-block px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded-md font-medium"
               >
-                {{ vipMe?.tierIcon }} {{ vipMe?.tierName }}立省 ¥{{ discountAmount.toFixed(2) }}
+                {{ discountLabel }}立省 ¥{{ discountAmount.toFixed(2) }}
                 <span class="text-rose-500/70">（{{ (effectiveDiscount * 10).toFixed(1) }} 折）</span>
               </span>
             </div>

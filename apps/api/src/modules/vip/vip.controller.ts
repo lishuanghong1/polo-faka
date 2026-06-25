@@ -20,6 +20,7 @@ import {
   ListUserVipDto,
   ManualSetVipDto,
   PreviewDiscountDto,
+  SetUserDiscountDto,
   UpdateVipConfigDto,
   UpsertProductDiscountDto,
 } from './dto';
@@ -148,6 +149,22 @@ export class VipController {
     return this.svc.manualSet(
       id,
       body.tier as VipTier,
+      { id: user.sub, username: user.username },
+      body.note,
+    );
+  }
+
+  /** 管理员：设置/清除某用户的专属折扣 */
+  @Roles('ADMIN')
+  @Post('admin/users/:id/discount')
+  setUserDiscount(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: SetUserDiscountDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.svc.setUserCustomDiscount(
+      id,
+      body.discount,
       { id: user.sub, username: user.username },
       body.note,
     );

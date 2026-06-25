@@ -60,6 +60,8 @@ const payMethodLabel = computed(() => {
   return order.value?.paymentMethod || '-';
 });
 
+const vipName: Record<string, string> = { GOLD: '黄金', DIAMOND: '钻石', SUPREME: '超级' };
+
 const payMethodChipCls = computed(() => {
   const m = (order.value?.paymentMethod || '').toUpperCase();
   if (m === 'ALIPAY')  return 'bg-sky-50 text-sky-700 border-sky-200';
@@ -333,17 +335,29 @@ const statusHeroClass = computed(() => {
               <dt class="text-ink-500 shrink-0">联系方式</dt>
               <dd class="text-ink-700 truncate">{{ order.contact }}</dd>
             </div>
-            <div v-if="order.userId" class="flex justify-between gap-3">
-              <dt class="text-ink-500 shrink-0">用户 ID</dt>
-              <dd class="text-ink-700">#{{ order.userId }}</dd>
-            </div>
-            <div v-else class="flex justify-between gap-3">
-              <dt class="text-ink-500 shrink-0">用户</dt>
-              <dd class="text-ink-400">游客订单</dd>
+            <div class="flex justify-between gap-3">
+              <dt class="text-ink-500 shrink-0">下单用户</dt>
+              <dd v-if="order.user" class="text-right min-w-0">
+                <div class="text-ink-900 truncate">
+                  {{ order.user.nickname || order.user.username }}
+                  <span class="text-ink-400 text-xs font-mono">#{{ order.user.id }}</span>
+                  <span
+                    v-if="order.user.vipTier && order.user.vipTier !== 'NONE'"
+                    class="ml-1 inline-flex px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] align-middle"
+                  >{{ vipName[order.user.vipTier] }}VIP</span>
+                </div>
+                <div v-if="order.user.email" class="text-[11px] text-ink-400 truncate">{{ order.user.email }}</div>
+              </dd>
+              <dd v-else-if="order.userId" class="text-ink-700">#{{ order.userId }}</dd>
+              <dd v-else class="text-ink-400">游客下单（未登录）</dd>
             </div>
             <div v-if="order.buyerLogonId" class="flex justify-between gap-3">
-              <dt class="text-ink-500 shrink-0">买家账号</dt>
-              <dd class="text-ink-700 text-xs">{{ order.buyerLogonId }}</dd>
+              <dt class="text-ink-500 shrink-0">支付宝账号</dt>
+              <dd class="text-ink-700 text-xs text-right break-all">{{ order.buyerLogonId }}</dd>
+            </div>
+            <div v-if="order.ip" class="flex justify-between gap-3">
+              <dt class="text-ink-500 shrink-0">IP</dt>
+              <dd class="text-ink-700 font-mono text-xs">{{ order.ip }}</dd>
             </div>
             <div class="flex justify-between gap-3">
               <dt class="text-ink-500 shrink-0">下单时间</dt>

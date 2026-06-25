@@ -18,6 +18,9 @@ const errorMsg = ref('');
 const contactPrompt = ref('');
 const needContact = ref(false);
 let pollTimer: number | undefined;
+let pollStart = 0;
+const POLL_MAX_MS = 5 * 60 * 1000; // 自动轮询最长 5 分钟，之后降级为手动刷新
+const autoPaused = ref(false);
 
 const orderNo = computed(() => route.params.orderNo as string);
 
@@ -118,20 +121,27 @@ async function goPay() {
 
 function startPolling() {
   if (pollTimer) return;
+  pollStart = Date.now();
   pollTimer = window.setInterval(async () => {
     if (!order.value) return;
-    if (['PENDING', 'PAID'].includes(order.value.status)) {
-      try {
-        const fresh = await api.forge.orderDetail(orderNo.value, order.value.contact || undefined);
-        order.value = fresh;
-      } catch { /* ignore */ }
-    } else {
-      stopPolling();
-    }
+    if (!['PENDING', 'PAID'].includes(order.value.status)) { stopPolling(); return; }
+    if (Date.now() - pollStart > POLL_MAX_MS) { stopPolling(); autoPaused.value = true; return; }
+    try {
+      const fresh = await api.forge.orderDetail(orderNo.value, order.value.contact || undefined);
+      order.value = fresh;
+    } catch { /* ignore */ }
   }, 3000);
 }
 function stopPolling() {
   if (pollTimer) { window.clearInterval(pollTimer); pollTimer = undefined; }
+}
+
+async function manualRefresh() {
+  await load(order.value?.contact || contactPrompt.value.trim() || undefined);
+  if (order.value && ['PENDING', 'PAID'].includes(order.value.status)) {
+    autoPaused.value = false;
+    startPolling();
+  }
 }
 
 watch(
@@ -272,6 +282,17 @@ const statusHeroClass = computed(() => {
         <div v-if="order.status === 'PENDING' && order.expireAt" class="mt-3 text-[11px] text-amber-700">
           请于 {{ formatDateTime(order.expireAt) }} 前完成支付，超时订单将自动取消
         </div>
+      </div>
+
+      <!-- 自动刷新已暂停 → 手动刷新 -->
+      <div
+        v-if="autoPaused && ['PENDING', 'PAID'].includes(order.status)"
+        class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-ink-200 bg-ink-50/60 px-4 py-2.5 text-xs text-ink-500"
+      >
+        <span>已暂停自动刷新，如已完成支付可手动刷新查看最新状态</span>
+        <button class="text-brand-600 hover:text-brand-700 font-medium shrink-0" @click="manualRefresh">
+          手动刷新
+        </button>
       </div>
 
       <!-- ────── 订单信息 ────── -->

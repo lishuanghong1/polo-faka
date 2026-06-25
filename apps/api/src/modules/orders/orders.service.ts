@@ -411,6 +411,21 @@ export class OrdersService {
     return { ...order, cardKeys, redeemCode };
   }
 
+  /**
+   * 管理员订单详情：在 detail() 基础上附带下单用户概要（用户名/昵称/邮箱/VIP）。
+   * 注意：用户信息只在此 admin 专用方法返回，公开的 detail()/query() 不暴露，避免 PII 泄露。
+   */
+  async adminDetail(orderNo: string) {
+    const detail = await this.detail(orderNo);
+    const user = detail.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: detail.userId },
+          select: { id: true, username: true, nickname: true, email: true, vipTier: true },
+        })
+      : null;
+    return { ...detail, user };
+  }
+
   async listMine(userId: number, page = 1, pageSize = 20) {
     if (!userId || typeof userId !== 'number') {
       throw new BadRequestException('未登录');

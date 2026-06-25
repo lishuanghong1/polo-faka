@@ -136,9 +136,9 @@ const recommendedForCurrentOs = computed(() => {
 <template>
   <section class="max-w-3xl mx-auto px-4 py-8">
     <header class="text-center mb-6">
-      <h1 class="text-2xl md:text-3xl font-bold text-ink-900">下载 Polo 桌面账号工具</h1>
+      <h1 class="text-2xl md:text-3xl font-bold text-ink-900">下载 Polo Cockpit 桌面控制台</h1>
       <p class="mt-2 text-sm text-ink-500 leading-relaxed">
-        本地工具：粘贴卡密一键写入 Cursor · 多账号管理 · 实时查用量 · 号池自动换号<br />
+        桌面控制台：粘贴卡密一键写入 Cursor · 多账号管理 · 实时查用量 · 号池自动换号<br />
         全部操作均在本机完成，不向我们的服务器发送 token
       </p>
     </header>
@@ -246,7 +246,7 @@ const recommendedForCurrentOs = computed(() => {
           <div class="text-ink-800 font-medium mb-1">Q: macOS 提示「文件已损坏」？</div>
           <p>这是 macOS 对未签名应用的默认提示。打开终端，执行：</p>
           <code class="block mt-1 px-3 py-2 bg-ink-50 rounded text-[11px] font-mono whitespace-pre-wrap break-all">
-sudo xattr -rd com.apple.quarantine "/Applications/Polo 账号工具.app"
+sudo xattr -rd com.apple.quarantine "/Applications/Polo Cockpit.app"
           </code>
         </div>
         <div>
@@ -263,9 +263,9 @@ sudo xattr -rd com.apple.quarantine "/Applications/Polo 账号工具.app"
         </div>
         <div>
           <div class="text-ink-800 font-medium mb-1">Q: 怎么卸载？</div>
-          <p>Windows：控制面板 → 程序和功能 → 卸载 Polo 账号工具<br/>
+          <p>Windows：控制面板 → 程序和功能 → 卸载 Polo Cockpit<br/>
           macOS：把 Applications 里的 .app 拖到废纸篓<br/>
-          数据残留：可手动删 <code class="font-mono">%APPDATA%\PoloAccountTool</code>（Win）或 <code class="font-mono">~/Library/Application Support/PoloAccountTool</code>（Mac）</p>
+          数据残留：为兼容旧版，账号库仍在 <code class="font-mono">%APPDATA%\PoloAccountTool</code>（Win）或 <code class="font-mono">~/Library/Application Support/PoloAccountTool</code>（Mac）</p>
         </div>
       </div>
     </section>

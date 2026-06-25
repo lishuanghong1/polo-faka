@@ -22,7 +22,7 @@ const SUMMARY_URL: &str = "https://cursor.com/api/usage-summary";
 const USAGE_EVENTS_URL: &str = "https://cursor.com/api/dashboard/get-filtered-usage-events";
 const AUTH_USAGE_URL: &str = "https://api2.cursor.sh/auth/usage";
 const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PoloAccountTool/0.1";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PoloCockpit/0.1";
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct UsageInfo {

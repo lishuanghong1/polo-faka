@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 
 const list = ref<any[]>([]);
@@ -200,17 +201,16 @@ function removeSku(i: number) {
     </template>
   </AdminPageHeader>
 
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <input
+  <div class="card p-3 mb-4 admin-filter-bar">
+    <AdminSearchInput
       v-model="filter.keyword"
       placeholder="搜索商品标题"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
-      @keydown.enter="load"
+      @enter="load"
     />
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none" @change="load">
+    <select v-model="filter.status" class="admin-select flex-1 sm:flex-none" @change="load">
       <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
     </select>
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
+    <button class="px-4 h-9 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
   <DataTable :loading="loading" :is-empty="!list.length" min-width="1240px">

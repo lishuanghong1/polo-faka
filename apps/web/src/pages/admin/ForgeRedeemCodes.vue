@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
+import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 
 const items = ref<any[]>([]);
 const total = ref(0);
@@ -121,20 +122,20 @@ onMounted(load);
   </AdminPageHeader>
 
   <!-- 过滤 -->
-  <div class="card p-3 mb-4 flex flex-wrap gap-2 items-center">
-    <input
+  <div class="card p-3 mb-4 admin-filter-bar">
+    <AdminSearchInput
       v-model="keyword"
       placeholder="搜索兑换码"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm flex-1 min-w-40 sm:flex-none sm:w-56"
-      @keydown.enter="page = 1; load()"
+      width-class="flex-1 min-w-40 sm:flex-none sm:w-56"
+      @enter="page = 1; load()"
     />
     <input
       v-model="batchTag"
       placeholder="批次号"
-      class="px-3 py-1.5 border border-ink-200 rounded-md text-sm flex-1 min-w-40 sm:flex-none sm:w-48 font-mono text-xs"
+      class="admin-input flex-1 min-w-40 sm:flex-none sm:w-48 font-mono !text-xs"
       @keydown.enter="page = 1; load()"
     />
-    <select v-model="status" class="px-3 py-1.5 border border-ink-200 rounded-md text-sm bg-white flex-1 sm:flex-none">
+    <select v-model="status" class="admin-select flex-1 sm:flex-none">
       <option value="">全部状态</option>
       <option value="ACTIVE">可用</option>
       <option value="DISABLED">禁用</option>
@@ -142,7 +143,7 @@ onMounted(load);
       <option value="EXPIRED">已过期</option>
     </select>
     <button
-      class="px-3.5 py-1.5 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 text-sm shrink-0"
+      class="px-4 h-9 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm shrink-0"
       @click="page = 1; load()"
     >筛选</button>
   </div>

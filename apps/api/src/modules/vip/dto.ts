@@ -7,6 +7,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -65,6 +66,18 @@ export class UpsertProductDiscountDto {
 export class ManualSetVipDto {
   @IsEnum(['NONE', 'GOLD', 'DIAMOND', 'SUPREME'])
   tier!: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+
+  @IsOptional() @IsString() @MaxLength(255)
+  note?: string;
+}
+
+export class SetUserDiscountDto {
+  /** 0.5 ~ 1（0.9 = 9 折）；传 null 清除专属折扣 */
+  @ValidateIf((o) => o.discount !== null)
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0.5)
+  @Max(1)
+  discount!: number | null;
 
   @IsOptional() @IsString() @MaxLength(255)
   note?: string;

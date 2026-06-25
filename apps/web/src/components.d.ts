@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AdminPageHeader: typeof import('./components/admin/AdminPageHeader.vue')['default']
     AnnouncementDialog: typeof import('./components/AnnouncementDialog.vue')['default']
+    BackToTop: typeof import('./components/BackToTop.vue')['default']
     BrandButton: typeof import('./components/BrandButton.vue')['default']
     Captcha: typeof import('./components/Captcha.vue')['default']
     DataTable: typeof import('./components/admin/DataTable.vue')['default']
@@ -26,6 +27,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     Skeleton: typeof import('./components/Skeleton.vue')['default']
     StatusTag: typeof import('./components/admin/StatusTag.vue')['default']
+    TopProgress: typeof import('./components/TopProgress.vue')['default']
     UserDetailDrawer: typeof import('./components/admin/UserDetailDrawer.vue')['default']
   }
 }

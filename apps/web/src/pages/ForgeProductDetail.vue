@@ -28,6 +28,7 @@ const vipMe = ref<{
   tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
   tierName: string;
   defaultDiscount: number;
+  customDiscount: number | null;
   tierColor: string | null;
   tierIcon: string | null;
 } | null>(null);
@@ -37,14 +38,29 @@ const lineTotalOriginal = computed(() => {
   if (!product.value) return 0;
   return +(product.value.displayPrice * quantity.value).toFixed(2);
 });
-const effectiveDiscount = computed(() => {
-  // 兑换码路径不享受折扣
-  if (payMethod.value === 'REDEEM') return 1;
+// VIP 体系折扣（等级默认 / 商品级覆盖）
+const vipDiscount = computed(() => {
   if (!vipMe.value || vipMe.value.tier === 'NONE') return 1;
   const t = vipMe.value.tier;
   if (vipOverrides.value[t] !== undefined) return vipOverrides.value[t];
   return vipMe.value.defaultDiscount;
 });
+// 专属折扣只在比 VIP 折扣更优时生效（与后端 getDiscount 取更优一致）
+const isCustomDiscount = computed(() => {
+  if (payMethod.value === 'REDEEM') return false;
+  const c = vipMe.value?.customDiscount;
+  return c != null && c < vipDiscount.value;
+});
+const effectiveDiscount = computed(() => {
+  // 兑换码路径不享受折扣
+  if (payMethod.value === 'REDEEM') return 1;
+  return isCustomDiscount.value ? (vipMe.value!.customDiscount as number) : vipDiscount.value;
+});
+const discountLabel = computed(() =>
+  isCustomDiscount.value
+    ? '专属折扣'
+    : `${vipMe.value?.tierIcon ?? ''} ${vipMe.value?.tierName ?? ''}`.trim(),
+);
 const discountAmount = computed(() => {
   if (effectiveDiscount.value >= 1) return 0;
   return +(lineTotalOriginal.value * (1 - effectiveDiscount.value)).toFixed(2);
@@ -452,7 +468,7 @@ onMounted(load);
           </div>
           <div v-if="discountAmount > 0" class="mb-3 flex items-center justify-between text-xs">
             <span class="text-rose-600">
-              {{ vipMe?.tierIcon }} {{ vipMe?.tierName }}专属（{{ (effectiveDiscount * 10).toFixed(1) }} 折）
+              {{ discountLabel }}{{ isCustomDiscount ? '' : '专属' }}（{{ (effectiveDiscount * 10).toFixed(1) }} 折）
             </span>
             <span class="text-rose-600 font-medium">-¥{{ discountAmount.toFixed(2) }}</span>
           </div>

@@ -45,6 +45,10 @@ model User {
   vipTier        VipTier   @default(NONE)
   vipUpgradedAt  DateTime?
 
+  // 专属折扣：管理员可单独给某用户设置（0.5~1，0.9 = 9 折）。
+  // null = 无专属折扣，走 VIP 体系。下单时取「专属折扣」与「VIP 折扣」中更优（更低）的一个。
+  customDiscount Decimal?  @db.Decimal(5, 4)
+
   orders          Order[]
   balanceLogs     BalanceLog[]
   rechargeOrders  RechargeOrder[]

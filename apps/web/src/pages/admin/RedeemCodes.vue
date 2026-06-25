@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 
 const overview = ref<any>({ ACTIVE: 0, DISABLED: 0, EXHAUSTED: 0, EXPIRED: 0, total: 0 });
 const list = ref<any[]>([]);
@@ -236,28 +237,28 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 50)));
   </div>
 
   <!-- 过滤 + 批量动作 -->
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg bg-white flex-1 sm:flex-none">
+  <div class="card p-3 mb-4 admin-filter-bar">
+    <select v-model="filter.status" class="admin-select flex-1 sm:flex-none">
       <option :value="undefined">所有状态</option>
       <option value="ACTIVE">可用</option>
       <option value="DISABLED">已禁用</option>
       <option value="EXHAUSTED">已用完</option>
       <option value="EXPIRED">已过期</option>
     </select>
-    <input
+    <AdminSearchInput
       v-model="filter.keyword"
       placeholder="码内容（支持模糊）"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg flex-1 min-w-40 sm:flex-none sm:w-52"
-      @keydown.enter="page = 1; loadList()"
+      width-class="flex-1 min-w-40 sm:flex-none sm:w-52"
+      @enter="page = 1; loadList()"
     />
     <input
       v-model="filter.batchTag"
       placeholder="批次号"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg flex-1 min-w-40 sm:flex-none sm:w-48 font-mono"
+      class="admin-input flex-1 min-w-40 sm:flex-none sm:w-48 font-mono"
       @keydown.enter="page = 1; loadList()"
     />
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg shrink-0" @click="page = 1; loadList()">查询</button>
-    <button class="px-3 py-1.5 border border-ink-200 hover:bg-ink-50 rounded-lg shrink-0" @click="filter = {}; page = 1; loadList()">重置</button>
+    <button class="px-4 h-9 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="page = 1; loadList()">查询</button>
+    <button class="px-3 h-9 border border-ink-200 hover:bg-ink-50 rounded-lg text-sm shrink-0" @click="filter = {}; page = 1; loadList()">重置</button>
 
     <div v-if="selected.size > 0" class="sm:ml-auto flex items-center gap-2 text-xs flex-wrap w-full sm:w-auto">
       <span class="text-ink-500">已选 {{ selected.size }} 个</span>

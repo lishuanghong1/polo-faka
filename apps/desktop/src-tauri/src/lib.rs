@@ -36,7 +36,7 @@ pub fn run() {
             });
             let urls = args
                 .into_iter()
-                .filter(|s| s.starts_with("polo-tool://"))
+                .filter(|s| s.starts_with("polo-cockpit://") || s.starts_with("polo-tool://"))
                 .collect::<Vec<_>>();
             if !urls.is_empty() {
                 deep_link_cmd::handle_urls(app, urls);
@@ -52,6 +52,7 @@ pub fn run() {
             // 注册 URL scheme（dev 模式有效；打包后由系统 installer 写注册表）
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
+                let _ = app.deep_link().register("polo-cockpit");
                 let _ = app.deep_link().register("polo-tool");
             }
             // 监听 deep link 唤起事件

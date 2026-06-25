@@ -35,7 +35,7 @@ export class AdminController {
 
   @Get('orders/:orderNo')
   orderDetail(@Param('orderNo') orderNo: string) {
-    return this.orders.detail(orderNo);
+    return this.orders.adminDetail(orderNo);
   }
 
   @Post('orders/:orderNo/mark-paid')

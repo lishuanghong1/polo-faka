@@ -75,9 +75,12 @@ const sidebarOpen = ref(false);
 function closeSidebar() {
   sidebarOpen.value = false;
 }
-// 路由变更自动关闭抽屉
+// 后台内容滚动容器（用于路由切换时回到顶部）
+const scrollEl = ref<HTMLElement | null>(null);
+// 路由变更自动关闭抽屉 + 内容区回到顶部
 watch(() => route.fullPath, () => {
   sidebarOpen.value = false;
+  scrollEl.value?.scrollTo({ top: 0 });
 });
 </script>
 
@@ -189,9 +192,11 @@ watch(() => route.fullPath, () => {
       </header>
 
       <!-- Page -->
-      <div class="admin-page-scroll flex-1 overflow-auto min-h-0">
+      <div ref="scrollEl" class="admin-page-scroll flex-1 overflow-auto min-h-0">
         <div class="max-w-7xl mx-auto min-h-full p-3 md:p-6">
-          <router-view />
+          <div :key="route.path" class="route-fade">
+            <router-view />
+          </div>
         </div>
       </div>
     </main>

@@ -1,6 +1,47 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { useUserStore } from '@/stores/user';
+import { useSiteStore } from '@/stores/site';
+
+/** 路由名 → 页面标题（用于 document.title）。未命中则只显示站点名。 */
+const ROUTE_TITLES: Record<string, string> = {
+  home: '首页',
+  product: '商品详情',
+  order: '订单详情',
+  query: '订单查询',
+  login: '登录',
+  register: '注册',
+  me: '个人中心',
+  recharge: '账户充值',
+  'recharge-detail': '账户充值',
+  redeem: '兑换码下单',
+  recycle: '账号回收',
+  'forge-product': '商品详情',
+  'forge-order': '订单详情',
+  'email-code-page': '在线接码',
+  'cursor-login-tool': 'Token 一键登录',
+  'desktop-tool': '桌面工具',
+  'mock-pay': '模拟支付',
+  'admin-home': '后台概览',
+  'admin-products': '商品管理',
+  'admin-orders': '订单管理',
+  'admin-keys': '卡密池',
+  'admin-cats': '分类管理',
+  'admin-users': '用户管理',
+  'admin-points': '积分管理',
+  'admin-anns': '公告管理',
+  'admin-pool': '号池',
+  'admin-warehouse': '仓库',
+  'admin-recycle': '回收管理',
+  'admin-settings': '站点设置',
+  'admin-audit': '审计日志',
+  'admin-abuse': 'IP 黑名单',
+  'admin-redeem': '兑换码',
+  'admin-forge-products': '三方商品',
+  'admin-forge-redeem': '三方兑换码',
+  'admin-vip': 'VIP 等级',
+  'admin-vip-discounts': '商品折扣',
+};
 
 const routes: RouteRecordRaw[] = [
   {
@@ -131,6 +172,17 @@ router.beforeEach(async (to) => {
     return { name: 'home' };
   }
   return true;
+});
+
+router.afterEach((to) => {
+  let base = 'Polo';
+  try {
+    base = useSiteStore().settings.site_name || 'Polo';
+  } catch {
+    /* pinia 尚未就绪时退回默认名 */
+  }
+  const title = ROUTE_TITLES[to.name as string];
+  document.title = title ? `${title} · ${base}` : base;
 });
 
 export default router;

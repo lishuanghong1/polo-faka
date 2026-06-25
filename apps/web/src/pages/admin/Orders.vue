@@ -5,6 +5,7 @@ import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import StatusTag from '@/components/admin/StatusTag.vue';
+import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 import OrderDetailDrawer from '@/components/admin/OrderDetailDrawer.vue';
 import ForgeOrderDetailDrawer from '@/components/admin/ForgeOrderDetailDrawer.vue';
 
@@ -20,6 +21,7 @@ type UnifiedOrder = {
   payMethod: string;
   status: string;
   createdAt: string;
+  buyerLogonId?: string | null;
   failReason?: string | null;
 };
 
@@ -58,6 +60,7 @@ async function load() {
       payMethod: o.payMethod,
       status: o.status,
       createdAt: o.createdAt,
+      buyerLogonId: o.buyerLogonId,
     }));
     const forgeItems: UnifiedOrder[] = (forge.items || []).map((o: any) => ({
       id: `forge-${o.orderNo}`,
@@ -70,6 +73,7 @@ async function load() {
       payMethod: o.paymentMethod,
       status: o.status,
       createdAt: o.createdAt,
+      buyerLogonId: o.buyerLogonId,
       failReason: o.failReason,
     }));
     list.value = [...localItems, ...forgeItems]
@@ -124,20 +128,19 @@ function openDetail(o: UnifiedOrder) {
 <template>
   <AdminPageHeader title="订单" :subtitle="`共 ${total} 条订单 · 当前显示 ${shownTotal} 条`" />
 
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <input
+  <div class="card p-3 mb-4 admin-filter-bar">
+    <AdminSearchInput
       v-model="filter.keyword"
       placeholder="搜索订单号 / 商品名 / 支付单号"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
-      @keydown.enter="load"
+      @enter="load"
     />
-    <select v-model="filter.status" class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm bg-white flex-1 sm:flex-none">
+    <select v-model="filter.status" class="admin-select flex-1 sm:flex-none">
       <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
     </select>
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
+    <button class="px-4 h-9 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="load">查询</button>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" min-width="1260px">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1400px">
     <thead>
       <tr>
         <th>订单号</th>
@@ -147,6 +150,7 @@ function openDetail(o: UnifiedOrder) {
         <th class="!text-right">数量</th>
         <th class="!text-right">金额</th>
         <th>支付</th>
+        <th>支付账号</th>
         <th>状态</th>
         <th class="!text-right">下单时间</th>
       </tr>
@@ -172,6 +176,10 @@ function openDetail(o: UnifiedOrder) {
         <td class="text-right text-ink-600">×{{ o.quantity }}</td>
         <td class="text-right font-medium text-price">¥{{ o.amount.toFixed(2) }}</td>
         <td class="text-ink-600">{{ payMethodLabel[o.payMethod] || o.payMethod }}</td>
+        <td class="text-ink-600 text-xs font-mono">
+          <span v-if="o.buyerLogonId">{{ o.buyerLogonId }}</span>
+          <span v-else class="text-ink-300">—</span>
+        </td>
         <td>
           <StatusTag :status="o.status" />
           <div

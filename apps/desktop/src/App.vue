@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { api } from './api';
+import { appBrand } from './config/appBrand';
 import type {
   Account,
   AppSettings,
@@ -15,12 +16,13 @@ import type {
 } from './types';
 import Import from './views/Import.vue';
 import Library from './views/Library.vue';
+import Overview from './views/Overview.vue';
 import Pool from './views/Pool.vue';
 import Settings from './views/Settings.vue';
 
-type Tab = 'import' | 'library' | 'pool' | 'settings';
+type Tab = 'overview' | 'import' | 'library' | 'pool' | 'settings';
 
-const tab = ref<Tab>('import');
+const tab = ref<Tab>('overview');
 const info = ref<CursorInfo | null>(null);
 const accounts = ref<Account[]>([]);
 const settings = ref<AppSettings | null>(null);
@@ -37,6 +39,11 @@ interface ToastItem {
 }
 const toasts = ref<ToastItem[]>([]);
 let toastSeq = 1;
+
+function hasTauriRuntime() {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+}
+
 function pushToast(kind: ToastItem['kind'], text: string) {
   const id = toastSeq++;
   toasts.value.push({ id, kind, text });
@@ -85,6 +92,8 @@ const unlisteners: UnlistenFn[] = [];
 onMounted(async () => {
   await Promise.all([reloadInfo(), reloadAccounts(), reloadSettings(), reloadDbPath()]);
 
+  if (!hasTauriRuntime()) return;
+
   unlisteners.push(
     await listen<UsageUpdateEvent>('usage-updated', () => {
       reloadAccounts();
@@ -93,7 +102,7 @@ onMounted(async () => {
   unlisteners.push(
     await listen<QuotaAlertEvent>('quota-alert', (e) => {
       const { email, plan, percent, level } = e.payload;
-      const text = `${level === 'critical' ? '⚠️ 配额告急' : '配额提醒'}：${email || '账号'}${plan ? ' · ' + plan : ''} 已用 ${percent.toFixed(1)}%`;
+      const text = `${level === 'critical' ? '配额告急' : '配额提醒'}：${email || '账号'}${plan ? ' · ' + plan : ''} 已用 ${percent.toFixed(1)}%`;
       pushToast(level, text);
     }),
   );
@@ -149,11 +158,11 @@ function onImported(result: ImportResult) {
     <header class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-2">
         <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold">
-          P
+          {{ appBrand.shortName }}
         </div>
         <div>
-          <div class="text-base font-semibold text-ink-100 leading-tight">Polo 账号工具</div>
-          <div class="text-[11px] text-ink-500">本地账号库 · 查用量 · 阈值预警 · 商城联动</div>
+          <div class="text-base font-semibold text-ink-100 leading-tight">{{ appBrand.title }}</div>
+          <div class="text-[11px] text-ink-500">{{ appBrand.subtitle }}</div>
         </div>
       </div>
       <button class="btn-ghost text-xs" @click="reloadInfo">重新检测</button>
@@ -163,6 +172,7 @@ function onImported(result: ImportResult) {
     <nav class="flex items-center gap-1 mb-4 border-b border-ink-800 overflow-x-auto">
       <button
         v-for="opt in [
+          { id: 'overview', label: '概览' },
           { id: 'import', label: '导入新账号' },
           { id: 'library', label: `账号库 (${counts.library})` },
           { id: 'pool', label: counts.poolBound > 0 ? `号池 · ${counts.poolBound}` : '号池' },
@@ -180,8 +190,17 @@ function onImported(result: ImportResult) {
     </nav>
 
     <!-- 主体 -->
+    <Overview
+      v-if="tab === 'overview'"
+      :cursor-info="info"
+      :accounts="accounts"
+      :settings="settings"
+      @go="(nextTab) => (tab = nextTab)"
+      @reload-info="reloadInfo"
+      @reload-accounts="reloadAccounts"
+    />
     <Import
-      v-if="tab === 'import'"
+      v-else-if="tab === 'import'"
       :cursor-info="info"
       :prefill="importPrefill"
       :defaults="settings ?? undefined"
@@ -213,7 +232,7 @@ function onImported(result: ImportResult) {
     />
 
     <footer class="text-[11px] text-ink-600 leading-relaxed mt-6 px-1">
-      · 所有数据均存放在本机，工具不向我们的服务器发送你的 token<br/>
+      · {{ appBrand.privacyNote }}<br/>
       · token 等同于账号密码，请勿随意公开
     </footer>
 

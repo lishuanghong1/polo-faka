@@ -25,9 +25,19 @@ const tableStyle = computed(() => ({
 
 <template>
   <div class="card overflow-hidden">
-    <div v-if="loading" class="py-16 text-center text-sm text-ink-400">加载中...</div>
-    <div v-else-if="isEmpty" class="py-16 text-center text-sm text-ink-400">
-      {{ empty || '暂无数据' }}
+    <!-- 加载：骨架行 -->
+    <div v-if="loading" class="p-3 space-y-2.5">
+      <div v-for="i in 7" :key="i" class="skeleton h-9 rounded-lg" :style="{ opacity: 1 - i * 0.08 }" />
+    </div>
+    <!-- 空态：图标 + 文案 -->
+    <div v-else-if="isEmpty" class="py-16 flex flex-col items-center justify-center text-center">
+      <div class="w-12 h-12 rounded-2xl bg-ink-50 text-ink-300 flex items-center justify-center mb-3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="w-6 h-6">
+          <path d="M22 12h-6l-2 3h-4l-2-3H2" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+      <div class="text-sm text-ink-400">{{ empty || '暂无数据' }}</div>
     </div>
     <div v-else class="data-table-scroll overflow-auto" :style="scrollStyle">
       <table class="w-full text-sm table-auto" :style="tableStyle" :class="{ 'is-dense': dense }">

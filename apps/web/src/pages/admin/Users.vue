@@ -5,6 +5,7 @@ import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import StatusTag from '@/components/admin/StatusTag.vue';
+import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 import UserDetailDrawer from '@/components/admin/UserDetailDrawer.vue';
 
 const list = ref<any[]>([]);
@@ -63,6 +64,35 @@ async function adjust(u: any) {
   load();
 }
 
+function fmtDiscount(d: number | null | undefined) {
+  if (d == null) return '—';
+  return `${(d * 10).toFixed(1)} 折`;
+}
+
+async function setDiscount(u: any) {
+  const { value } = await ElMessageBox.prompt(
+    `给 ${u.username} (#${u.id}) 设置专属折扣。\n填 0.5 ~ 1（如 0.9 = 9 折），留空则清除。\n下单时取「专属折扣」与「VIP 折扣」中更优的一个。`,
+    '设置专属折扣',
+    {
+      inputValue: u.customDiscount != null ? String(u.customDiscount) : '',
+      inputPlaceholder: '例如 0.85（八五折），留空清除',
+      inputValidator: (v: string) => {
+        const s = (v ?? '').trim();
+        if (s === '') return true;
+        const n = Number(s);
+        if (!Number.isFinite(n)) return '请输入 0.5 ~ 1 的数字，或留空清除';
+        if (n < 0.5 || n > 1) return '折扣需在 0.5（五折）~ 1（不折扣）之间';
+        return true;
+      },
+    },
+  );
+  const s = (value ?? '').trim();
+  const discount = s === '' ? null : Number(s);
+  await api.vip.adminSetUserDiscount(u.id, { discount, note: '管理员设置专属折扣' });
+  ElMessage.success(discount === null ? '已清除专属折扣' : `已设置 ${fmtDiscount(discount)}`);
+  load();
+}
+
 function openDetail(u: any) {
   detailUserId.value = u.id;
 }
@@ -71,18 +101,18 @@ function openDetail(u: any) {
 <template>
   <AdminPageHeader title="用户" :subtitle="`${total} 个注册用户`" />
 
-  <div class="card p-3 mb-4 flex items-center gap-2 text-sm flex-wrap">
-    <input
+  <div class="card p-3 mb-4 admin-filter-bar">
+    <AdminSearchInput
       v-model="keyword"
       placeholder="搜索 ID / 账号 / 邮箱 / 昵称"
-      class="px-3 py-1.5 border border-ink-200 rounded-lg text-sm w-full sm:w-64"
-      @keydown.enter="search"
+      @enter="search"
+      @clear="search"
     />
-    <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="search">查询</button>
-    <button class="px-3 py-1.5 border border-ink-200 text-ink-700 hover:bg-ink-50 rounded-lg text-sm shrink-0" @click="load">刷新</button>
+    <button class="px-4 h-9 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm shrink-0" @click="search">查询</button>
+    <button class="px-3 h-9 border border-ink-200 text-ink-700 hover:bg-ink-50 rounded-lg text-sm shrink-0" @click="load">刷新</button>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" min-width="1360px">
+  <DataTable :loading="loading" :is-empty="!list.length" min-width="1480px">
       <thead>
         <tr>
           <th style="width: 60px">ID</th>
@@ -93,11 +123,12 @@ function openDetail(u: any) {
           <th class="!text-right">累计充值</th>
           <th>邀请码</th>
           <th>VIP</th>
+          <th>专属折扣</th>
           <th>角色</th>
           <th>状态</th>
           <th>注册时间</th>
           <th>最后登录</th>
-          <th class="!text-right" style="width: 140px"></th>
+          <th class="!text-right" style="width: 190px"></th>
         </tr>
       </thead>
       <tbody>
@@ -124,13 +155,20 @@ function openDetail(u: any) {
               {{ vipLabel[u.vipTier]?.text || u.vipTier }}
             </span>
           </td>
+          <td>
+            <span
+              class="text-xs font-medium"
+              :class="u.customDiscount != null ? 'text-rose-600' : 'text-ink-300'"
+            >{{ fmtDiscount(u.customDiscount) }}</span>
+          </td>
           <td><StatusTag :status="u.role" /></td>
           <td><StatusTag :status="u.status" /></td>
           <td class="text-ink-500 text-xs">{{ u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—' }}</td>
           <td class="text-ink-500 text-xs">{{ u.lastLogin ? new Date(u.lastLogin).toLocaleString() : '从未登录' }}</td>
           <td class="text-right" @click.stop>
             <button class="text-brand-700 hover:underline text-sm mr-2" @click="openDetail(u)">详情</button>
-            <button class="text-ink-500 hover:text-brand-700 text-sm" @click="adjust(u)">调余额</button>
+            <button class="text-ink-500 hover:text-brand-700 text-sm mr-2" @click="adjust(u)">调余额</button>
+            <button class="text-ink-500 hover:text-rose-600 text-sm" @click="setDiscount(u)">折扣</button>
           </td>
         </tr>
       </tbody>

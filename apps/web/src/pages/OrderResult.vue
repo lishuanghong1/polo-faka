@@ -32,7 +32,10 @@ const poolGrant = ref<any | null>(null);
 const poolToken = ref('');
 const poolLoading = ref(false);
 const poolClaiming = ref(false);
-let timer: any = null;
+let timer: number | undefined;
+let pollStart = 0;
+const POLL_MAX_MS = 5 * 60 * 1000; // 自动轮询最长 5 分钟，之后降级为手动刷新
+const autoPaused = ref(false);
 
 const wechat = computed(() => site.settings.cs_wechat || 'ymw_polo');
 const qq = computed(() => site.settings.cs_qq || '');
@@ -147,10 +150,25 @@ async function goPay() {
   }
 }
 
+function stopPolling() {
+  if (timer) { clearInterval(timer); timer = undefined; }
+}
+
 async function poll() {
   if (!order.value) return;
-  if (!shouldKeepPolling(order.value.status)) return;
+  if (!shouldKeepPolling(order.value.status)) { stopPolling(); return; }
+  if (Date.now() - pollStart > POLL_MAX_MS) { stopPolling(); autoPaused.value = true; return; }
   await load(order.value?.contact || contactInput.value.trim() || undefined);
+}
+
+async function manualRefresh() {
+  await load(order.value?.contact || contactInput.value.trim() || undefined);
+  if (order.value && shouldKeepPolling(order.value.status)) {
+    autoPaused.value = false;
+    pollStart = Date.now();
+    stopPolling();
+    timer = window.setInterval(poll, 3000);
+  }
 }
 
 async function copy(text: string, label = '已复制') {
@@ -209,9 +227,10 @@ onMounted(async () => {
   } else {
     await load();
   }
-  timer = setInterval(poll, 3000);
+  pollStart = Date.now();
+  timer = window.setInterval(poll, 3000);
 });
-onBeforeUnmount(() => clearInterval(timer));
+onBeforeUnmount(stopPolling);
 
 const statusHeroClass = computed(() => {
   const s = (order.value?.status || '').toUpperCase();
@@ -319,6 +338,17 @@ const statusHeroClass = computed(() => {
           <div class="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin shrink-0" />
           <span>付款已到账，正在为您出库…通常 3-10 秒完成</span>
         </div>
+      </div>
+
+      <!-- 自动刷新已暂停 → 手动刷新 -->
+      <div
+        v-if="autoPaused && ['PENDING', 'PAID'].includes(order.status)"
+        class="mb-4 flex items-center justify-between gap-3 rounded-xl border border-ink-200 bg-ink-50/60 px-4 py-2.5 text-xs text-ink-500"
+      >
+        <span>已暂停自动刷新，如已完成支付可手动刷新查看最新状态</span>
+        <button class="text-brand-600 hover:text-brand-700 font-medium shrink-0" @click="manualRefresh">
+          手动刷新
+        </button>
       </div>
 
       <!-- ────── 订单信息 ────── -->

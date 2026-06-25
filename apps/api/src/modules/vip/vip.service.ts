@@ -192,58 +192,75 @@ export class VipService implements OnModuleInit {
 
   /**
    * 取一个用户对某商品的折扣率（0.5 ~ 1）。
-   * 优先级：商品级配置 > 等级默认折扣。
-   * NONE 用户固定 1（无折扣）。
+   * 优先级：商品级配置 > 等级默认折扣，得到「VIP 折扣」；
+   * 再与用户「专属折扣」取更优（更低乘数 = 更大优惠）的一个。
+   * - NONE 用户的 VIP 折扣固定 1，但若有专属折扣仍可享受。
+   * - custom=true 表示最终折扣来自专属折扣（而非 VIP 体系）。
    */
   async getDiscount(
     userId: number | null | undefined,
     productSource: ProductSource,
     productKey: string,
-  ): Promise<{ tier: VipTier; discount: number }> {
-    if (!userId) return { tier: VipTier.NONE, discount: 1 };
+  ): Promise<{ tier: VipTier; discount: number; custom: boolean }> {
+    if (!userId) return { tier: VipTier.NONE, discount: 1, custom: false };
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { vipTier: true },
+      select: { vipTier: true, customDiscount: true },
     });
-    if (!u || u.vipTier === VipTier.NONE) {
-      return { tier: VipTier.NONE, discount: 1 };
-    }
-    // 商品级折扣优先
-    const pd = await this.prisma.productDiscount.findUnique({
-      where: {
-        productSource_productKey_tier: {
-          productSource,
-          productKey,
-          tier: u.vipTier,
+    if (!u) return { tier: VipTier.NONE, discount: 1, custom: false };
+
+    const customDiscount = u.customDiscount != null ? Number(u.customDiscount) : null;
+
+    // VIP 折扣：NONE 用户为 1；否则商品级覆盖优先，回退到等级默认
+    let vipDiscount = 1;
+    if (u.vipTier !== VipTier.NONE) {
+      const pd = await this.prisma.productDiscount.findUnique({
+        where: {
+          productSource_productKey_tier: {
+            productSource,
+            productKey,
+            tier: u.vipTier,
+          },
         },
-      },
-    });
-    let discount = pd ? Number(pd.discount) : null;
-    if (discount === null) {
-      const cfg = await this.prisma.vipConfig.findUnique({
-        where: { tier: u.vipTier },
-        select: { defaultDiscount: true },
       });
-      discount = cfg ? Number(cfg.defaultDiscount) : 1;
+      if (pd) {
+        vipDiscount = Number(pd.discount);
+      } else {
+        const cfg = await this.prisma.vipConfig.findUnique({
+          where: { tier: u.vipTier },
+          select: { defaultDiscount: true },
+        });
+        vipDiscount = cfg ? Number(cfg.defaultDiscount) : 1;
+      }
     }
+
+    // 取更优：专属折扣只在「比 VIP 折扣更低」时生效，确保永远不让用户吃亏
+    let discount = vipDiscount;
+    let custom = false;
+    if (customDiscount != null && customDiscount < discount) {
+      discount = customDiscount;
+      custom = true;
+    }
+
     // 防呆兜底：低于下限按下限算（极少触发，防止管理员配错）
     if (discount < DISCOUNT_FLOOR) discount = DISCOUNT_FLOOR;
     if (discount > 1) discount = 1;
-    return { tier: u.vipTier, discount };
+    return { tier: u.vipTier, discount, custom };
   }
 
-  /** 计算一笔金额的会员价：返回 originalAmount/discountAmount/payAmount/tier/discount */
+  /** 计算一笔金额的会员价：返回 originalAmount/discountAmount/payAmount/tier/discount/custom */
   async applyDiscount(
     userId: number | null | undefined,
     productSource: ProductSource,
     productKey: string,
     originalAmount: number,
   ) {
-    const { tier, discount } = await this.getDiscount(userId, productSource, productKey);
+    const { tier, discount, custom } = await this.getDiscount(userId, productSource, productKey);
     if (discount >= 1 || originalAmount <= 0) {
       return {
         tier,
         discount,
+        custom,
         originalAmount: round2(originalAmount),
         discountAmount: 0,
         payAmount: round2(originalAmount),
@@ -254,6 +271,7 @@ export class VipService implements OnModuleInit {
     return {
       tier,
       discount,
+      custom,
       originalAmount: round2(originalAmount),
       discountAmount,
       payAmount,
@@ -288,6 +306,7 @@ export class VipService implements OnModuleInit {
         vipTier: true,
         totalRecharged: true,
         vipUpgradedAt: true,
+        customDiscount: true,
       },
     });
     if (!u) throw new NotFoundException('用户不存在');
@@ -307,6 +326,7 @@ export class VipService implements OnModuleInit {
       totalRecharged,
       benefits: (currentCfg?.benefits as string[] | null) ?? [],
       defaultDiscount: currentCfg ? Number(currentCfg.defaultDiscount) : 1,
+      customDiscount: u.customDiscount != null ? Number(u.customDiscount) : null,
       upgradedAt: u.vipUpgradedAt,
       next: next
         ? {
@@ -487,6 +507,7 @@ export class VipService implements OnModuleInit {
           vipTier: true,
           totalRecharged: true,
           balance: true,
+          customDiscount: true,
           vipUpgradedAt: true,
           createdAt: true,
         },
@@ -504,9 +525,54 @@ export class VipService implements OnModuleInit {
         vipTier: u.vipTier,
         totalRecharged: Number(u.totalRecharged),
         balance: Number(u.balance),
+        customDiscount: u.customDiscount != null ? Number(u.customDiscount) : null,
         vipUpgradedAt: u.vipUpgradedAt,
         createdAt: u.createdAt,
       })),
     };
+  }
+
+  // ============= 管理员：用户专属折扣 =============
+
+  /**
+   * 给单个用户设置/清除专属折扣。
+   * @param discount 0.5 ~ 1（0.9 = 9 折），传 null 清除专属折扣。
+   */
+  async setUserCustomDiscount(
+    targetUserId: number,
+    discount: number | null,
+    actor: { id: number; username: string },
+    note?: string,
+  ) {
+    if (discount !== null) {
+      if (typeof discount !== 'number' || !Number.isFinite(discount)) {
+        throw new BadRequestException('折扣必须是数字');
+      }
+      if (discount < DISCOUNT_FLOOR || discount > 1) {
+        throw new BadRequestException(`折扣必须在 ${DISCOUNT_FLOOR} ~ 1 之间`);
+      }
+    }
+    const u = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, customDiscount: true },
+    });
+    if (!u) throw new NotFoundException('用户不存在');
+
+    const before = u.customDiscount != null ? Number(u.customDiscount) : null;
+    // 量化到 4 位小数，与 Decimal(5,4) 对齐
+    const next = discount === null ? null : Math.round(discount * 10000) / 10000;
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: { customDiscount: next === null ? null : new Prisma.Decimal(next) },
+    });
+    await this.audit.record({
+      action: AuditActions.VIP_USER_DISCOUNT_SET,
+      target: `user:${targetUserId}`,
+      actorId: actor.id,
+      actor: actor.username,
+      detail: { before, after: next, note },
+    });
+    return { customDiscount: next };
   }
 }

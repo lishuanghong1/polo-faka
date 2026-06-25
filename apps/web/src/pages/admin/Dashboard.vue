@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/api';
 import { statusOf as statusInfo } from '@/utils/order-status';
+import Skeleton from '@/components/Skeleton.vue';
 
 const router = useRouter();
 const data = ref<any>(null);
@@ -98,7 +99,23 @@ function fmtTime(t: string | Date) {
     </div>
   </div>
 
-  <div v-if="loading" class="text-center py-20 text-ink-400 text-sm">加载中...</div>
+  <!-- 加载骨架 -->
+  <div v-if="loading" class="space-y-3">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div v-for="i in 4" :key="i" class="card p-5 space-y-3">
+        <Skeleton variant="line" width="40%" height="12px" />
+        <Skeleton variant="line" width="60%" height="26px" />
+        <Skeleton variant="line" width="80%" height="11px" />
+      </div>
+    </div>
+    <div class="card p-4">
+      <Skeleton variant="line" width="100%" height="40px" />
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      <div class="card p-5 lg:col-span-2"><Skeleton variant="block" height="200px" /></div>
+      <div class="card p-5"><Skeleton variant="block" height="200px" /></div>
+    </div>
+  </div>
 
   <template v-else>
     <!-- KPI cards -->

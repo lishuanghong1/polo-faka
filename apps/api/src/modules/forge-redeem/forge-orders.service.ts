@@ -628,6 +628,42 @@ export class ForgeOrdersService {
   }
 
   /**
+   * 管理员订单详情：在 detail() 基础上补齐公开接口刻意省略的字段
+   *（userId / buyerLogonId / ip / 退款信息）+ 下单用户概要。
+   * 公开的 detail()/query() 不会返回这些，避免 PII 泄露。
+   */
+  async adminDetail(orderNo: string) {
+    const detail = await this.detail(orderNo);
+    const meta = await this.prisma.forgeOrder.findUnique({
+      where: { orderNo },
+      select: {
+        userId: true,
+        ip: true,
+        buyerLogonId: true,
+        refundAmount: true,
+        refundReason: true,
+        refundedAt: true,
+      },
+    });
+    const user = meta?.userId
+      ? await this.prisma.user.findUnique({
+          where: { id: meta.userId },
+          select: { id: true, username: true, nickname: true, email: true, vipTier: true },
+        })
+      : null;
+    return {
+      ...detail,
+      userId: meta?.userId ?? null,
+      ip: meta?.ip ?? null,
+      buyerLogonId: meta?.buyerLogonId ?? null,
+      refundAmount: meta?.refundAmount != null ? Number(meta.refundAmount) : null,
+      refundReason: meta?.refundReason ?? null,
+      refundedAt: meta?.refundedAt ?? null,
+      user,
+    };
+  }
+
+  /**
    * 公开查单：
    * - 订单本身没 contact：订单号本身带 12 位强随机，可防爆破，直接返回完整数据
    * - 订单本身有 contact：
@@ -762,6 +798,7 @@ export class ForgeOrdersService {
         vipTier: it.vipTier,
         contact: it.contact,
         status: it.status,
+        buyerLogonId: it.buyerLogonId,
         thirdTradeNo: it.thirdTradeNo,
         upstreamOrderNo: it.upstreamOrderNo,
         upstreamAmount: it.upstreamAmount !== null ? Number(it.upstreamAmount) : null,

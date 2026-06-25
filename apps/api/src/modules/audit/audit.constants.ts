@@ -60,6 +60,7 @@ export const AuditActions = {
   VIP_MANUAL_SET: 'VIP_MANUAL_SET',              // 管理员手动调整等级
   VIP_CONFIG_UPDATE: 'VIP_CONFIG_UPDATE',        // 修改等级阈值/默认折扣
   VIP_DISCOUNT_UPDATE: 'VIP_DISCOUNT_UPDATE',    // 修改商品级折扣
+  VIP_USER_DISCOUNT_SET: 'VIP_USER_DISCOUNT_SET', // 设置/清除用户专属折扣
 } as const;
 
 export type AuditAction = (typeof AuditActions)[keyof typeof AuditActions];
@@ -107,4 +108,5 @@ export const AuditActionLabels: Record<string, string> = {
   VIP_MANUAL_SET: 'VIP 手动调级',
   VIP_CONFIG_UPDATE: '修改 VIP 等级配置',
   VIP_DISCOUNT_UPDATE: '修改商品折扣',
+  VIP_USER_DISCOUNT_SET: '设置用户专属折扣',
 };

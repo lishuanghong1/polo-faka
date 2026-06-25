@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useSiteStore } from '@/stores/site';
 import ProductCard from '@/components/ProductCard.vue';
+import Skeleton from '@/components/Skeleton.vue';
 
 const site = useSiteStore();
 const router = useRouter();
@@ -345,9 +346,29 @@ onMounted(() => load(false));
       </button>
     </div>
 
-    <div v-if="loading" class="text-center py-20 text-ink-400">加载中...</div>
-    <div v-else-if="lastError" class="card p-6 bg-amber-50/60 border border-amber-200 text-amber-800 text-sm">
-      {{ lastError }}
+    <!-- 加载骨架：模拟分类标题 + 商品卡片网格 -->
+    <div v-if="loading" class="space-y-7">
+      <div v-for="g in 2" :key="g">
+        <Skeleton variant="line" width="120px" height="14px" class="mb-3" />
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <Skeleton v-for="i in 4" :key="i" variant="productCard" />
+        </div>
+      </div>
+    </div>
+    <div v-else-if="lastError" class="card p-8 text-center">
+      <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-3">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" class="w-6 h-6">
+          <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="text-sm text-ink-700 font-medium">{{ lastError }}</div>
+      <button
+        class="mt-4 inline-flex items-center gap-1.5 text-sm text-brand-600 hover:text-brand-700"
+        @click="load(false)"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.7-3M3 12a9 9 0 0 1 9-9c2.5 0 4.8 1 6.5 2.7M21 4v5h-5M3 20v-5h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        重新加载
+      </button>
     </div>
     <div v-else-if="!products.length" class="card p-10 text-center text-ink-400 text-sm">
       暂无商品，请稍后再试。

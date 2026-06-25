@@ -15,6 +15,7 @@ export type AdminUserDetail = {
     inviter: { id: number; username: string; nickname: string | null } | null;
     totalRecharged: string;
     vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+    customDiscount: number | null;
     vipUpgradedAt: string | null;
     createdAt: string;
     lastLogin: string | null;
@@ -26,6 +27,7 @@ export type AdminUserDetail = {
     inviter: { id: number; username: string; nickname: string | null } | null;
     totalRecharged: number;
     vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
+    customDiscount: number | null;
     vipUpgradedAt: string | null;
     paidRechargeCount: number;
     paidRechargeSum: number;
@@ -542,6 +544,7 @@ export const api = {
         totalRecharged: number;
         benefits: string[];
         defaultDiscount: number;
+        customDiscount: number | null;
         upgradedAt: string | null;
         next: null | {
           tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -599,6 +602,7 @@ export const api = {
           vipTier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
           totalRecharged: number;
           balance: number;
+          customDiscount: number | null;
           vipUpgradedAt: string | null;
           createdAt: string;
         }>;
@@ -608,6 +612,11 @@ export const api = {
       id: number,
       body: { tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME'; note?: string },
     ) => http.post<{ tier: string; changed: boolean }>(`/vip/admin/users/${id}/set`, body),
+    /** 管理员：设置/清除某用户的专属折扣（discount=null 清除） */
+    adminSetUserDiscount: (
+      id: number,
+      body: { discount: number | null; note?: string },
+    ) => http.post<{ customDiscount: number | null }>(`/vip/admin/users/${id}/discount`, body),
   },
 
   emailCode: {
