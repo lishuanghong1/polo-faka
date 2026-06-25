@@ -8,8 +8,18 @@ import axios from 'axios';
 import { ForgeApiError, ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** 仓库账号在线接码：直接调三方临时邮箱 API（密码从仓库 content 取） */
-const TOOLSVIP_EMAILS_URL = 'https://tool.toolsvip.cc/easy-mailbox/emails';
+/**
+ * 仓库账号在线接码：调 aizhp 接码网关（POST /open/v1/extract）。
+ * 新接口只需邮箱（无需邮箱密码），由网关侧根据 rule 提取验证码。
+ * URL / Key 可用环境变量覆盖，未配置时回退到默认值。
+ */
+const AIZHP_EXTRACT_URL =
+  process.env.AIZHP_EXTRACT_URL || 'https://account.aizhp.site/open/v1/extract';
+const AIZHP_API_KEY =
+  process.env.AIZHP_API_KEY || 'NU_W53icsmhebAMzRsqWZXE2hdXlLDBGO5w9Y8_fp8k';
+const AIZHP_RULE = process.env.AIZHP_RULE || 'cursor';
+// 每次轮询让网关侧最多等待的秒数（需小于前端 axios 15s 超时）
+const AIZHP_WAIT_SECONDS = 8;
 const WAREHOUSE_SEPARATOR = '----';
 
 export interface FetchCodeParams {
@@ -108,16 +118,14 @@ export class EmailCodeService {
   }
 
   /**
-   * 在仓库里按邮箱找到对应账号，返回 content 里的「原始大小写邮箱 + 邮箱密码」。
+   * 在仓库里按邮箱找到对应账号，返回 content 里的「原始大小写邮箱」。
    * content = email----emailpwd----cursorpwd----token。
    * 找不到返回 null（说明不是仓库邮箱，走原 forge 逻辑）。
    *
-   * 注意：toolsvip 对邮箱大小写敏感，所以这里必须用 content 里存的原始邮箱，
-   * 不能用前端传入的（已被 toLowerCase 的）邮箱。
+   * 新接码网关只需邮箱（无需密码），但仍只放行「本站仓库里存在」的邮箱，
+   * 避免 API Key 被用来给任意邮箱接码。邮箱可能大小写敏感，故返回原始大小写。
    */
-  private async resolveWarehouseCreds(
-    emailLower: string,
-  ): Promise<{ email: string; password: string } | null> {
+  private async resolveWarehouseEmail(emailLower: string): Promise<string | null> {
     let content: string | null = null;
     try {
       const byEmail = await this.prisma.warehouseAccount.findFirst({
@@ -125,6 +133,7 @@ export class EmailCodeService {
         orderBy: { id: 'desc' },
       });
       content = byEmail?.content ?? null;
+      if (byEmail && !content) return byEmail.email || emailLower;
       if (!content) {
         const byContent = await this.prisma.warehouseAccount.findFirst({
           where: { content: { startsWith: emailLower } },
@@ -142,119 +151,151 @@ export class EmailCodeService {
           const e0 = (r.content || '').split(WAREHOUSE_SEPARATOR)[0]?.trim().toLowerCase();
           return e0 === emailLower || (r.email || '').trim().toLowerCase() === emailLower;
         });
-        content = hit?.content ?? null;
+        if (hit) {
+          const e0 = (hit.content || '').split(WAREHOUSE_SEPARATOR)[0]?.trim();
+          return e0 || hit.email || emailLower;
+        }
       }
     } catch (e) {
-      this.logger.warn(`resolveWarehouseCreds failed: ${(e as Error)?.message}`);
+      this.logger.warn(`resolveWarehouseEmail failed: ${(e as Error)?.message}`);
       return null;
     }
     if (!content) return null;
-    const parts = content.split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
-    // email----emailpwd----cursorpwd----token
-    const origEmail = parts[0] || emailLower;
-    const password = parts[1] || '';
-    if (!password) return null;
-    return { email: origEmail, password };
+    const origEmail = content.split(WAREHOUSE_SEPARATOR)[0]?.trim();
+    return origEmail || emailLower;
   }
 
-  /** 从三方邮件 list 里提取最新的 6 位验证码 */
-  private extractCode(mail: any): string | null {
-    for (const h of [mail?.text, mail?.subject, mail?.html]) {
-      if (typeof h !== 'string') continue;
-      const m = h.match(/(?<!\d)(\d{6})(?!\d)/);
-      if (m) return m[1];
+  /** 从 aizhp 返回体里提取 4-8 位验证码（兼容多种字段命名） */
+  private extractAizhpCode(data: any): string | null {
+    if (data == null) return null;
+    const pick = (v: any): string | null => {
+      if (typeof v === 'number' && Number.isInteger(v)) {
+        const s = String(v);
+        return /^\d{4,8}$/.test(s) ? s : null;
+      }
+      if (typeof v === 'string') {
+        const t = v.trim();
+        if (/^\d{4,8}$/.test(t)) return t;
+        const m = t.match(/(?<!\d)(\d{4,8})(?!\d)/);
+        if (m) return m[1];
+      }
+      return null;
+    };
+    // 常见承载字段优先
+    const candidates = [
+      data.verification_code,
+      data.data?.verification_code,
+      data.code,
+      data.data?.code,
+      data.result,
+      data.data?.result,
+      data.otp,
+      data.data,
+    ];
+    for (const c of candidates) {
+      const hit = pick(c);
+      if (hit) return hit;
+    }
+    // 兜底：从正文文本里抓
+    for (const c of [data.text, data.data?.text, data.message]) {
+      const hit = pick(c);
+      if (hit) return hit;
     }
     return null;
   }
 
-  /** 调 toolsvip 临时邮箱接口，返回 { found, verification_code, mail_time?, debug } */
-  private async fetchFromToolsvip(email: string, password: string, timeRange: number) {
+  /** aizhp 业务错误（success=false）→ 友好结构 */
+  private describeAizhpError(errText?: string): FriendlyError {
+    const raw = errText || '';
+    if (raw.includes('不存在')) {
+      return {
+        message: '没有找到这个邮箱对应的账号',
+        hint: '请确认邮箱与购买的账号一致；若确为本站账号请联系客服核实。',
+        terminal: true,
+      };
+    }
+    if (raw.includes('过期') || raw.includes('失效') || raw.includes('有效期')) {
+      return {
+        message: '该账号已过期或失效',
+        hint: '账号有效期已结束，如需继续使用请重新购买。',
+        terminal: true,
+      };
+    }
+    if (raw.includes('频繁') || raw.includes('限流') || raw.toLowerCase().includes('rate')) {
+      return {
+        message: '获取有点频繁，正在自动放慢重试',
+        hint: '请稍候，系统会继续帮你尝试获取验证码。',
+        terminal: false,
+      };
+    }
+    if (raw.toLowerCase().includes('api key') || raw.includes('鉴权') || raw.includes('未授权')) {
+      return CONFIG_ERROR;
+    }
+    // 其余（如"未收到验证码"/"超时"等）当作还没收到 → 继续轮询
+    return { message: '正在查收邮件…', hint: '', terminal: false };
+  }
+
+  /**
+   * 调 aizhp 接码网关。返回 { found, verification_code?, mail_time?, terminal?, message?, hint?, debug }。
+   * 网关侧会等待最多 waitSeconds 秒，故 axios 超时设为 waitSeconds + 余量。
+   */
+  private async fetchFromAizhp(email: string, waitSeconds: number) {
     let data: any;
     try {
-      const resp = await axios.get(TOOLSVIP_EMAILS_URL, {
-        params: { email, password, mailbox: 'inbox' },
-        timeout: 15000,
-      });
+      const resp = await axios.post(
+        AIZHP_EXTRACT_URL,
+        { email, rule: AIZHP_RULE, timeout: waitSeconds },
+        {
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': AIZHP_API_KEY },
+          timeout: (waitSeconds + 6) * 1000,
+          // 4xx 也拿到响应体（邮箱不存在 / API Key 无效都走这里）
+          validateStatus: () => true,
+        },
+      );
       data = resp.data;
     } catch (e: any) {
-      const status = e?.response?.status;
-      this.logger.warn(`toolsvip http error: status=${status} msg=${e?.message}`);
-      return { found: false, debug: { httpError: status || 'network', msg: String(e?.message || '') } };
+      // 网络 / 超时：可继续重试
+      this.logger.warn(`aizhp http error: ${e?.message}`);
+      return {
+        found: false,
+        terminal: false,
+        message: '网络不稳定，正在重试',
+        hint: '正在尝试重新连接接码服务。',
+        debug: { networkError: String(e?.message || '') },
+      };
     }
 
-    const list: any[] = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.emails)
-          ? data.emails
-          : [];
-
-    if (!list.length) {
-      // 返回的不是邮件数组（多半是密码错误 / 鉴权失败的错误体）
+    if (data && typeof data === 'object' && data.success) {
+      const code = this.extractAizhpCode(data);
+      if (code) {
+        const dateStr = data.date || data.data?.date;
+        const mailTime = dateStr ? Math.floor(Date.parse(dateStr) / 1000) : undefined;
+        return {
+          found: true,
+          verification_code: code,
+          mail_time: Number.isFinite(mailTime) ? mailTime : undefined,
+        };
+      }
+      // success 但没解析到码 → 还没收到，继续轮询
       let sample = '';
       try {
-        sample = typeof data === 'string' ? data.slice(0, 200) : JSON.stringify(data).slice(0, 200);
+        sample = JSON.stringify(data).slice(0, 200);
       } catch {
         sample = '<unserializable>';
       }
-      this.logger.warn(`toolsvip returned no list for ${email}; sample=${sample}`);
-      return { found: false, debug: { total: 0, sample } };
+      return { found: false, terminal: false, message: '正在查收邮件…', debug: { sample } };
     }
 
-    const now = Date.now();
-    const sorted = [...list].sort(
-      (a, b) => (Date.parse(b?.date || '') || 0) - (Date.parse(a?.date || '') || 0),
-    );
-    const within = (d?: string) => {
-      if (!timeRange || timeRange <= 0) return true;
-      if (!d) return true;
-      const t = Date.parse(d);
-      if (Number.isNaN(t)) return true;
-      return now - t <= timeRange * 1000 + 120_000; // 容忍 2 分钟时钟偏差
-    };
-
-    // 1) 时间窗内真·验证邮件（no-reply@cursor.sh / 含验证码关键词）
-    // 2) 时间窗内任意带 6 位码邮件
-    // 3) 忽略时间窗的验证邮件
-    // 4) 兜底：忽略时间窗取最新带码邮件
-    const isVerification = (m: any) => {
-      const frm = String(m?.from || '').toLowerCase();
-      if (frm.includes('no-reply@cursor') || frm.includes('noreply@cursor')) return true;
-      const blob = (String(m?.subject || '') + ' ' + String(m?.text || '')).toLowerCase();
-      return ['验证码', '完成验证', 'one-time', 'verification', 'verify', '登录 cursor', 'sign in to cursor'].some(
-        (k) => blob.includes(k),
-      );
-    };
-    // 只认真正的验证码邮件，避免误抓营销邮件里的数字。时间窗内优先，其次忽略时间窗。
-    const passes = [
-      sorted.filter((m) => within(m?.date) && isVerification(m)),
-      sorted.filter((m) => isVerification(m)),
-    ];
-
-    for (const group of passes) {
-      for (const m of group) {
-        const code = this.extractCode(m);
-        if (code) {
-          return {
-            found: true,
-            verification_code: code,
-            mail_time: m?.date ? Math.floor(Date.parse(m.date) / 1000) : undefined,
-            subject: m?.subject,
-            from: m?.from,
-          };
-        }
-      }
-    }
-
+    // success=false / 非预期结构 → 翻译错误
+    const errText = (data && typeof data === 'object' ? data.error : undefined) as string | undefined;
+    const friendly = this.describeAizhpError(errText);
+    if (!errText) this.logger.warn(`aizhp unexpected body for ${email}`);
     return {
       found: false,
-      debug: {
-        total: list.length,
-        latestFrom: sorted[0]?.from,
-        latestSubject: sorted[0]?.subject,
-        latestDate: sorted[0]?.date,
-      },
+      terminal: friendly.terminal,
+      message: friendly.message,
+      hint: friendly.hint,
+      debug: { error: errText },
     };
   }
 
@@ -291,27 +332,37 @@ export class EmailCodeService {
 
     const timeRange = params.timeRange && params.timeRange > 0 ? params.timeRange : 300;
 
-    // 仓库邮箱：用 content 里的「原始大小写邮箱 + 邮箱密码」调 toolsvip 临时邮箱接口
-    const creds = await this.resolveWarehouseCreds(email);
-    if (creds) {
-      try {
-        const r: any = await this.fetchFromToolsvip(creds.email, creds.password, timeRange);
-        if (r.found) {
-          return { ok: true, code: 'OK', ...r };
-        }
-        // 还没收到 → 让前端继续轮询（debug 字段方便在浏览器 Network 排查）
-        return { ok: true, code: 'OK', found: false, status: '正在查收邮件…', debug: r.debug };
-      } catch (e) {
-        this.logger.warn(`toolsvip fetch failed: ${(e as Error)?.message}`);
+    // 仓库邮箱：用 content 里的「原始大小写邮箱」调 aizhp 接码网关（无需邮箱密码）
+    const warehouseEmail = await this.resolveWarehouseEmail(email);
+    if (warehouseEmail) {
+      const r = await this.fetchFromAizhp(warehouseEmail, AIZHP_WAIT_SECONDS);
+      if (r.found) {
         return {
-          ok: false,
-          code: 'SERVICE_ERROR',
-          found: false,
-          message: '邮箱服务繁忙，正在重试',
-          hint: '正在重新连接临时邮箱服务。',
-          terminal: false,
+          ok: true,
+          code: 'OK',
+          found: true,
+          verification_code: r.verification_code,
+          mail_time: r.mail_time,
         };
       }
+      if (r.terminal) {
+        return {
+          ok: false,
+          code: 'WAREHOUSE_EMAIL_ERROR',
+          found: false,
+          message: r.message || '获取失败，请稍后重试',
+          hint: r.hint || '',
+          terminal: true,
+        };
+      }
+      // 还没收到 / 可重试 → 让前端继续轮询（debug 字段方便在浏览器 Network 排查）
+      return {
+        ok: true,
+        code: 'OK',
+        found: false,
+        status: r.message || '正在查收邮件…',
+        debug: r.debug,
+      };
     }
 
     const body: Record<string, any> = {
