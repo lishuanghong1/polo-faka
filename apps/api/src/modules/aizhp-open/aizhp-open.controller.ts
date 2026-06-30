@@ -49,8 +49,9 @@ export class AizhpOpenController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Get('ping')
-  ping() {
-    return this.svc.ping();
+  async ping() {
+    const { success, ...data } = await this.svc.ping();
+    return data;
   }
 
   /** 是否启用 */
@@ -64,13 +65,14 @@ export class AizhpOpenController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Get('accounts')
-  listAccounts(
+  async listAccounts(
     @Query('filter') filter?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     const f = (['all', 'used', 'unused'].includes(filter || '') ? filter : 'all') as 'all' | 'used' | 'unused';
-    return this.svc.listAccounts(f, Number(page) || 1, Number(pageSize) || 20);
+    const { success, ...data } = await this.svc.listAccounts(f, Number(page) || 1, Number(pageSize) || 20);
+    return data;
   }
 
   /**
@@ -98,35 +100,39 @@ export class AizhpOpenController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Get('quotas')
-  getQuotas() {
-    return this.svc.getQuotas();
+  async getQuotas() {
+    const { success, ...data } = await this.svc.getQuotas();
+    return data;
   }
 
   /** 发起退款（Admin） */
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Post('refund')
-  submitRefund(@Body() body: SubmitRefundDto) {
-    return this.svc.submitRefund(body.email, body.plan, body.refund_method);
+  async submitRefund(@Body() body: SubmitRefundDto) {
+    const { success, ...data } = await this.svc.submitRefund(body.email, body.plan, body.refund_method);
+    return data;
   }
 
   /** 退款记录列表（Admin，带本地订单号） */
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Get('refunds')
-  listRefunds(
+  async listRefunds(
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.svc.listRefundsEnriched(Number(page) || 1, Number(pageSize) || 50);
+    const { success, ...data } = await this.svc.listRefundsEnriched(Number(page) || 1, Number(pageSize) || 50);
+    return data;
   }
 
   /** 查单条退款状态（Admin） */
   @Roles('ADMIN')
   @ApiBearerAuth()
   @Get('refunds/:id')
-  getRefund(@Param('id') id: string) {
-    return this.svc.getRefund(Number(id));
+  async getRefund(@Param('id') id: string) {
+    const { success, ...data } = await this.svc.getRefund(Number(id));
+    return data;
   }
 
   // ====== 前台用户自助退款 ======
@@ -139,6 +145,7 @@ export class AizhpOpenController {
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('user-refund')
   async userRefund(@Body() body: UserRefundDto) {
-    return this.svc.userRefund(body.email);
+    const { success, ...data } = await this.svc.userRefund(body.email);
+    return data;
   }
 }
