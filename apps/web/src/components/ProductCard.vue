@@ -22,6 +22,7 @@ defineEmits<{ (e: 'click'): void }>();
 
 const stockClass = computed(() => {
   const p = props.product;
+  if (p.stock >= 9999) return []; // AIZHP 无限库存，不显示
   return [
     'text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
     p.stock <= 0
@@ -36,6 +37,7 @@ const stockClass = computed(() => {
 
 const stockTitle = computed(() => {
   const p = props.product;
+  if (p.stock >= 9999) return '';
   return p.stock <= 0
     ? p.source === 'local'
       ? '可下单付款，由客服人工发货'
@@ -45,6 +47,7 @@ const stockTitle = computed(() => {
 
 const stockText = computed(() => {
   const p = props.product;
+  if (p.stock >= 9999) return '';
   return p.stock <= 0
     ? p.source === 'local'
       ? '缺货 · 可代发'
@@ -111,7 +114,7 @@ function onImgError(e: Event) {
         </div>
         <div v-if="product.warrantyHours" class="text-[11px] text-ink-400 mt-1">质保 {{ product.warrantyHours }} 小时</div>
       </div>
-      <div class="text-right">
+      <div v-if="product.stock < 9999" class="text-right">
         <div :class="stockClass" :title="stockTitle">
           <span
             v-if="product.stock <= 0"

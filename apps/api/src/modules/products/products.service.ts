@@ -42,11 +42,18 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
-        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看当前可申请的号池账号数
+          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+            ? {}
+            : await this.computeStockBySku(p.id);
+        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看号池账号数；AIZHP 无限（从 API 实时获取）
         const skus = p.skus.map((s) => ({
           ...s,
-          stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+          stock:
+            p.deliveryType === 'POOL_QUOTA'
+              ? poolStock
+              : p.deliveryType === 'AIZHP'
+                ? 9999
+                : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -78,10 +85,17 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
+          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+            ? {}
+            : await this.computeStockBySku(p.id);
         const skus = p.skus.map((s) => ({
           ...s,
-          stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+          stock:
+            p.deliveryType === 'POOL_QUOTA'
+              ? poolStock
+              : p.deliveryType === 'AIZHP'
+                ? 9999
+                : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -102,12 +116,20 @@ export class ProductsService {
     if (!p) throw new NotFoundException('商品不存在');
     const poolStock =
       p.deliveryType === 'POOL_QUOTA' ? await this.computePoolAvailableAccounts() : 0;
-    const stockBySku = p.deliveryType === 'POOL_QUOTA' ? {} : await this.computeStockBySku(p.id);
+    const stockBySku =
+      p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+        ? {}
+        : await this.computeStockBySku(p.id);
     return {
       ...p,
       skus: p.skus.map((s) => ({
         ...s,
-        stock: p.deliveryType === 'POOL_QUOTA' ? poolStock : stockBySku[s.id] ?? 0,
+        stock:
+          p.deliveryType === 'POOL_QUOTA'
+            ? poolStock
+            : p.deliveryType === 'AIZHP'
+              ? 9999
+              : stockBySku[s.id] ?? 0,
       })),
     };
   }
