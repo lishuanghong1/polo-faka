@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decryptString, isEncrypted } from '../../common/crypto.util';
@@ -16,12 +16,12 @@ export interface AizhpOpenConfig {
   apiKey: string;
 }
 
-export class AizhpApiError extends Error {
+export class AizhpApiError extends HttpException {
   constructor(
     public httpStatus: number,
     public detail: string,
   ) {
-    super(detail);
+    super(detail, httpStatus);
   }
 }
 
@@ -109,8 +109,7 @@ export class AizhpOpenService {
       }
       return resp.data as T;
     } catch (e) {
-      if (e instanceof AizhpApiError) throw e;
-      if (e instanceof ServiceUnavailableException) throw e;
+      if (e instanceof HttpException) throw e;
       const err = e as any;
       const detail = err?.message || 'network error';
       this.logger.error(`aizhp-open ${method} ${path} network error: ${detail}`);
