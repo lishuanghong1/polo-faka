@@ -187,9 +187,9 @@ onMounted(() => load(false));
 </script>
 
 <template>
-  <!-- 入口卡片：接验证码 / 兑换码 / Token 登录 / 账户充值 -->
+  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 -->
   <section class="max-w-7xl mx-auto px-4 mt-6">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
         @click="router.push('/email-code')"
@@ -213,19 +213,6 @@ onMounted(() => load(false));
         <div class="min-w-0">
           <div class="font-semibold text-ink-900 text-sm md:text-base">兑换码下单</div>
           <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">已有兑换码？这里直接使用</div>
-        </div>
-      </button>
-
-      <button
-        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
-        @click="router.push('/tools/cursor-login')"
-      >
-        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
-          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 7a4 4 0 0 0-7 0v3H6v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8h-2V7a4 4 0 0 0 0 0z" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="min-w-0">
-          <div class="font-semibold text-ink-900 text-sm md:text-base">Token 一键登录</div>
-          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">粘 Token 自动登录 Cursor</div>
         </div>
       </button>
 
