@@ -352,7 +352,8 @@ export const api = {
   },
 
   redeem: {
-    info: (code: string) => http.get(`/redeem/${encodeURIComponent(code)}`),
+    info: (code: string) =>
+      http.get(`/redeem/${encodeURIComponent(code)}`, { silent: true } as any),
     use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
   },
 

@@ -231,7 +231,7 @@ export class RedeemService {
   /** 查询单个码状态（不消耗）+ 历史兑换订单 */
   async info(rawCode: string) {
     const code = await this.prisma.redeemCode.findUnique({
-      where: { code: rawCode.trim() },
+      where: { code: rawCode.trim().toUpperCase() },
     });
     if (!code) throw new NotFoundException('兑换码不存在');
     const sku = await this.prisma.sku.findUnique({
@@ -310,7 +310,7 @@ export class RedeemService {
     ip?: string;
     userAgent?: string;
   }) {
-    const rawCode = input.code?.trim();
+    const rawCode = input.code?.trim().toUpperCase();
     if (!rawCode) throw new BadRequestException('请填写兑换码');
 
     // 用事务 + select for update 防并发超用

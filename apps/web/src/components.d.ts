@@ -8,6 +8,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AdminPageHeader: typeof import('./components/admin/AdminPageHeader.vue')['default']
+    AdminSearchInput: typeof import('./components/admin/AdminSearchInput.vue')['default']
     AnnouncementDialog: typeof import('./components/AnnouncementDialog.vue')['default']
     BackToTop: typeof import('./components/BackToTop.vue')['default']
     BrandButton: typeof import('./components/BrandButton.vue')['default']

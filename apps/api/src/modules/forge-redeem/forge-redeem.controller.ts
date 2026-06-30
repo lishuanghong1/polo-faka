@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -74,6 +74,9 @@ export class ForgeRedeemController {
         userId: userId ?? null,
       });
     } catch (e) {
+      // 兑换码不存在、余额不足、并发冲突等本地业务异常应保留原状态码；
+      // 只有三方 OpenAPI 错误才转换为上游友好错误。
+      if (e instanceof HttpException) throw e;
       throw ForgeOpenapiService.toHttpException(e);
     }
   }

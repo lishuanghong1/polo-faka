@@ -15,7 +15,11 @@ const codeNano = customAlphabet(codeAlphabet, 16);
 function makeRedeemCode(prefix = 'FK'): string {
   // FK-XXXX-XXXX-XXXX-XXXX
   const raw = codeNano();
-  return `${prefix}-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}`;
+  return `${prefix.trim().toUpperCase()}-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}`;
+}
+
+function normalizeRedeemCode(value: string): string {
+  return String(value || '').trim().toUpperCase();
 }
 
 @Injectable()
@@ -131,7 +135,7 @@ export class ForgeRedeemCodesService {
   /** 查询单个码状态（不消耗）+ 历史订单 */
   async info(rawCode: string) {
     const code = await this.prisma.forgeRedeemCode.findUnique({
-      where: { code: (rawCode || '').trim() },
+      where: { code: normalizeRedeemCode(rawCode) },
       include: {
         orders: {
           orderBy: { id: 'desc' },

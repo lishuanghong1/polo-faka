@@ -35,6 +35,10 @@ function makeCustomerRef(orderNo: string): string {
   return createHash('sha256').update(`${orderNo}::${salt}`).digest('hex').slice(0, 32);
 }
 
+function normalizeRedeemCode(value: string): string {
+  return String(value || '').trim().toUpperCase();
+}
+
 /**
  * 三方订单核心服务：两条下单路径
  *   - REDEEM：兑换码扣余额 → 立即调三方 → 返回订单（同步）
@@ -62,7 +66,7 @@ export class ForgeOrdersService {
     ip?: string;
     userId?: number | null;
   }) {
-    const rawCode = (input.code || '').trim();
+    const rawCode = normalizeRedeemCode(input.code);
     if (!rawCode) throw new BadRequestException('请填写兑换码');
 
     const product = await this.products.getEnabledOrThrow(input.typeKey);

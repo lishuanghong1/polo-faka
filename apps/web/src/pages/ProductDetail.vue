@@ -151,7 +151,7 @@ async function buy() {
       return;
     }
     if (!balanceEnough.value) {
-      ElMessage.warning('余额不足，前往充值');
+      ElMessage.warning('余额不足，请联系客服充值');
       router.push('/recharge');
       return;
     }
@@ -351,7 +351,7 @@ async function buy() {
             </div>
             <div class="text-[11px] text-ink-500 mt-0.5">
               <template v-if="!userStore.isLoggedIn">登录后可用</template>
-              <template v-else-if="!balanceEnough">余额不足，前往充值</template>
+              <template v-else-if="!balanceEnough">余额不足，请联系客服充值</template>
               <template v-else>即时扣款，立即发货</template>
             </div>
           </button>
@@ -445,7 +445,7 @@ async function buy() {
                   : '登录后用积分支付')
               : payMethod === 'BALANCE'
               ? (userStore.isLoggedIn
-                  ? (balanceEnough ? '余额支付' : '余额不足 · 去充值')
+                  ? (balanceEnough ? '余额支付' : '余额不足 · 联系客服')
                   : '登录后用余额支付')
               : (alipayEnabled
                   ? (isPoolQuotaProduct && !userStore.isLoggedIn

@@ -237,8 +237,8 @@ onMounted(() => load(false));
           <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12M16 13h2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-ink-900 text-sm md:text-base">账户充值</div>
-          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">余额可用于下单，支持自定义金额</div>
+          <div class="font-semibold text-ink-900 text-sm md:text-base">联系客服充值</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">余额充值仅支持客服人工入账</div>
         </div>
       </button>
     </div>

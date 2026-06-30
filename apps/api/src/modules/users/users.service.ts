@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
+import { VipService } from '../vip/vip.service';
 
 /**
  * 允许 ADMIN 通过 PUT /users/:id 修改的字段白名单。
@@ -21,7 +22,10 @@ const ALLOWED_ROLES = new Set(['USER', 'ADMIN']);
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private vip: VipService,
+  ) {}
 
   list(page = 1, pageSize = 20, keyword?: string) {
     const kw = (keyword || '').trim();
@@ -177,9 +181,9 @@ export class UsersService {
             createdAt: true,
           },
         }),
-        // 已确认入账（PAID）的充值总和，用于和 totalRecharged 交叉验证
-        this.prisma.rechargeOrder.aggregate({
-          where: { userId: id, status: 'PAID' },
+        // 所有确认入账的充值流水（支付宝 + 客服/管理员充值），用于和 totalRecharged 交叉验证
+        this.prisma.balanceLog.aggregate({
+          where: { userId: id, type: 'RECHARGE' },
           _sum: { amount: true },
           _count: { _all: true },
         }),
@@ -245,7 +249,7 @@ export class UsersService {
       throw new BadRequestException('单次调整金额超过上限（¥1,000,000）');
     }
     const safeAmount = Math.round(amount * 100) / 100;
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const exists = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
       if (!exists) throw new NotFoundException('用户不存在');
 
@@ -260,12 +264,16 @@ export class UsersService {
           throw new BadRequestException('调整后余额会变成负数，已拒绝');
         }
       } else {
-        // 加余额：原子 increment 杜绝 lost-update
+        // 正数调整即客服充值：加余额，同时累计 VIP/优惠额度。
         await tx.user.update({
           where: { id: userId },
           data: { balance: { increment: new Prisma.Decimal(safeAmount) } },
         });
       }
+
+      const upgrade = safeAmount > 0
+        ? await this.vip.accrueRechargeAndUpgrade(tx, userId, safeAmount)
+        : null;
 
       const after = await tx.user.findUnique({
         where: { id: userId },
@@ -277,12 +285,16 @@ export class UsersService {
           userId,
           amount: new Prisma.Decimal(safeAmount),
           balance: new Prisma.Decimal(newBalance),
-          type: 'ADJUST',
-          note: note?.slice(0, 255),
+          type: safeAmount > 0 ? 'RECHARGE' : 'ADJUST',
+          note: (note || (safeAmount > 0 ? '客服充值' : '管理员调整')).slice(0, 255),
         },
       });
-      return newBalance;
+      return { newBalance, upgrade };
     });
+    if (result.upgrade?.upgraded) {
+      await this.vip.writeUpgradeAudit(userId, result.upgrade.from, result.upgrade.to);
+    }
+    return result.newBalance;
   }
 
   /**

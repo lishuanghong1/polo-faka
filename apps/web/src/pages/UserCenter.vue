@@ -222,7 +222,7 @@ function copyInvite() {
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              充值
+              联系客服充值
             </BrandButton>
             <BrandButton variant="secondary" size="md" @click="tab = 'logs'">
               明细
@@ -497,7 +497,7 @@ function copyInvite() {
           hint="账户余额可用于购买商城内任意商品"
         >
           <template #action>
-            <BrandButton variant="primary" size="sm" @click="go('/recharge')">立即充值</BrandButton>
+            <BrandButton variant="primary" size="sm" @click="go('/recharge')">联系客服充值</BrandButton>
           </template>
         </EmptyState>
       </div>
@@ -519,7 +519,7 @@ function copyInvite() {
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <div class="font-medium text-ink-900">余额充值</div>
+              <div class="font-medium text-ink-900">余额充值记录</div>
               <span
                 class="inline-flex h-6 px-2 items-center text-[11px] rounded-md border whitespace-nowrap"
                 :class="rechargeStatusInfo(r.status).cls"

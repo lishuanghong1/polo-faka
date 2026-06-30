@@ -109,16 +109,32 @@ async function checkInfo() {
   if (!c) return;
   checking.value = true;
   reset();
+  const loadBalanceCode = async () => {
+    const r = await api.forge.check(c.toUpperCase());
+    balanceInfo.value = r;
+    if (r.products.length) selectedTypeKey.value = r.products[0].typeKey;
+  };
+  const loadCardCode = async () => {
+    cardInfo.value = await api.redeem.info(c.toUpperCase());
+  };
+  // 前缀只作为查询顺序提示。三方兑换码支持后台自定义前缀，不能只靠 FK 判断。
+  const attempts = detectedKind.value === 'balance'
+    ? [loadBalanceCode, loadCardCode]
+    : [loadCardCode, loadBalanceCode];
+  let lastError: any;
   try {
-    if (detectedKind.value === 'balance') {
-      const r = await api.forge.check(c);
-      balanceInfo.value = r;
-      if (r.products.length) selectedTypeKey.value = r.products[0].typeKey;
-    } else {
-      cardInfo.value = await api.redeem.info(c);
+    for (const attempt of attempts) {
+      try {
+        await attempt();
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
+    if (lastError) throw lastError;
   } catch (e: any) {
-    const msg = e?.response?.data?.error?.message || e?.message || '兑换码不存在';
+    const msg = e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换码不存在';
     ElMessage.error(msg);
   } finally {
     checking.value = false;
@@ -133,13 +149,13 @@ async function doRedeemCard() {
   loading.value = true;
   try {
     const order = await api.redeem.use({
-      code: code.value.trim(),
+      code: code.value.trim().toUpperCase(),
       contact: contact.value?.trim() || undefined,
     });
     cardResult.value = order;
     ElMessage.success('兑换成功');
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.message || '兑换失败');
+    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换失败');
   } finally {
     loading.value = false;
   }
@@ -154,14 +170,14 @@ async function doPlaceBalance() {
   loading.value = true;
   try {
     const order = await api.forge.order({
-      code: balanceInfo.value.code,
+      code: balanceInfo.value.code.toUpperCase(),
       typeKey: selectedTypeKey.value,
       quantity: quantity.value,
       contact: contact.value?.trim() || undefined,
     });
     router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.message || '下单失败');
+    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '下单失败');
   } finally {
     loading.value = false;
   }
@@ -292,7 +308,7 @@ function goCardOrder() {
             placeholder="请输入兑换码"
             class="flex-1 px-4 py-2.5 border border-ink-200 rounded-lg text-sm font-mono uppercase tracking-wider focus:border-brand-400 focus:ring-1 focus:ring-brand-200 outline-none"
             @blur="checkInfo"
-            @keydown.enter="detectedKind === 'balance' ? doPlaceBalance() : doRedeemCard()"
+            @keydown.enter.prevent="checkInfo"
           />
           <button
             class="px-4 py-2.5 border border-ink-200 hover:bg-ink-50 rounded-lg text-sm"
