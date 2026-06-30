@@ -2,6 +2,7 @@ import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AlipayService } from '../alipay/alipay.service';
 import { ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
+import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 
 /**
@@ -13,6 +14,7 @@ const SECRET_KEYS = new Set<string>([
   'alipay_private_key',
   'alipay_public_key',
   'email_code_agent_secret',
+  'aizhp_open_api_key',
 ]);
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */
@@ -24,6 +26,7 @@ export class SiteSettingsService {
     private prisma: PrismaService,
     @Optional() @Inject(forwardRef(() => AlipayService)) private alipay?: AlipayService,
     @Optional() @Inject(forwardRef(() => ForgeOpenapiService)) private forge?: ForgeOpenapiService,
+    @Optional() @Inject(forwardRef(() => AizhpOpenService)) private aizhpOpen?: AizhpOpenService,
   ) {}
 
   async getPublic() {
@@ -116,6 +119,9 @@ export class SiteSettingsService {
     }
     if (keys.some((k) => k.startsWith('email_code_'))) {
       this.forge?.invalidate();
+    }
+    if (keys.some((k) => k.startsWith('aizhp_open_'))) {
+      this.aizhpOpen?.invalidate();
     }
     return { updated: ops.length };
   }

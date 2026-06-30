@@ -229,6 +229,7 @@ enum DeliveryType {
   CARD_KEY      // 卡密自动发货
   POOL_QUOTA    // 号池额度包（push token 后查询）
   MANUAL        // 人工发货
+  AIZHP         // Aizhp 渠道获取账号
 }
 
 model Product {

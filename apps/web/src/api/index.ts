@@ -275,6 +275,17 @@ export const api = {
     recycleRefresh: (id: number) => http.post(`/recycle/${id}/refresh`),
     recycleRemove: (id: number) => http.delete(`/recycle/${id}`),
 
+    // Aizhp Open 渠道
+    aizhpPing: () => http.get('/aizhp-open/ping'),
+    aizhpAccounts: (params?: { filter?: string; page?: number; pageSize?: number }) =>
+      http.get('/aizhp-open/accounts', { params }),
+    aizhpQuotas: () => http.get('/aizhp-open/quotas'),
+    aizhpRefund: (body: { email: string; plan: string; refund_method?: string }) =>
+      http.post('/aizhp-open/refund', body),
+    aizhpRefunds: (params?: { page?: number; pageSize?: number }) =>
+      http.get('/aizhp-open/refunds', { params }),
+    aizhpRefundDetail: (id: number) => http.get(`/aizhp-open/refunds/${id}`),
+
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
 
@@ -649,6 +660,26 @@ export const api = {
         order_no?: string;
         request_id?: string;
       }>('/email-code/fetch', body, { silent: true } as any),
+  },
+
+  aizhpCode: {
+    enabled: () => http.get<{ enabled: boolean }>('/aizhp-open/enabled'),
+    fetch: (body: { email: string; since?: number }) =>
+      http.post<{
+        ok: boolean;
+        found: boolean;
+        verification_code?: string;
+        message?: string;
+        terminal?: boolean;
+      }>('/aizhp-open/code', body, { silent: true } as any),
+    userRefund: (body: { email: string }) =>
+      http.post<{
+        success: boolean;
+        refund_id?: number;
+        message?: string;
+        plan?: string;
+        remaining_quota?: string;
+      }>('/aizhp-open/user-refund', body),
   },
 };
 

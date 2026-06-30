@@ -13,6 +13,7 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { VipService } from '../vip/vip.service';
 import { PoolService } from '../pool/pool.service';
 import { PointsService } from '../points/points.service';
+import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -27,6 +28,7 @@ export class OrdersService {
     private vip: VipService,
     private pool: PoolService,
     private points: PointsService,
+    private aizhpOpen: AizhpOpenService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -300,6 +302,46 @@ export class OrdersService {
             data: { sales: { increment: order.quantity } },
           }),
         ]);
+        return;
+      }
+
+      // ── AIZHP 渠道发货 ──
+      if (order.product.deliveryType === 'AIZHP') {
+        const account = await this.aizhpOpen.fetchUnusedAccount();
+        if (!account) {
+          // 无可用账号，订单停留 PAID 状态等待人工处理
+          return;
+        }
+        // 从 SKU attrs 读取档位
+        const sku = await this.prisma.sku.findUnique({ where: { id: order.skuId }, select: { attrs: true } });
+        const aizhpPlan = (sku?.attrs as any)?.aizhpPlan || 'pro';
+        // 将获取的账号写入卡密表（复用现有卡密展示逻辑）
+        await this.prisma.$transaction(async (tx) => {
+          await tx.cardKey.create({
+            data: {
+              productId: order.productId,
+              skuId: order.skuId,
+              content: account.email,
+              status: 'SOLD',
+              soldAt: new Date(),
+              orderNo,
+              remark: `[aizhp:${aizhpPlan}] id=${account.id} group=${account.group_name}`,
+            },
+          });
+          await tx.order.update({
+            where: { orderNo },
+            data: { status: 'DELIVERED', deliveredAt: new Date() },
+          });
+          await tx.sku.update({
+            where: { id: order.skuId },
+            data: { sales: { increment: order.quantity } },
+          });
+          await tx.product.update({
+            where: { id: order.productId },
+            data: { sales: { increment: order.quantity } },
+          });
+          await this.points.settleDeliveredLocalOrder(tx, orderNo);
+        });
         return;
       }
 

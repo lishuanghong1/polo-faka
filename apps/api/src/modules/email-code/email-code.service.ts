@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import axios from 'axios';
 import { ForgeApiError, ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
+import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -98,6 +99,7 @@ export class EmailCodeService {
 
   constructor(
     private readonly forge: ForgeOpenapiService,
+    private readonly aizhpOpen: AizhpOpenService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -363,6 +365,34 @@ export class EmailCodeService {
         status: r.message || '正在查收邮件…',
         debug: r.debug,
       };
+    }
+
+    // Aizhp 渠道账号：检查是否有 [aizhp 标记的卡密
+    const aizhpCardKey = await this.prisma.cardKey.findFirst({
+      where: { content: email, remark: { startsWith: '[aizhp' }, status: 'SOLD' },
+      orderBy: { id: 'desc' },
+    });
+    if (aizhpCardKey && await this.aizhpOpen.isEnabled()) {
+      try {
+        const resp = await this.aizhpOpen.fetchCode(email);
+        if (resp.success && resp.code) {
+          return { ok: true, code: 'OK', found: true, verification_code: resp.code };
+        }
+        return {
+          ok: true,
+          code: 'OK',
+          found: false,
+          status: resp.error || '正在查收邮件…',
+        };
+      } catch (e: any) {
+        return {
+          ok: false,
+          code: 'AIZHP_ERROR',
+          found: false,
+          message: e?.message || '接码服务暂时不可用',
+          terminal: false,
+        };
+      }
     }
 
     const body: Record<string, any> = {

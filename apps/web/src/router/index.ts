@@ -16,6 +16,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'recharge-detail': '账户充值',
   redeem: '兑换码下单',
   recycle: '账号回收',
+  'aizhp-recycle': '账号退款',
   'forge-product': '商品详情',
   'forge-order': '订单详情',
   'email-code-page': '在线接码',
@@ -41,6 +42,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'admin-forge-redeem': '三方兑换码',
   'admin-vip': 'VIP 等级',
   'admin-vip-discounts': '商品折扣',
+  'admin-aizhp': 'Aizhp 渠道',
 };
 
 const routes: RouteRecordRaw[] = [
@@ -88,6 +90,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'download', redirect: '/tools/desktop' },
       { path: 'redeem', name: 'redeem', component: () => import('@/pages/Redeem.vue') },
       { path: 'recycle', name: 'recycle', component: () => import('@/pages/Recycle.vue') },
+      { path: 'aizhp-recycle', name: 'aizhp-recycle', component: () => import('@/pages/AizhpRecycle.vue') },
       {
         path: 'recharge',
         name: 'recharge',
@@ -144,6 +147,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'forge-orders', redirect: '/admin/orders' },
       { path: 'vip', name: 'admin-vip', component: () => import('@/pages/admin/Vip.vue') },
       { path: 'vip/discounts', name: 'admin-vip-discounts', component: () => import('@/pages/admin/VipDiscounts.vue') },
+      { path: 'aizhp', name: 'admin-aizhp', component: () => import('@/pages/admin/AizhpRefund.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFound.vue') },

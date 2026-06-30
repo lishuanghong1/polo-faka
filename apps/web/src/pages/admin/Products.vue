@@ -55,6 +55,9 @@ function startEdit(p: any) {
     const attrs = s.attrs && typeof s.attrs === 'object' ? s.attrs : {};
     s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
   }
+  // AIZHP 档位：从第一个 SKU 的 attrs.aizhpPlan 读取
+  const firstSkuAttrs = editing.value.skus?.[0]?.attrs;
+  editing.value._aizhpPlan = (firstSkuAttrs && typeof firstSkuAttrs === 'object' ? firstSkuAttrs.aizhpPlan : '') || 'pro';
 }
 
 function newProduct() {
@@ -76,6 +79,7 @@ function newProduct() {
     pointsPayEnabled: true,
     pointsAwardRate: null,
     _pointsAwardRatePct: '',
+    _aizhpPlan: 'pro',
   };
 }
 
@@ -108,8 +112,19 @@ async function save() {
       delete attrs.quota;
       delete attrs.poolQuotaPerUnit;
       delete attrs.quotaPerUnit;
+      delete attrs.aizhpPlan;
       if (Number.isFinite(validityDays) && validityDays > 0) attrs.poolValidityDays = Math.floor(validityDays);
       else delete attrs.poolValidityDays;
+    } else if (payload.deliveryType === 'AIZHP') {
+      // 将档位存入每个 SKU 的 attrs
+      attrs.aizhpPlan = payload._aizhpPlan || 'pro';
+      delete attrs.poolQuota;
+      delete attrs.quotaTotal;
+      delete attrs.quota;
+      delete attrs.poolQuotaPerUnit;
+      delete attrs.quotaPerUnit;
+      delete attrs.poolValidityDays;
+      delete attrs.validityDays;
     } else {
       delete attrs.poolQuota;
       delete attrs.quotaTotal;
@@ -118,11 +133,13 @@ async function save() {
       delete attrs.quotaPerUnit;
       delete attrs.poolValidityDays;
       delete attrs.validityDays;
+      delete attrs.aizhpPlan;
     }
     s.attrs = Object.keys(attrs).length ? attrs : null;
     delete s._poolValidityDays;
     return s;
   });
+  delete payload._aizhpPlan;
 
   payload.pointsAwardEnabled = !!payload.pointsAwardEnabled;
   payload.pointsPayEnabled = !!payload.pointsPayEnabled;
@@ -344,7 +361,17 @@ function removeSku(i: number) {
             <option value="CARD_KEY">卡密自动发货</option>
             <option value="POOL_QUOTA">号池额度包</option>
             <option value="MANUAL">人工发货</option>
+            <option value="AIZHP">Aizhp 渠道</option>
           </select>
+        </div>
+        <div v-if="editing.deliveryType === 'AIZHP'">
+          <label class="block text-xs text-ink-500 mb-1">退款档位（账号类型）</label>
+          <select v-model="editing._aizhpPlan" class="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white">
+            <option value="pro">Pro</option>
+            <option value="pro+">Pro+</option>
+            <option value="ultra">Ultra</option>
+          </select>
+          <p class="text-[11px] text-ink-400 mt-1">用户退款时自动按此档位提交，无需手动选择</p>
         </div>
       </div>
       <div>

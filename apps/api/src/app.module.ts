@@ -32,6 +32,7 @@ import { CaptchaModule } from './modules/captcha/captcha.module';
 import { RechargeModule } from './modules/recharge/recharge.module';
 import { VipModule } from './modules/vip/vip.module';
 import { PointsModule } from './modules/points/points.module';
+import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { PointsModule } from './modules/points/points.module';
     RechargeModule,
     VipModule,
     PointsModule,
+    AizhpOpenModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -50,7 +50,13 @@ const emailCodeFields: Field[] = [
   { key: 'email_code_timeout_ms', label: '请求超时（毫秒）', placeholder: '15000', isPublic: false, type: 'text', hint: '建议 10000-30000；过小容易超时' },
 ];
 
-const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret']);
+const aizhpFields: Field[] = [
+  { key: 'aizhp_open_enabled', label: '启用 Aizhp 渠道', isPublic: false, type: 'switch', hint: '启用后可创建 AIZHP 发货类型的商品，下单后自动从渠道获取账号' },
+  { key: 'aizhp_open_api_base', label: 'API Base URL', placeholder: 'https://account.aizhp.site', isPublic: false, type: 'text', mono: true, hint: '留空使用默认地址。不带尾部斜杠。' },
+  { key: 'aizhp_open_api_key', label: 'API Key', placeholder: '你的 X-User-API-Key', isPublic: false, type: 'textarea', mono: true, hint: '在 aizhp 平台获取，加密存储。' },
+];
+
+const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key']);
 const SECRET_PLACEHOLDER = '__keep__';
 
 const values = ref<Record<string, string>>({});
@@ -60,7 +66,7 @@ const hasValueMap = ref<Record<string, boolean>>({});
 const secretEdited = ref<Record<string, boolean>>({});
 const loading = ref(false);
 const saving = ref(false);
-const activeTab = ref<'site' | 'alipay' | 'email_code'>('site');
+const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp'>('site');
 
 async function load() {
   loading.value = true;
@@ -82,6 +88,8 @@ async function load() {
     if (!values.value.alipay_sign_type) values.value.alipay_sign_type = 'RSA2';
     if (values.value.email_code_enabled === undefined) values.value.email_code_enabled = 'false';
     if (!values.value.email_code_timeout_ms) values.value.email_code_timeout_ms = '15000';
+    if (values.value.aizhp_open_enabled === undefined) values.value.aizhp_open_enabled = 'false';
+    if (!values.value.aizhp_open_api_base) values.value.aizhp_open_api_base = 'https://account.aizhp.site';
   } finally {
     loading.value = false;
   }
@@ -91,7 +99,7 @@ async function save() {
   saving.value = true;
   try {
     const payload: Record<string, { value: string; isPublic?: boolean }> = {};
-    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields]) {
+    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields]) {
       if (SECRET_KEYS.has(f.key)) {
         if (!secretEdited.value[f.key]) {
           // 没改过 → 发占位符，让后端跳过
@@ -151,6 +159,11 @@ onMounted(load);
           activeTab === 'email_code' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'email_code'"
       >接码接口</button>
+      <button
+        :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
+          activeTab === 'aizhp' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
+        @click="activeTab = 'aizhp'"
+      >Aizhp 渠道</button>
     </div>
 
     <!-- 站点信息 -->
@@ -326,6 +339,66 @@ onMounted(load);
           <p>· 前台路径：<code class="font-mono text-ink-700">POST /api/email-code/fetch</code>（本站后端代理，<b>不</b>暴露三方 API Key 到浏览器）</p>
           <p>· 单 IP 限流：每 10 秒最多 5 次（兼容客户端 3s 轮询）</p>
           <p>· 错误码：EMAIL_NOT_OWNED / EMAIL_CODE_NOT_ENABLED / EMAIL_INACTIVE / EMAIL_EXPIRED 会原样透传</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Aizhp 渠道 -->
+    <div v-show="activeTab === 'aizhp'" class="space-y-4">
+      <div class="card p-4 bg-sky-50/40 border-sky-200 text-sky-900 text-xs flex gap-3">
+        <span class="text-base">ℹ</span>
+        <div class="space-y-1.5 leading-relaxed">
+          <p>对接 <b>Aizhp Open API</b>（<code class="font-mono">/uopen/v1/*</code>）。鉴权方式：<b>X-User-API-Key</b> 请求头。</p>
+          <p><b>功能</b>：账号池管理、接码、退款。启用后可创建 「AIZHP」发货类型的商品，用户下单后自动从渠道获取未使用账号发货。</p>
+          <p><b>安全</b>：API Key 会被 AES-GCM 加密入库，保存后不再回显。</p>
+        </div>
+      </div>
+
+      <div class="card p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div
+            v-for="f in aizhpFields"
+            :key="f.key"
+            :class="f.type === 'textarea' ? 'md:col-span-2' : ''"
+          >
+            <label class="block text-sm font-medium text-ink-800 mb-1">{{ f.label }}</label>
+            <p class="text-[11px] text-ink-400 mb-1.5 font-mono">key: {{ f.key }}</p>
+
+            <label v-if="f.type === 'switch'" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox"
+                :checked="values[f.key] === 'true'"
+                @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
+              />
+              <span class="ml-2 text-sm text-ink-700">
+                {{ values[f.key] === 'true' ? '开启' : '关闭' }}
+              </span>
+            </label>
+
+            <div v-else-if="f.type === 'textarea'">
+              <textarea
+                v-model="values[f.key]"
+                rows="3"
+                :placeholder="SECRET_KEYS.has(f.key) && hasValueMap[f.key] && !secretEdited[f.key] ? '已设置（留空保持不变；输入新值覆盖）' : f.placeholder"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm font-mono break-all"
+                @input="SECRET_KEYS.has(f.key) && markSecretEdit(f.key)"
+              />
+              <p v-if="SECRET_KEYS.has(f.key) && hasValueMap[f.key]" class="text-[11px] text-brand-700 mt-1">
+                ✓ 已设置且加密保存于数据库
+              </p>
+              <p v-else-if="SECRET_KEYS.has(f.key)" class="text-[11px] text-ink-400 mt-1">
+                ✗ 尚未设置
+              </p>
+            </div>
+
+            <input
+              v-else
+              v-model="values[f.key]"
+              :placeholder="f.placeholder"
+              :class="['w-full px-3 py-2 border border-ink-200 rounded-lg text-sm', f.mono ? 'font-mono text-xs' : '']"
+            />
+
+            <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
+          </div>
         </div>
       </div>
     </div>
