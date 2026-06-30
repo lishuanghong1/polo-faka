@@ -6,6 +6,7 @@ import api from '@/api';
 import { useSiteStore } from '@/stores/site';
 import ProductCard from '@/components/ProductCard.vue';
 import Skeleton from '@/components/Skeleton.vue';
+import AnnouncementBanner from '@/components/AnnouncementBanner.vue';
 
 const site = useSiteStore();
 const router = useRouter();
@@ -187,8 +188,13 @@ onMounted(() => load(false));
 </script>
 
 <template>
+  <!-- 公告横幅 -->
+  <section class="max-w-7xl mx-auto px-4 mt-4">
+    <AnnouncementBanner />
+  </section>
+
   <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 -->
-  <section class="max-w-7xl mx-auto px-4 mt-6">
+  <section class="max-w-7xl mx-auto px-4 mt-4">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
