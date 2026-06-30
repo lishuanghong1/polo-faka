@@ -450,7 +450,22 @@ export class OrdersService {
         warehouseCardKeyIds.has(cardKey.id) || isWarehouseDeliveryRemark(remark),
     }));
 
-    return { ...order, cardKeys, redeemCode };
+    // AIZHP 订单：查询退款状态
+    let aizhpRefund: { id: number; status: string; plan?: string } | null = null;
+    if ((order.product.deliveryType as string) === 'AIZHP' && order.status === 'DELIVERED' && order.cardKeys.length) {
+      const ck = order.cardKeys[0];
+      const refundMatch = (ck.remark || '').match(/refund=(\d+)/);
+      const planMatch = (ck.remark || '').match(/\[aizhp:([^\]]+)\]/);
+      if (refundMatch) {
+        const refundId = Number(refundMatch[1]);
+        const refundInfo = await this.aizhpOpen.getRefundStatus(refundId);
+        aizhpRefund = refundInfo
+          ? { id: refundInfo.id, status: refundInfo.status, plan: planMatch?.[1] || undefined }
+          : { id: refundId, status: 'unknown', plan: planMatch?.[1] || undefined };
+      }
+    }
+
+    return { ...order, cardKeys, redeemCode, aizhpRefund };
   }
 
   /**

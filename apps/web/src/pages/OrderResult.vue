@@ -50,6 +50,19 @@ const needContactSupport = computed(() => {
 
 const statusInfo = computed(() => statusOf(order.value?.status));
 const isPoolQuotaOrder = computed(() => order.value?.product?.deliveryType === 'POOL_QUOTA');
+const isAizhpOrder = computed(() => order.value?.product?.deliveryType === 'AIZHP');
+const aizhpRefund = computed(() => order.value?.aizhpRefund || null);
+const aizhpRefundLabel = computed(() => {
+  const s = aizhpRefund.value?.status;
+  const map: Record<string, { text: string; cls: string }> = {
+    refunded: { text: '已退款', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+    external_pending: { text: '退款处理中', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+    sent: { text: '退款处理中', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+    failed: { text: '退款失败', cls: 'text-rose-700 bg-rose-50 border-rose-200' },
+    rejected: { text: '退款被拒绝', cls: 'text-rose-700 bg-rose-50 border-rose-200' },
+  };
+  return map[s || ''] || { text: s || '未知', cls: 'text-ink-600 bg-ink-50 border-ink-200' };
+});
 
 const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
   return (order.value?.cardKeys || [])
@@ -630,9 +643,38 @@ const statusHeroClass = computed(() => {
         </ul>
       </div>
 
+      <!-- ────── AIZHP 退款状态 ────── -->
+      <div v-if="aizhpRefund" class="card p-5 md:p-6 mb-4">
+        <h3 class="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-2">
+          <span class="w-1 h-4 bg-rose-500 rounded-full" />
+          退款状态
+        </h3>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3">
+            <span
+              class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg border"
+              :class="aizhpRefundLabel.cls"
+            >
+              {{ aizhpRefundLabel.text }}
+            </span>
+            <span v-if="aizhpRefund.plan" class="text-xs text-ink-500">档位：{{ aizhpRefund.plan }}</span>
+          </div>
+          <span class="text-xs text-ink-400 font-mono">#{{ aizhpRefund.id }}</span>
+        </div>
+        <p v-if="aizhpRefundLabel.text === '已退款'" class="mt-3 text-xs text-emerald-700 leading-relaxed">
+          账号已成功退款，该账号已失效。
+        </p>
+        <p v-else-if="['external_pending', 'sent'].includes(aizhpRefund.status)" class="mt-3 text-xs text-amber-700 leading-relaxed">
+          退款申请已提交，正在处理中，请耐心等待。
+        </p>
+        <p v-else-if="['failed', 'rejected'].includes(aizhpRefund.status)" class="mt-3 text-xs text-rose-700 leading-relaxed">
+          退款处理失败，请联系客服协助处理。
+        </p>
+      </div>
+
       <!-- ────── 缺货 → 联系客服 ────── -->
       <div
-        v-else-if="needContactSupport"
+        v-if="!plainCardKeys.length && !deliveryAccounts.length && needContactSupport"
         class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/80 to-orange-50/40 p-5 md:p-6 mb-4"
       >
         <div class="flex items-start gap-3">

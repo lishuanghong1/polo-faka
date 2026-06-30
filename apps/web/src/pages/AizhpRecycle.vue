@@ -67,7 +67,6 @@ function reset() {
           <ul class="space-y-0.5 list-disc list-inside text-amber-700">
             <li>仅支持本站购买的 Aizhp 渠道账号申请退款</li>
             <li>退款后账号将失效，请确认不再使用</li>
-            <li>退款处理时间通常为 1-3 个工作日</li>
           </ul>
         </div>
 

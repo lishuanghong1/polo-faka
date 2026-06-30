@@ -51,7 +51,6 @@ function goAndClose(path: string) {
           <router-link to="/me" class="hover:text-brand-600">个人中心</router-link>
           <router-link to="/recharge" class="hover:text-brand-600">联系客服充值</router-link>
           <router-link to="/query" class="hover:text-brand-600">订单查询</router-link>
-          <router-link to="/aizhp-recycle" class="hover:text-brand-600">账号退款</router-link>
           <router-link v-if="showRecycle" to="/recycle" class="hover:text-brand-600">回收</router-link>
           <router-link v-if="showDesktopTool" to="/tools/desktop" class="hover:text-brand-600">下载工具</router-link>
         </nav>
@@ -109,7 +108,6 @@ function goAndClose(path: string) {
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/me')">个人中心</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recharge')">联系客服充值</button>
           <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/query')">订单查询</button>
-          <button class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/aizhp-recycle')">账号退款</button>
           <button v-if="showRecycle" class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/recycle')">回收</button>
           <button v-if="showDesktopTool" class="px-3 py-2.5 rounded-lg text-left hover:bg-ink-50 text-ink-700" @click="goAndClose('/tools/desktop')">下载工具</button>
           <template v-if="user.isLoggedIn">

@@ -253,6 +253,30 @@ export class AizhpOpenService {
     }
 
     // 调用退款 API
-    return this.submitRefund(emailLower, plan);
+    const result = await this.submitRefund(emailLower, plan);
+
+    // 将 refund_id 写入卡密 remark 以便订单详情页查询状态
+    if (result.refund_id) {
+      const newRemark = (cardKey.remark || '').replace(/ refund=\d+/, '') + ` refund=${result.refund_id}`;
+      await this.prisma.cardKey.update({
+        where: { id: cardKey.id },
+        data: { remark: newRemark },
+      });
+    }
+
+    return result;
+  }
+
+  /** 根据 refund_id 查询退款状态（供订单详情页使用） */
+  async getRefundStatus(refundId: number): Promise<{ id: number; status: string; account_email?: string } | null> {
+    try {
+      const resp = await this.request<{
+        success: boolean;
+        refund: { id: number; account_email: string; status: string };
+      }>('GET', `/uopen/v1/refunds/${refundId}`);
+      return resp.refund || null;
+    } catch {
+      return null;
+    }
   }
 }
