@@ -14,7 +14,7 @@ const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 
-const presetAmounts = [10, 30, 50, 100, 200, 500];
+const presetAmounts = [50, 100, 200, 300, 500, 1000];
 
 const amount = ref<number>(50);
 const customAmount = ref<string>('');
@@ -34,14 +34,14 @@ const finalAmount = computed(() => {
 });
 
 const canSubmit = computed(() =>
-  alipayEnabled.value && finalAmount.value >= 0.01 && finalAmount.value <= 10000,
+  alipayEnabled.value && finalAmount.value >= 50 && finalAmount.value <= 10000,
 );
 
 const customAmountInvalid = computed(() => {
   const raw = String(customAmount.value ?? '').trim();
   if (!raw) return false;
   const v = Number(raw);
-  return !Number.isFinite(v) || v < 0.01 || v > 10000;
+  return !Number.isFinite(v) || v < 50 || v > 10000;
 });
 
 function isMobile() {
@@ -139,7 +139,7 @@ onMounted(async () => {
     <!-- 标题 -->
     <div>
       <h1 class="text-2xl font-semibold tracking-tight text-ink-900">账户充值</h1>
-      <p class="text-sm text-ink-500 mt-1">余额可用于购买商城内任意商品，支持小额自定义</p>
+      <p class="text-sm text-ink-500 mt-1">余额可用于购买商城内任意商品，单笔 50 元起充</p>
     </div>
 
     <!-- 余额条 -->
@@ -161,7 +161,7 @@ onMounted(async () => {
       <div>
         <div class="text-sm font-medium text-ink-900 mb-2.5 flex items-center justify-between">
           <span>选择金额</span>
-          <span class="text-[11px] text-ink-400 font-normal">单笔 0.01 - 10,000</span>
+          <span class="text-[11px] text-ink-400 font-normal">单笔 50 - 10,000</span>
         </div>
         <div class="grid grid-cols-3 gap-2.5">
           <button
@@ -198,10 +198,10 @@ onMounted(async () => {
           <input
             v-model="customAmount"
             type="number"
-            min="0.01"
+            min="50"
             max="10000"
             step="0.01"
-            placeholder="输入金额（0.01 - 10000）"
+            placeholder="输入金额（50 - 10000）"
             class="w-full pl-8 pr-4 py-2.5 border-2 rounded-xl text-sm focus:outline-none transition"
             :class="customAmountInvalid
               ? 'border-rose-300 bg-rose-50/30 focus:border-rose-500'
@@ -211,7 +211,7 @@ onMounted(async () => {
           />
         </div>
         <div v-if="customAmountInvalid" class="text-[11px] text-rose-600 mt-1.5">
-          金额需在 0.01 ~ 10,000 之间
+          金额需在 50 ~ 10,000 之间
         </div>
       </div>
 

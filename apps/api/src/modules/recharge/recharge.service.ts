@@ -42,8 +42,8 @@ export class RechargeService {
   async create(userId: number, amount: number, ip?: string) {
     if (!userId) throw new BadRequestException('请先登录');
     const safe = round2(Number(amount));
-    if (!Number.isFinite(safe) || safe < 0.01 || safe > 10000) {
-      throw new BadRequestException('充值金额不合法');
+    if (!Number.isFinite(safe) || safe < 50 || safe > 10000) {
+      throw new BadRequestException('充值金额需在 50 ~ 10000 元之间');
     }
     const u = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!u) throw new NotFoundException('用户不存在');
