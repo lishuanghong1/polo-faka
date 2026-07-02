@@ -416,7 +416,7 @@ onMounted(load);
               </div>
               <div class="text-[11px] text-ink-500 mt-1">
                 <template v-if="!userStore.isLoggedIn">登录后可用</template>
-                <template v-else-if="!balanceEnough">余额不足，请联系客服充值</template>
+                <template v-else-if="!balanceEnough">余额不足，前往充值</template>
                 <template v-else>即时扣款，立即发货</template>
               </div>
             </button>
@@ -444,7 +444,7 @@ onMounted(load);
             <button
               class="text-xs text-brand-600 hover:underline"
               @click="router.push('/recharge')"
-            >→ 联系客服充值</button>
+            >→ 前往充值</button>
           </div>
           <div v-if="payMethod === 'BALANCE' && !userStore.isLoggedIn" class="mt-3">
             <button

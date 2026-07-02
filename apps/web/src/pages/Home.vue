@@ -193,9 +193,9 @@ onMounted(() => load(false));
     <AnnouncementBanner />
   </section>
 
-  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 -->
+  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 / 账号退款 -->
   <section class="max-w-7xl mx-auto px-4 mt-4">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
         @click="router.push('/email-code')"
@@ -219,6 +219,19 @@ onMounted(() => load(false));
         <div class="min-w-0">
           <div class="font-semibold text-ink-900 text-sm md:text-base">兑换码下单</div>
           <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">已有兑换码？这里直接使用</div>
+        </div>
+      </button>
+
+      <button
+        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
+        @click="router.push('/recharge')"
+      >
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2zm0 0a2 2 0 0 1 2-2h12M16 13h2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="min-w-0">
+          <div class="font-semibold text-ink-900 text-sm md:text-base">账户充值</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">余额可用于下单，支持自定义金额</div>
         </div>
       </button>
 

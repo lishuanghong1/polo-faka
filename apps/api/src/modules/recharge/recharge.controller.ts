@@ -1,16 +1,24 @@
 import {
+  Body,
   Controller,
-  ForbiddenException,
   Get,
   Param,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RechargeService } from './recharge.service';
-import { ListMyRechargeDto } from './dto';
+import { CreateRechargeDto, ListMyRechargeDto } from './dto';
+
+function getIp(req: Request): string | undefined {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string') return xff.split(',')[0].trim();
+  return req.socket?.remoteAddress || undefined;
+}
 
 @ApiTags('recharge')
 @ApiBearerAuth()
@@ -21,8 +29,12 @@ export class RechargeController {
   /** 创建充值订单（必须登录） */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post()
-  create() {
-    throw new ForbiddenException('用户自助充值已关闭，请联系客服充值');
+  async create(
+    @Body() dto: CreateRechargeDto,
+    @Req() req: Request,
+    @CurrentUser('sub') userId: number,
+  ) {
+    return this.svc.create(userId, dto.amount, getIp(req));
   }
 
   /** 查询单笔充值订单（仅自己） */

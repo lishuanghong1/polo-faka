@@ -1,38 +1,61 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
 import { useUserStore } from '@/stores/user';
-import { useSiteStore } from '@/stores/site';
 import { statusOf } from '@/utils/order-status';
+import BrandButton from '@/components/BrandButton.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import Skeleton from '@/components/Skeleton.vue';
 import { formatRelative, formatMoneyRaw } from '@/utils/format';
 
 const route = useRoute();
+const router = useRouter();
 const userStore = useUserStore();
-const siteStore = useSiteStore();
 
-const customerContacts = computed(() => [
-  { label: '客服微信', value: siteStore.settings.cs_wechat || '' },
-  { label: '客服 QQ', value: siteStore.settings.cs_qq || '' },
-  { label: 'Telegram', value: siteStore.settings.cs_telegram || '' },
-].filter((item) => item.value));
+const presetAmounts = [10, 30, 50, 100, 200, 500];
 
-async function copyCustomerContact(value: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    ElMessage.success(`${label}已复制`);
-  } catch {
-    ElMessage.error('复制失败，请手动复制');
-  }
-}
+const amount = ref<number>(50);
+const customAmount = ref<string>('');
+const alipayEnabled = ref(false);
+const submitting = ref(false);
 
 const history = ref<any[]>([]);
 const loadingHist = ref(false);
 
 const checkingOrder = ref<{ orderNo: string; status: string; amount?: number } | null>(null);
+
+const finalAmount = computed(() => {
+  const raw = String(customAmount.value ?? '').trim();
+  const v = raw ? Number(raw) : amount.value;
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  return Math.round(v * 100) / 100;
+});
+
+const canSubmit = computed(() =>
+  alipayEnabled.value && finalAmount.value >= 0.01 && finalAmount.value <= 10000,
+);
+
+const customAmountInvalid = computed(() => {
+  const raw = String(customAmount.value ?? '').trim();
+  if (!raw) return false;
+  const v = Number(raw);
+  return !Number.isFinite(v) || v < 0.01 || v > 10000;
+});
+
+function isMobile() {
+  return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+}
+
+async function loadEnabled() {
+  try {
+    const r = await api.pay.alipayEnabled();
+    alipayEnabled.value = !!r.enabled;
+  } catch {
+    alipayEnabled.value = false;
+  }
+}
 
 async function loadHistory() {
   loadingHist.value = true;
@@ -43,6 +66,27 @@ async function loadHistory() {
     history.value = [];
   } finally {
     loadingHist.value = false;
+  }
+}
+
+async function submit() {
+  if (!canSubmit.value) return;
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录');
+    router.push({ name: 'login', query: { redirect: route.fullPath } });
+    return;
+  }
+  submitting.value = true;
+  try {
+    const order = await api.recharge.create(finalAmount.value);
+    const channel = isMobile() ? 'WAP' : 'PC';
+    const { payUrl } = await api.pay.alipayCreate(order.orderNo, channel);
+    sessionStorage.setItem('lastRechargeOrder', order.orderNo);
+    window.location.href = payUrl;
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || e?.message || '创建充值订单失败');
+  } finally {
+    submitting.value = false;
   }
 }
 
@@ -76,6 +120,7 @@ const rechargeStatusInfo = (s: string) => {
 };
 
 onMounted(async () => {
+  await loadEnabled();
   if (userStore.isLoggedIn) {
     loadHistory();
     const urlOrder = route.params.orderNo as string | undefined;
@@ -94,7 +139,7 @@ onMounted(async () => {
     <!-- 标题 -->
     <div>
       <h1 class="text-2xl font-semibold tracking-tight text-ink-900">账户充值</h1>
-      <p class="text-sm text-ink-500 mt-1">余额可用于购买商城内商品，充值请联系客服处理</p>
+      <p class="text-sm text-ink-500 mt-1">余额可用于购买商城内任意商品，支持小额自定义</p>
     </div>
 
     <!-- 余额条 -->
@@ -106,41 +151,101 @@ onMounted(async () => {
         </div>
       </div>
       <div class="text-[11px] text-ink-500 text-right leading-relaxed max-w-[160px]">
-        客服人工充值<br/>到账后即可使用
+        充值订单 15 分钟内有效<br/>到账实时
       </div>
     </div>
 
-    <!-- 客服充值 -->
+    <!-- 充值表单 -->
     <div class="card p-5 md:p-6">
-      <div class="flex items-start gap-3">
-        <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 5h16v11H8l-4 3V5z" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+      <!-- 预设金额 -->
+      <div>
+        <div class="text-sm font-medium text-ink-900 mb-2.5 flex items-center justify-between">
+          <span>选择金额</span>
+          <span class="text-[11px] text-ink-400 font-normal">单笔 0.01 - 10,000</span>
         </div>
-        <div>
-          <h2 class="text-base font-semibold text-ink-900">自助充值入口已关闭</h2>
-          <p class="text-sm text-ink-600 mt-1 leading-relaxed">
-            账户余额仅支持通过客服充值。请联系下方客服并提供您的用户名和充值金额，客服确认后会直接为账户入账。
-          </p>
+        <div class="grid grid-cols-3 gap-2.5">
+          <button
+            v-for="v in presetAmounts"
+            :key="v"
+            type="button"
+            class="relative h-14 rounded-xl border-2 text-base font-semibold transition group"
+            :class="!customAmount && amount === v
+              ? 'border-brand-500 bg-brand-50/60 text-brand-700'
+              : 'border-ink-200 text-ink-700 hover:border-brand-300 hover:bg-brand-50/30'"
+            @click="amount = v; customAmount = ''"
+          >
+            <span class="text-xs text-ink-400 font-normal mr-0.5"
+              :class="!customAmount && amount === v ? 'text-brand-600/80' : ''"
+            >¥</span>{{ v }}
+            <!-- 选中标记 -->
+            <span
+              v-if="!customAmount && amount === v"
+              class="absolute top-1 right-1 w-4 h-4 rounded-full bg-brand-600 text-white flex items-center justify-center"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" class="w-2.5 h-2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </span>
+          </button>
         </div>
       </div>
 
-      <div v-if="customerContacts.length" class="mt-5 grid gap-2 sm:grid-cols-2">
-        <button
-          v-for="item in customerContacts"
-          :key="item.label"
-          type="button"
-          class="px-3 py-2.5 rounded-xl border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30 text-left transition"
-          @click="copyCustomerContact(item.value, item.label)"
-        >
-          <div class="text-[11px] text-ink-400">{{ item.label }}</div>
-          <div class="text-sm font-medium text-ink-900 mt-0.5 truncate">{{ item.value }}</div>
-          <div class="text-[10px] text-brand-600 mt-1">点击复制</div>
-        </button>
+      <!-- 自定义金额 -->
+      <div class="mt-4">
+        <div class="text-sm font-medium text-ink-900 mb-1.5">自定义金额</div>
+        <div class="relative">
+          <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400">¥</span>
+          <input
+            v-model="customAmount"
+            type="number"
+            min="0.01"
+            max="10000"
+            step="0.01"
+            placeholder="输入金额（0.01 - 10000）"
+            class="w-full pl-8 pr-4 py-2.5 border-2 rounded-xl text-sm focus:outline-none transition"
+            :class="customAmountInvalid
+              ? 'border-rose-300 bg-rose-50/30 focus:border-rose-500'
+              : customAmount
+                ? 'border-brand-400 bg-brand-50/30'
+                : 'border-ink-200 focus:border-brand-400 focus:bg-brand-50/20'"
+          />
+        </div>
+        <div v-if="customAmountInvalid" class="text-[11px] text-rose-600 mt-1.5">
+          金额需在 0.01 ~ 10,000 之间
+        </div>
       </div>
-      <div v-else class="mt-5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
-        暂未配置客服联系方式，请通过网站公告中的联系方式咨询充值。
+
+      <!-- 实付 -->
+      <div class="mt-5 flex items-center justify-between p-3.5 rounded-xl bg-ink-50/70 border border-ink-100">
+        <span class="text-sm text-ink-500">实付金额</span>
+        <span class="text-2xl font-bold text-ink-900">
+          <span class="text-sm font-normal text-ink-400 mr-0.5">¥</span>{{ finalAmount.toFixed(2) }}
+        </span>
+      </div>
+
+      <BrandButton
+        class="mt-4"
+        variant="primary"
+        size="lg"
+        block
+        :loading="submitting"
+        :disabled="!canSubmit"
+        @click="submit"
+      >
+        <svg v-if="!submitting && alipayEnabled" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+          <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+        </svg>
+        {{
+          submitting
+            ? '创建订单中…'
+            : alipayEnabled
+              ? '使用支付宝充值'
+              : '支付宝暂未启用'
+        }}
+      </BrandButton>
+
+      <div v-if="!alipayEnabled" class="mt-2.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+        当前支付通道暂未启用，请稍后再试或联系客服
       </div>
     </div>
 
