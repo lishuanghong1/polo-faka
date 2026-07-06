@@ -719,7 +719,9 @@ export class ForgeQuotaOrdersService {
   }
 
   /**
-   * 公开查单：订单有 contact 时需校验（与成品号订单一致的防爆破策略）
+   * 公开查单：订单有 contact 时需校验（与成品号订单一致的防爆破策略）。
+   * 买家侧只给兑换码本身，不下发 redeem_url（不向终端买家暴露上游官网地址）；
+   * 管理端走 adminDetail 仍能看到完整链接用于售后。
    */
   async query(orderNo: string, contact?: string) {
     const order = await this.detail(orderNo);
@@ -737,7 +739,10 @@ export class ForgeQuotaOrdersService {
         throw new NotFoundException('订单不存在');
       }
     }
-    return order;
+    return {
+      ...order,
+      codes: order.codes.map(({ redeem_url: _redeemUrl, ...rest }) => rest),
+    };
   }
 
   /** 用户中心：登录用户的额度包订单 */

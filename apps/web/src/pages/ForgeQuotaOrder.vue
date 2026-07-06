@@ -78,12 +78,7 @@ async function copy(text: string, label = '已复制') {
 }
 
 function copyAll() {
-  const lines: string[] = [];
-  for (const c of order.value?.codes || []) {
-    lines.push(`兑换码: ${c.code}`);
-    if (c.redeem_url) lines.push(`兑换链接: ${c.redeem_url}`);
-    lines.push('---');
-  }
+  const lines = (order.value?.codes || []).map((c: any) => c.code);
   copy(lines.join('\n'), '已复制全部兑换码');
 }
 
@@ -393,7 +388,7 @@ const statusHeroClass = computed(() => {
         </div>
 
         <div class="mb-3 p-3 rounded-lg bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
-          打开兑换链接 → 登录官网 → 面值自动充入你的中转 Key（没有 Key 会自动创建）。兑换码请勿泄露给他人。
+          复制兑换码后按商家指引核销，面值自动充入你的中转 Key（没有 Key 会自动创建）。兑换码请勿泄露给他人。
         </div>
 
         <ul class="space-y-3">
@@ -422,20 +417,6 @@ const statusHeroClass = computed(() => {
               <button
                 class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 transition"
                 @click="copy(c.code, '兑换码已复制')"
-              >复制</button>
-            </div>
-
-            <div v-if="c.redeem_url" class="flex items-center gap-2.5">
-              <div class="text-xs text-ink-500 w-14 shrink-0">兑换链接</div>
-              <a
-                :href="c.redeem_url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-xs break-all flex-1 font-mono text-brand-600 hover:underline"
-              >{{ c.redeem_url }}</a>
-              <button
-                class="text-xs text-brand-600 hover:text-brand-700 hover:bg-brand-50 px-2 py-1 rounded shrink-0 transition"
-                @click="copy(c.redeem_url, '兑换链接已复制')"
               >复制</button>
             </div>
 

@@ -150,7 +150,9 @@ export class ForgeQuotaController {
     // 先走 query 校验 contact（订单受保护时防爆破）
     const q = await this.orders.query(orderNo, body?.contact);
     if ((q as any).requireContact) return q;
-    return this.orders.refreshCodes(orderNo);
+    await this.orders.refreshCodes(orderNo);
+    // 再走一次 query 返回：买家侧响应不带 redeem_url
+    return this.orders.query(orderNo, body?.contact);
   }
 
   // ── 用户中心：我的额度包订单（需登录） ──────────────
