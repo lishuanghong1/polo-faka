@@ -56,6 +56,12 @@ const aizhpFields: Field[] = [
   { key: 'aizhp_open_api_key', label: 'API Key', placeholder: '你的 X-User-API-Key', isPublic: false, type: 'textarea', mono: true, hint: '在 aizhp 平台获取，加密存储。' },
 ];
 
+const wecomFields: Field[] = [
+  { key: 'wecom_notify_enabled', label: '启用企业微信通知', isPublic: false, type: 'switch', hint: '关闭后不再推送任何企微提醒' },
+  { key: 'wecom_webhook_url', label: '群机器人 Webhook', placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx', isPublic: false, type: 'text', mono: true, hint: '企业微信群 → 添加群机器人 → 复制 Webhook 地址' },
+  { key: 'refund_delay_hours', label: '售出后退款延迟（小时）', placeholder: '24', isPublic: false, type: 'text', hint: '账号售出后 N 小时自动把完整账号信息推到企业微信；默认 24' },
+];
+
 const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key']);
 const SECRET_PLACEHOLDER = '__keep__';
 
@@ -66,7 +72,7 @@ const hasValueMap = ref<Record<string, boolean>>({});
 const secretEdited = ref<Record<string, boolean>>({});
 const loading = ref(false);
 const saving = ref(false);
-const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp'>('site');
+const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp' | 'wecom'>('site');
 
 async function load() {
   loading.value = true;
@@ -90,6 +96,8 @@ async function load() {
     if (!values.value.email_code_timeout_ms) values.value.email_code_timeout_ms = '15000';
     if (values.value.aizhp_open_enabled === undefined) values.value.aizhp_open_enabled = 'false';
     if (!values.value.aizhp_open_api_base) values.value.aizhp_open_api_base = 'https://account.aizhp.site';
+    if (values.value.wecom_notify_enabled === undefined) values.value.wecom_notify_enabled = 'false';
+    if (!values.value.refund_delay_hours) values.value.refund_delay_hours = '24';
   } finally {
     loading.value = false;
   }
@@ -99,7 +107,7 @@ async function save() {
   saving.value = true;
   try {
     const payload: Record<string, { value: string; isPublic?: boolean }> = {};
-    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields]) {
+    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields, ...wecomFields]) {
       if (SECRET_KEYS.has(f.key)) {
         if (!secretEdited.value[f.key]) {
           // 没改过 → 发占位符，让后端跳过
@@ -164,6 +172,11 @@ onMounted(load);
           activeTab === 'aizhp' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'aizhp'"
       >Aizhp 渠道</button>
+      <button
+        :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
+          activeTab === 'wecom' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
+        @click="activeTab = 'wecom'"
+      >企业微信</button>
     </div>
 
     <!-- 站点信息 -->
@@ -399,6 +412,55 @@ onMounted(load);
 
             <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 企业微信 -->
+    <div v-show="activeTab === 'wecom'" class="space-y-4">
+      <div class="card p-4 bg-emerald-50/40 border-emerald-200 text-emerald-900 text-xs flex gap-3">
+        <span class="text-base">ℹ</span>
+        <div class="space-y-1.5 leading-relaxed">
+          <p><b>用途</b>：售出账号到「退款时间」时，自动把<b>完整账号信息</b>推送到企业微信群；前台用户提交退款申请时也会推送提醒。</p>
+          <p><b>获取 Webhook</b>：企业微信群 → 右上角设置 → 群机器人 → 添加 → 复制 Webhook 地址填到下面。</p>
+          <p><b>退款时间</b>：账号售出后按「退款延迟（小时）」自动计算，可在「仓库」页对单个账号手动改时间或点「立即通知」。</p>
+        </div>
+      </div>
+
+      <div class="card p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div
+            v-for="f in wecomFields"
+            :key="f.key"
+            :class="f.type === 'textarea' ? 'md:col-span-2' : ''"
+          >
+            <label class="block text-sm font-medium text-ink-800 mb-1">{{ f.label }}</label>
+            <p class="text-[11px] text-ink-400 mb-1.5 font-mono">key: {{ f.key }}</p>
+
+            <label v-if="f.type === 'switch'" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox"
+                :checked="values[f.key] === 'true'"
+                @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
+              />
+              <span class="ml-2 text-sm text-ink-700">
+                {{ values[f.key] === 'true' ? '开启' : '关闭' }}
+              </span>
+            </label>
+
+            <input
+              v-else
+              v-model="values[f.key]"
+              :placeholder="f.placeholder"
+              :class="['w-full px-3 py-2 border border-ink-200 rounded-lg text-sm', f.mono ? 'font-mono text-xs' : '']"
+            />
+
+            <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-ink-100 text-xs text-ink-500 space-y-1.5">
+          <p>· 通知含账号完整凭据，请确保群成员可信。</p>
+          <p>· 到点自动推送由后台每分钟轮询触发；也可在「仓库」页手动「立即通知」。</p>
         </div>
       </div>
     </div>

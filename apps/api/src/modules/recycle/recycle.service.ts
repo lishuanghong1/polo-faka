@@ -7,6 +7,7 @@ import {
 import axios from 'axios';
 import * as nodemailer from 'nodemailer';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WeComService } from '../wecom/wecom.service';
 
 /** 仓库 content = email----emailpwd----clientId----refreshToken----cursorpwd----cursorToken */
 const WAREHOUSE_SEPARATOR = '----';
@@ -40,6 +41,8 @@ interface MailboxCreds {
   cursorToken: string | null;
   /** 关联订单号（仓库账号售出时回填的 orderNo） */
   orderNo: string | null;
+  /** 仓库账号完整 content（企业微信通知里带完整凭据） */
+  content: string;
 }
 
 export interface RecycleResult {
@@ -72,7 +75,10 @@ function classifyPlan(plan?: string | null): 'PENDING' | 'SUCCESS' | 'UNKNOWN' {
 export class RecycleService {
   private readonly logger = new Logger(RecycleService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly wecom: WeComService,
+  ) {}
 
   /**
    * 在仓库里按邮箱找到账号 content，解析出发信所需的微软邮箱令牌 + Cursor token。
@@ -125,7 +131,28 @@ export class RecycleService {
       parts.find((p) => /^user_[A-Za-z0-9]+(::|%3A%3A)/.test(p)) || null;
 
     if (!clientId || !refreshToken) return null;
-    return { email, clientId, refreshToken, cursorToken, orderNo };
+    return { email, clientId, refreshToken, cursorToken, orderNo, content };
+  }
+
+  /** 前台退款申请推企业微信（含完整账号信息 + 账单号）；best-effort，不阻塞主流程 */
+  private async notifyWeComRecycle(box: MailboxCreds, invoiceNumber: string, plan: string | null) {
+    try {
+      const md = [
+        '## 🧾 前台退款申请',
+        `> 用户在前台提交了退款/回收申请。`,
+        '',
+        `**邮箱**：${box.email}`,
+        `**账单号**：${invoiceNumber}`,
+        `**订单号**：${box.orderNo || '-'}`,
+        `**当前订阅**：${plan || '未知'}`,
+        '',
+        '**完整账号信息**：',
+        `\`\`\`\n${box.content || ''}\n\`\`\``,
+      ].join('\n');
+      await this.wecom.sendMarkdown(md);
+    } catch (e) {
+      this.logger.warn(`notifyWeComRecycle failed: ${(e as Error)?.message}`);
+    }
   }
 
   /** 公开入口：邮箱匹配仓库账号后，用该邮箱给 Cursor 发退款邮件，并记录回收申请 */
@@ -169,6 +196,9 @@ export class RecycleService {
     } catch (e) {
       this.logger.warn(`save recycle request failed: ${(e as Error)?.message}`);
     }
+
+    // 前台退款申请推企业微信（含完整凭据），best-effort
+    await this.notifyWeComRecycle(box, invoiceNumber, plan);
 
     // 提交即已判定回收成功（账号已是 free）→ 自动从仓库删除对应账号
     if (status === 'SUCCESS') {

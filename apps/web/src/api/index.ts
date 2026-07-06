@@ -86,17 +86,17 @@ export type AdminUserDetail = {
 };
 
 export const api = {
-  // 站点
+  // ??
   publicSettings: () => http.get('/site-settings/public'),
   announcements: () => http.get('/announcements/active'),
 
-  // 分类 / 商品
+  // ?? / ??
   categories: () => http.get('/categories'),
   products: (params?: { categoryId?: number; keyword?: string; page?: number; pageSize?: number }) =>
     http.get('/products', { params }),
   product: (id: number) => http.get(`/products/${id}`),
 
-  // 订单
+  // ??
   createOrder: (body: any) => http.post('/orders', body),
   orderQuery: (orderNo: string, contact?: string) =>
     http.get(`/orders/query/${orderNo}`, contact ? { params: { contact } } : undefined),
@@ -108,7 +108,7 @@ export const api = {
       { params },
     ),
 
-  // 认证
+  // ??
   register: (body: {
     username: string;
     password: string;
@@ -124,14 +124,14 @@ export const api = {
     captchaId: string;
     captchaCode: string;
   }) => http.post('/website-auth/login', body),
-  // silent：后台鉴权检查，401 �?restore()/路由守卫兜底处理，不直接弹错�?
+  // silent????????401 ??restore()/????????????????
   profile: () => http.get('/website-auth/profile', { silent: true } as any),
 
-  // 图形验证�?
+  // ??????
   captcha: () =>
     http.get<{ id: string; svg: string; expiresIn: number }>('/captcha'),
 
-  // 账户充值（需登录�?
+  // ??????????
   recharge: {
     create: (amount: number) =>
       http.post<{ orderNo: string; amount: number; expireAt: string }>('/recharge', { amount }),
@@ -162,17 +162,17 @@ export const api = {
       }>('/recharge', { params }),
   },
 
-  // 用户
+  // ??
   balanceLogs: (params: any) => http.get('/users/my/balance-logs', { params }),
   points: {
     me: () => http.get('/points/me'),
     logs: (params?: { page?: number; pageSize?: number }) => http.get('/points/logs', { params }),
   },
 
-  // 反馈
+  // ??
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
-  // 回收（按邮箱匹配仓库账号，用该邮箱给 Cursor 发退款邮件）
+  // ?????????????????? Cursor ??????
   recycle: (email: string, invoiceNumber: string) =>
     http.post<{
       ok: boolean;
@@ -183,7 +183,7 @@ export const api = {
       response: unknown;
     }>('/recycle', { email, invoiceNumber }),
 
-  // �?
+  // ??
   poolQuery: (orderNo: string, silent = false) =>
     http.get(`/pool/grants/${orderNo}`, silent ? ({ silent: true } as any) : undefined),
   poolClaim: (orderNo: string) => http.post(`/pool/grants/${orderNo}/claim-account`),
@@ -250,11 +250,16 @@ export const api = {
       http.post(`/warehouse/${id}/assign`, body),
     warehouseUnassign: (id: number) => http.post(`/warehouse/${id}/unassign`),
     warehouseRemove: (id: number) => http.delete(`/warehouse/${id}`),
+    warehouseSetRefundTime: (
+      id: number,
+      body: { refundAt: string | null; refundNote?: string | null },
+    ) => http.put(`/warehouse/${id}/refund-time`, body),
+    warehouseNotifyRefund: (id: number) => http.post(`/warehouse/${id}/notify-refund`),
     warehouseBulkImport: (items: any[]) => http.post('/warehouse/bulk-import', { items }),
     warehouseManualAdd: (body: { content: string; remark?: string }) =>
       http.post<{ total: number; created: number; duplicated: number }>('/warehouse/manual-add', body),
 
-    // 回收申请列表
+    // ??????
     recycleList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
       http.get<{
         total: number;
@@ -275,7 +280,7 @@ export const api = {
     recycleRefresh: (id: number) => http.post(`/recycle/${id}/refresh`),
     recycleRemove: (id: number) => http.delete(`/recycle/${id}`),
 
-    // Aizhp Open 渠道
+    // Aizhp Open ??
     aizhpPing: () => http.get('/aizhp-open/ping'),
     aizhpAccounts: (params?: { filter?: string; page?: number; pageSize?: number }) =>
       http.get('/aizhp-open/accounts', { params }),
@@ -292,7 +297,7 @@ export const api = {
     auditList: (params: any) => http.get('/admin/audit', { params }),
     auditActions: () => http.get<string[]>('/admin/audit/actions'),
 
-    // IP 黑名单（自动 / 手动 拉黑可疑来源�?
+    // IP ?????? / ?? ????????
     abuseList: () =>
       http.get<Array<{ ip: string; reason: string; createdAt: number; ttl: number }>>(
         '/admin/abuse/blocked',
@@ -348,7 +353,34 @@ export const api = {
         { reason },
       ),
 
-    // 兑换�?
+    // ????
+    // ?????cursor-jb ???
+    cursorSubList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
+      http.get('/admin/cursor-sub', { params }),
+    cursorSubCreate: (body: any) => http.post('/admin/cursor-sub', body),
+    cursorSubUpdate: (id: number, body: any) => http.put(`/admin/cursor-sub/${id}`, body),
+    cursorSubRemove: (id: number) => http.delete(`/admin/cursor-sub/${id}`),
+    cursorSubBulkImport: (body: { text: string; separator?: string; subscriptionDays?: number }) =>
+      http.post('/admin/cursor-sub/bulk-import', body),
+    cursorSubExport: (id: number, separator = '----') =>
+      http.get(`/admin/cursor-sub/${id}/export`, { params: { separator } }),
+    cursorSubMarkPaid: (id: number) => http.post(`/admin/cursor-sub/${id}/mark-paid`),
+    cursorSubSync: (id: number) => http.post(`/admin/cursor-sub/${id}/sync-subscription`),
+    cursorSubUsage: (id: number) => http.get(`/admin/cursor-sub/${id}/usage`, { silent: true } as any),
+    cursorSubPush: (id: number) => http.post(`/admin/cursor-sub/${id}/push-to-warehouse`),
+    cursorSubCheckoutLink: (id: number) =>
+      http.post<{ id: number; email: string; url: string; at: string }>(
+        `/admin/cursor-sub/${id}/checkout-link`,
+        undefined,
+        { silent: true } as any,
+      ),
+    cursorSubCheckoutLinks: (ids: number[]) =>
+      http.post<{ total: number; ok: any[]; failed: any[] }>(
+        '/admin/cursor-sub/checkout-links',
+        { ids },
+        { silent: true } as any,
+      ),
+
     redeemGenerate: (body: any) => http.post('/admin/redeem-codes/generate', body),
     redeemList: (params: any) => http.get('/admin/redeem-codes', { params }),
     redeemOverview: () => http.get<{ ACTIVE: number; DISABLED: number; EXHAUSTED: number; EXPIRED: number; total: number }>('/admin/redeem-codes/overview'),
@@ -377,7 +409,7 @@ export const api = {
   },
 
   forge: {
-    // 公开 · 商品
+    // ?? � ??
     listProducts: () =>
       http.get<Array<{
         typeKey: string;
@@ -401,7 +433,7 @@ export const api = {
     getProduct: (typeKey: string) =>
       http.get<any>(`/forge-redeem/products/${encodeURIComponent(typeKey)}`),
 
-    // 公开 · 兑换�?
+    // ?? � ????
     check: (code: string) =>
       http.post<{
         code: string;
@@ -424,32 +456,32 @@ export const api = {
         products: any[];
       }>('/forge-redeem/check', { code }, { silent: true } as any),
 
-    // 公开 · 下单（兑换码路径�?
+    // ?? � ??????????
     order: (body: { code: string; typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/order', body, { silent: true } as any),
 
-    // 公开 · 下单（支付宝路径�?
+    // ?? � ??????????
     alipayOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/alipay-order', body, { silent: true } as any),
 
-    // 登录 · 下单（余额路径）
+    // ?? � ????????
     balanceOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/balance-order', body, { silent: true } as any),
 
-    // 登录 · 下单（积分路径）
+    // ?? � ????????
     pointsOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/points-order', body, { silent: true } as any),
 
-    // 公开 · 订单详情（带 contact 校验�?
+    // ?? � ?????? contact ????
     orderDetail: (orderNo: string, contact?: string) =>
       http.get<any>(
         `/forge-redeem/order/${encodeURIComponent(orderNo)}`,
         contact ? { params: { contact } } : undefined,
       ),
 
-    // ── 额度包（中转 Key 额度包兑换码）─────────────────
+    // ?? ?????? Key ????????????????????????
     quota: {
-      // 公开 · 额度包列�?/ 详情
+      // ?? � ??????/ ??
       listPackages: () =>
         http.get<Array<{
           packageKey: string;
@@ -470,33 +502,33 @@ export const api = {
       getPackage: (packageKey: string) =>
         http.get<any>(`/forge-quota/packages/${encodeURIComponent(packageKey)}`),
 
-      // 公开 · 下单（本站兑换码路径�?
+      // ?? � ????????????
       order: (body: { code: string; packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/order', body, { silent: true } as any),
-      // 公开 · 下单（支付宝路径�?
+      // ?? � ??????????
       alipayOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/alipay-order', body, { silent: true } as any),
-      // 登录 · 下单（余额路径）
+      // ?? � ????????
       balanceOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/balance-order', body, { silent: true } as any),
-      // 登录 · 下单（积分路径）
+      // ?? � ????????
       pointsOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/points-order', body, { silent: true } as any),
 
-      // 公开 · 订单详情（带 contact 校验�?
+      // ?? � ?????? contact ????
       orderDetail: (orderNo: string, contact?: string) =>
         http.get<any>(
           `/forge-quota/order/${encodeURIComponent(orderNo)}`,
           contact ? { params: { contact } } : undefined,
         ),
-      // 公开 · 刷新码核销状态（从三方拉最新）
+      // ?? � ???????????????
       refreshCodes: (orderNo: string, contact?: string) =>
         http.post<any>(
           `/forge-quota/order/${encodeURIComponent(orderNo)}/refresh-codes`,
           contact ? { contact } : {},
           { silent: true } as any,
         ),
-      // 登录 · 我的额度包订�?
+      // ?? � ????????
       myOrders: (params: any) =>
         http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
           '/forge-quota/orders/mine',
@@ -557,7 +589,7 @@ export const api = {
         deleteOrder: (orderNo: string) =>
           http.delete(`/admin/forge/quota/orders/${encodeURIComponent(orderNo)}`),
 
-        // 售后：单码查�?/ 自助作废退�?
+        // ????????/ ???????
         queryCode: (code: string) =>
           http.get<{
             code: string;
@@ -656,7 +688,7 @@ export const api = {
   },
 
   vip: {
-    /** 公开：所有等级配�?*/
+    /** ??????????*/
     configs: () =>
       http.get<Array<{
         tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -668,7 +700,7 @@ export const api = {
         benefits: string[];
         sort: number;
       }>>('/vip/configs'),
-    /** 公开：某商品�?3 档会员价对照 */
+    /** ????????3 ?????? */
     productDiscounts: (productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA', productKey: string) =>
       http.get<Array<{
         tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -678,7 +710,7 @@ export const api = {
         discount: number;
         isOverride: boolean;
       }>>('/vip/product-discounts', { params: { productSource, productKey } }),
-    /** 公开/登录：金额预览（登录则带折扣�?*/
+    /** ??/????????????????*/
     preview: (body: { productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA'; productKey: string; originalAmount: number }) =>
       http.post<{
         tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -687,7 +719,7 @@ export const api = {
         discountAmount: number;
         payAmount: number;
       }>('/vip/preview', body),
-    /** 登录：我�?VIP 信息 */
+    /** ??????VIP ?? */
     me: () =>
       http.get<{
         tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
@@ -706,11 +738,11 @@ export const api = {
           remain: number;
           progress: number;
         };
-        // silent：UI 增强用，token 过期时静默失败，不打扰浏�?
+        // silent?UI ????token ??????????????
       }>('/vip/me', { silent: true } as any),
-    /** 管理员：等级配置列表 */
+    /** ?????????? */
     adminConfigs: () => http.get('/vip/admin/configs'),
-    /** 管理员：修改等级配置 */
+    /** ?????????? */
     adminUpdateConfig: (
       tier: 'GOLD' | 'DIAMOND' | 'SUPREME',
       body: {
@@ -722,7 +754,7 @@ export const api = {
         benefits?: string[];
       },
     ) => http.put(`/vip/admin/configs/${tier}`, body),
-    /** 管理员：所有商品折�?*/
+    /** ???????????*/
     adminDiscounts: (productSource?: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA') =>
       http.get<Array<{
         id: number;
@@ -732,16 +764,16 @@ export const api = {
         discount: number;
         updatedAt: string;
       }>>('/vip/admin/discounts', { params: productSource ? { productSource } : {} }),
-    /** 管理员：新增/更新商品折扣 */
+    /** ??????/?????? */
     adminUpsertDiscount: (body: {
       productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA';
       productKey: string;
       tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
       discount: number;
     }) => http.post<{ id: number }>('/vip/admin/discounts', body),
-    /** 管理员：删除商品折扣 */
+    /** ?????????? */
     adminRemoveDiscount: (id: number) => http.delete(`/vip/admin/discounts/${id}`),
-    /** 管理员：用户 VIP 列表 */
+    /** ?????? VIP ?? */
     adminUsers: (params: { page?: number; pageSize?: number; keyword?: string; tier?: string }) =>
       http.get<{
         total: number;
@@ -760,12 +792,12 @@ export const api = {
           createdAt: string;
         }>;
       }>('/vip/admin/users', { params }),
-    /** 管理员：手动调级 */
+    /** ???????? */
     adminManualSet: (
       id: number,
       body: { tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME'; note?: string },
     ) => http.post<{ tier: string; changed: boolean }>(`/vip/admin/users/${id}/set`, body),
-    /** 管理员：设置/清除某用户的专属折扣（discount=null 清除�?*/
+    /** ??????/???????????discount=null ????*/
     adminSetUserDiscount: (
       id: number,
       body: { discount: number | null; note?: string },

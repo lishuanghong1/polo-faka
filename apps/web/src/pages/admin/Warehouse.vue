@@ -165,6 +165,66 @@ async function reveal(row: any) {
     type: 'info',
   } as any).catch(() => null);
 }
+
+// ── 退款时间 / 企业微信通知 ──────────────────────────
+/** datetime-local 需要 'YYYY-MM-DDTHH:mm' 本地时间字符串 */
+function toLocalInput(v: string | null): string {
+  if (!v) return '';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const refundTarget = ref<any | null>(null);
+const refundForm = ref<{ refundAt: string; refundNote: string }>({ refundAt: '', refundNote: '' });
+
+function openRefund(row: any) {
+  refundTarget.value = row;
+  refundForm.value = {
+    refundAt: toLocalInput(row.refundAt),
+    refundNote: row.refundNote || '',
+  };
+}
+async function saveRefund() {
+  if (!refundTarget.value) return;
+  try {
+    // datetime-local 是本地时间，转成 ISO 交给后端
+    const iso = refundForm.value.refundAt ? new Date(refundForm.value.refundAt).toISOString() : null;
+    await api.admin.warehouseSetRefundTime(refundTarget.value.id, {
+      refundAt: iso,
+      refundNote: refundForm.value.refundNote || null,
+    });
+    ElMessage.success('已保存退款时间');
+    refundTarget.value = null;
+    load();
+  } catch {
+    /* 全局拦截器已提示 */
+  }
+}
+async function notifyRefund(row: any) {
+  await ElMessageBox.confirm(
+    `立即把账号 #${row.id} 的完整信息推送到企业微信？`,
+    '立即通知',
+    { type: 'warning', confirmButtonText: '推送' },
+  );
+  try {
+    await api.admin.warehouseNotifyRefund(row.id);
+    ElMessage.success('已推送到企业微信');
+    load();
+  } catch {
+    /* 全局拦截器已提示 */
+  }
+}
+
+function refundLabel(row: any): { text: string; cls: string } {
+  if (row.status !== 'SOLD') return { text: '—', cls: 'text-ink-400' };
+  if (row.refundNotifiedAt) return { text: '已通知', cls: 'text-emerald-600' };
+  if (!row.refundAt) return { text: '未设置', cls: 'text-ink-400' };
+  const due = new Date(row.refundAt).getTime();
+  if (due <= Date.now()) return { text: '待推送', cls: 'text-amber-600' };
+  return { text: new Date(row.refundAt).toLocaleString(), cls: 'text-ink-600' };
+}
 </script>
 
 <template>
@@ -211,7 +271,7 @@ async function reveal(row: any) {
     </div>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号" min-width="1180px">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号" min-width="1360px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>
@@ -220,8 +280,9 @@ async function reveal(row: any) {
         <th>状态</th>
         <th>分配到</th>
         <th>售出时间</th>
+        <th>退款时间</th>
         <th>订单</th>
-        <th class="!text-right" style="width: 220px"></th>
+        <th class="!text-right" style="width: 300px"></th>
       </tr>
     </thead>
     <tbody>
@@ -245,9 +306,26 @@ async function reveal(row: any) {
           <span v-else class="text-ink-400">—</span>
         </td>
         <td class="text-ink-500 text-xs">{{ row.soldAt ? new Date(row.soldAt).toLocaleString() : '—' }}</td>
+        <td class="text-xs">
+          <span :class="refundLabel(row).cls">{{ refundLabel(row).text }}</span>
+        </td>
         <td class="text-ink-500 text-xs font-mono">{{ row.orderNo || '—' }}</td>
         <td class="text-right whitespace-nowrap">
           <button class="text-ink-500 hover:text-amber-600 mr-3 text-sm" @click="reveal(row)">查看</button>
+          <button
+            v-if="row.status === 'SOLD'"
+            class="text-brand-600 hover:text-brand-700 mr-3 text-sm"
+            @click="openRefund(row)"
+          >
+            退款时间
+          </button>
+          <button
+            v-if="row.status === 'SOLD'"
+            class="text-emerald-600 hover:text-emerald-700 mr-3 text-sm"
+            @click="notifyRefund(row)"
+          >
+            通知
+          </button>
           <button
             v-if="row.status === 'PENDING'"
             class="text-sky-600 hover:text-sky-700 mr-3 text-sm"
@@ -387,6 +465,52 @@ async function reveal(row: any) {
         @click="doAdd"
       >
         入库 {{ addLineCount }} 条
+      </button>
+    </template>
+  </el-dialog>
+
+  <!-- 设置退款时间 -->
+  <el-dialog
+    :model-value="!!refundTarget"
+    width="480px"
+    title="设置退款时间"
+    @update:model-value="(v: boolean) => !v && (refundTarget = null)"
+    @close="refundTarget = null"
+  >
+    <div v-if="refundTarget" class="space-y-3 text-sm">
+      <div class="text-ink-600">
+        仓库账号 <span class="font-mono">#{{ refundTarget.id }}</span>
+        <span v-if="refundTarget.email" class="ml-2 text-ink-500">{{ refundTarget.email }}</span>
+      </div>
+      <div>
+        <label class="block text-xs text-ink-500 mb-1">退款时间（到点自动推企业微信；留空 = 不自动推）</label>
+        <input
+          v-model="refundForm.refundAt"
+          type="datetime-local"
+          class="w-full px-3 py-2 border border-ink-200 rounded-lg"
+        />
+      </div>
+      <div>
+        <label class="block text-xs text-ink-500 mb-1">备注（可选，随提醒一起发出）</label>
+        <input
+          v-model="refundForm.refundNote"
+          placeholder="如：闲鱼订单号 / 买家要求 24h 退"
+          class="w-full px-3 py-2 border border-ink-200 rounded-lg"
+        />
+      </div>
+      <div class="text-xs text-ink-500">
+        修改时间会重置「已通知」标记；到点后由后台每分钟轮询自动推送完整账号信息到企业微信。
+      </div>
+    </div>
+    <template #footer>
+      <button class="px-4 py-1.5 mr-2 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="refundTarget = null">
+        取消
+      </button>
+      <button
+        class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 rounded-lg text-white text-sm"
+        @click="saveRefund"
+      >
+        保存
       </button>
     </template>
   </el-dialog>

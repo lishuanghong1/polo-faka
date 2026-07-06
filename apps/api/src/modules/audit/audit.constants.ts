@@ -43,6 +43,12 @@ export const AuditActions = {
   WAREHOUSE_ASSIGN: 'WAREHOUSE_ASSIGN',
   WAREHOUSE_UNASSIGN: 'WAREHOUSE_UNASSIGN',
   WAREHOUSE_DELETE: 'WAREHOUSE_DELETE',
+  WAREHOUSE_REFUND_SET: 'WAREHOUSE_REFUND_SET',       // 设置售出账号退款时间
+  WAREHOUSE_REFUND_NOTIFY: 'WAREHOUSE_REFUND_NOTIFY', // 立即推送退款提醒到企微
+
+  // 订阅号池（cursor-jb 合并）
+  CURSOR_SUB_PUSH: 'CURSOR_SUB_PUSH',       // 订阅账号推送到仓库
+  CURSOR_SUB_MIGRATE: 'CURSOR_SUB_MIGRATE', // 迁移导入 cursor-jb 账号
 
   // 用户 / 资金
   USER_UPDATE: 'USER_UPDATE',
@@ -101,6 +107,10 @@ export const AuditActionLabels: Record<string, string> = {
   WAREHOUSE_ASSIGN: '仓库账号分配到商品',
   WAREHOUSE_UNASSIGN: '撤回仓库账号分配',
   WAREHOUSE_DELETE: '删除仓库账号',
+  WAREHOUSE_REFUND_SET: '设置售出账号退款时间',
+  WAREHOUSE_REFUND_NOTIFY: '推送退款提醒到企业微信',
+  CURSOR_SUB_PUSH: '订阅账号推送到仓库',
+  CURSOR_SUB_MIGRATE: '迁移导入订阅账号',
   USER_UPDATE: '修改用户',
   BALANCE_ADJUST: '调整余额',
   BALANCE_RECHARGE: '账户充值到账',

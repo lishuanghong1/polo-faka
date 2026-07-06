@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -139,6 +141,35 @@ export class WarehouseController {
   async remove(@Param('id') id: string, @Req() req: Request) {
     const r = await this.svc.remove(Number(id));
     this.audit.fromReq(req, AuditActions.WAREHOUSE_DELETE, {
+      target: `warehouse:${id}`,
+    });
+    return r;
+  }
+
+  /** 设置 / 清空退款时间（refundAt 传 null 或空 = 清空；同时可带备注） */
+  @Put(':id/refund-time')
+  async setRefundTime(
+    @Param('id') id: string,
+    @Body() body: { refundAt?: string | null; refundNote?: string | null },
+    @Req() req: Request,
+  ) {
+    const refundAt = body?.refundAt ? new Date(body.refundAt) : null;
+    if (body?.refundAt && Number.isNaN(refundAt!.getTime())) {
+      throw new BadRequestException('退款时间格式不正确');
+    }
+    const r = await this.svc.setRefundTime(Number(id), refundAt, body?.refundNote);
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_REFUND_SET, {
+      target: `warehouse:${id}`,
+      detail: { refundAt: body?.refundAt ?? null },
+    });
+    return r;
+  }
+
+  /** 立即把该售出账号推送到企业微信 */
+  @Post(':id/notify-refund')
+  async notifyRefund(@Param('id') id: string, @Req() req: Request) {
+    const r = await this.svc.notifyRefundNow(Number(id));
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_REFUND_NOTIFY, {
       target: `warehouse:${id}`,
     });
     return r;

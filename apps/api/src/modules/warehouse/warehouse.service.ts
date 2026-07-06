@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WeComService } from '../wecom/wecom.service';
 
 interface BulkItem {
   sourceRef?: string;
@@ -15,6 +16,10 @@ interface BulkItem {
 
 /** 仓库 content = email----emailpwd----cursorpwd----token */
 const WAREHOUSE_SEPARATOR = '----';
+
+/** 退款延迟设置项 key（小时）；售出后 soldAt + 该小时数 = refundAt */
+const SETTING_REFUND_DELAY_HOURS = 'refund_delay_hours';
+const DEFAULT_REFUND_DELAY_HOURS = 24;
 
 /** 从仓库 content 解析邮箱（取第一段，需含 @），用于发货 / 入库自动回填 email 列 */
 function parseEmailFromContent(fullContent: string): string | null {
@@ -33,7 +38,35 @@ function buildDeliveryContent(fullContent: string): string {
 export class WarehouseService {
   private readonly logger = new Logger(WarehouseService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private wecom: WeComService,
+  ) {}
+
+  /** 读退款延迟小时数（站点设置，缺省 24） */
+  private async getRefundDelayHours(): Promise<number> {
+    const row = await this.prisma.siteSetting.findUnique({
+      where: { key: SETTING_REFUND_DELAY_HOURS },
+    });
+    const n = Number((row?.value ?? '').trim());
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_REFUND_DELAY_HOURS;
+  }
+
+  /** 组装发给企业微信的账号退款提醒（含完整凭据） */
+  private buildRefundMarkdown(wa: any): string {
+    const lines = [
+      '## ⏰ 账号退款提醒',
+      `> 售出账号已到设定的退款时间，请及时处理退款。`,
+      '',
+      `**邮箱**：${wa.email || '-'}`,
+      `**订单号**：${wa.orderNo || '-'}`,
+      `**售出时间**：${wa.soldAt ? new Date(wa.soldAt).toLocaleString('zh-CN') : '-'}`,
+      `**退款时间**：${wa.refundAt ? new Date(wa.refundAt).toLocaleString('zh-CN') : '-'}`,
+    ];
+    if (wa.refundNote) lines.push(`**备注**：${wa.refundNote}`);
+    lines.push('', '**完整账号信息**：', `\`\`\`\n${wa.content || ''}\n\`\`\``);
+    return lines.join('\n');
+  }
 
   // ====== 外部推送：批量入库 ======
 
@@ -391,14 +424,80 @@ export class WarehouseService {
     return { ok: true, deleted: true, keptCardKey: wa.cardKeyId ?? null };
   }
 
-  /** 由 OrdersService 在卡密 SOLD 后调用 */
+  /** 由 OrdersService 在卡密 SOLD 后调用；顺带按 soldAt + 退款延迟 计算 refundAt */
   async markSoldByCardKeyIds(cardKeyIds: number[], orderNo: string, soldAt: Date) {
     if (!cardKeyIds.length) return { updated: 0 };
+    const hours = await this.getRefundDelayHours();
+    const refundAt = new Date(soldAt.getTime() + hours * 3600 * 1000);
     const r = await this.prisma.warehouseAccount.updateMany({
       where: { cardKeyId: { in: cardKeyIds } },
-      data: { status: 'SOLD', soldAt, orderNo },
+      data: { status: 'SOLD', soldAt, orderNo, refundAt, refundNotifiedAt: null },
     });
     return { updated: r.count };
+  }
+
+  /** 后台：设置 / 清空某仓库账号的退款时间（清空 refundNotifiedAt 以便重新提醒） */
+  async setRefundTime(id: number, refundAt: Date | null, refundNote?: string | null) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    const updated = await this.prisma.warehouseAccount.update({
+      where: { id },
+      data: {
+        refundAt,
+        refundNote: refundNote === undefined ? wa.refundNote : refundNote?.slice(0, 500) ?? null,
+        // 改动退款时间视为重新排程，清掉已通知标记
+        refundNotifiedAt: null,
+      },
+    });
+    return this.toView(updated);
+  }
+
+  /** 后台：立即把某售出账号推送到企业微信（无视 refundAt / 是否已通知） */
+  async notifyRefundNow(id: number) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    const r = await this.wecom.sendMarkdown(this.buildRefundMarkdown(wa));
+    if (!r.ok) throw new BadRequestException(r.error || '企业微信推送失败');
+    const updated = await this.prisma.warehouseAccount.update({
+      where: { id },
+      data: { refundNotifiedAt: new Date() },
+    });
+    return this.toView(updated);
+  }
+
+  /**
+   * 定时任务调用：扫「已售出 & 到退款时间 & 未通知」的账号，逐个推企业微信。
+   * 推成功才写 refundNotifiedAt，失败留到下轮重试。
+   */
+  async runRefundNotifications(limit = 50): Promise<{ checked: number; notified: number }> {
+    if (!(await this.wecom.isEnabled())) return { checked: 0, notified: 0 };
+    const now = new Date();
+    const due = await this.prisma.warehouseAccount.findMany({
+      where: {
+        status: 'SOLD',
+        refundAt: { not: null, lte: now },
+        refundNotifiedAt: null,
+      },
+      orderBy: { refundAt: 'asc' },
+      take: limit,
+    });
+    if (!due.length) return { checked: 0, notified: 0 };
+
+    let notified = 0;
+    for (const wa of due) {
+      const r = await this.wecom.sendMarkdown(this.buildRefundMarkdown(wa));
+      if (r.ok) {
+        await this.prisma.warehouseAccount.update({
+          where: { id: wa.id },
+          data: { refundNotifiedAt: new Date() },
+        });
+        notified += 1;
+      } else {
+        this.logger.warn(`refund notify #${wa.id} failed: ${r.error}`);
+      }
+    }
+    if (notified) this.logger.log(`refund notify: pushed ${notified}/${due.length} accounts to WeCom`);
+    return { checked: due.length, notified };
   }
 
   private toView(r: any) {
@@ -415,6 +514,9 @@ export class WarehouseService {
       assignedAt: r.assignedAt,
       soldAt: r.soldAt,
       orderNo: r.orderNo,
+      refundAt: r.refundAt,
+      refundNotifiedAt: r.refundNotifiedAt,
+      refundNote: r.refundNote,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

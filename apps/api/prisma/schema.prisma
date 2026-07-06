@@ -852,11 +852,18 @@ model WarehouseAccount {
   assignedAt  DateTime?
   soldAt      DateTime?
   orderNo     String?   @db.VarChar(64)
+  /// 售出后到点自动把账号信息推企业微信的时间（soldAt + 退款延迟）；可后台手动改/清空
+  refundAt        DateTime?
+  /// 已推送企业微信退款提醒的时间（有值即已通知，避免重复推送）
+  refundNotifiedAt DateTime?
+  /// 退款备注（后台填，随企微提醒一起发出）
+  refundNote      String?   @db.VarChar(500)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([status])
   @@index([skuId, status])
+  @@index([status, refundAt, refundNotifiedAt])
   @@map("warehouse_accounts")
 }
 
@@ -885,4 +892,40 @@ model RecycleRequest {
   @@index([status])
   @@index([orderNo])
   @@map("recycle_requests")
+}
+
+// ===================== 订阅号池（cursor-jb 合并） =====================
+
+/// Cursor 订阅账号池：从 cursor-jb 合并进来的账号管理。
+/// 凭据（cursor 密码 / 邮箱密码 / cursor token）AES-GCM 加密存储。
+/// 售出联动仓库：以 warehouseRef 关联 warehouse_accounts.sourceRef。
+model CursorSubAccount {
+  id                   Int       @id @default(autoincrement())
+  email                String    @unique @db.VarChar(255)
+  /// Cursor 登录密码（加密，可空——token 导入的账号可能没有）
+  passwordEnc          String?   @db.Text
+  /// 邮箱密码（加密，收验证码用）
+  emailPasswordEnc     String?   @db.Text
+  /// WorkosCursorSessionToken 值 user_xxx::jwt（加密，查订阅 / 生成结账链接用）
+  cursorTokenEnc       String?   @db.Text
+  note                 String?   @db.VarChar(500)
+  /// unsubscribed / subscribed / expired / unlisted
+  status               String    @default("unsubscribed") @db.VarChar(16)
+  paidAt               DateTime?
+  expiresAt            DateTime?
+  subscriptionDays     Int       @default(30)
+  /// 推送到仓库时用的 sourceRef（迁移账号沿用 cursor-jb:{oldId}，新账号 cursor-sub:{id}）
+  warehouseRef         String?   @unique @db.VarChar(128)
+  /// 最近一次同步 Cursor 订阅的时间
+  lastSyncedAt         DateTime?
+  /// 最近一次生成的订阅结账链接（checkout.stripe.com/c/pay/cs_live_...）
+  lastCheckoutUrl      String?   @db.Text
+  /// 结账链接生成时间（Stripe 会话有有效期，仅供参考）
+  lastCheckoutAt       DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([status])
+  @@index([expiresAt])
+  @@map("cursor_sub_accounts")
 }

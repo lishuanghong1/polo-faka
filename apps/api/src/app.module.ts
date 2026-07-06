@@ -33,6 +33,7 @@ import { RechargeModule } from './modules/recharge/recharge.module';
 import { VipModule } from './modules/vip/vip.module';
 import { PointsModule } from './modules/points/points.module';
 import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
+import { CursorSubModule } from './modules/cursor-sub/cursor-sub.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
     VipModule,
     PointsModule,
     AizhpOpenModule,
+    CursorSubModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

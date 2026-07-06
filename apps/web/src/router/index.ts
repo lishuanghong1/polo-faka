@@ -35,6 +35,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'admin-anns': '公告管理',
   'admin-pool': '号池',
   'admin-warehouse': '仓库',
+  'admin-cursor-sub': '订阅号池',
   'admin-recycle': '回收管理',
   'admin-settings': '站点设置',
   'admin-audit': '审计日志',
@@ -151,6 +152,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'announcements', name: 'admin-anns', component: () => import('@/pages/admin/Announcements.vue') },
       { path: 'pool', name: 'admin-pool', component: () => import('@/pages/admin/Pool.vue') },
       { path: 'warehouse', name: 'admin-warehouse', component: () => import('@/pages/admin/Warehouse.vue') },
+      { path: 'cursor-sub', name: 'admin-cursor-sub', component: () => import('@/pages/admin/CursorSub.vue') },
       { path: 'recycle', name: 'admin-recycle', component: () => import('@/pages/admin/Recycle.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('@/pages/admin/Settings.vue') },
       { path: 'audit', name: 'admin-audit', component: () => import('@/pages/admin/Audit.vue') },
@@ -175,6 +177,39 @@ const router = createRouter({
   scrollBehavior() {
     return { top: 0 };
   },
+});
+
+/**
+ * 部署新版本后，还开着的旧页面去懒加载路由 chunk 时，旧 hash 文件已被新构建替换，
+ * 浏览器会报 "Failed to fetch dynamically imported module"（表现为菜单点不开）。
+ * 这里捕获后自动整页刷新一次拉取新版本；sessionStorage 节流防止坏网络下无限刷新。
+ */
+const CHUNK_RELOAD_KEY = 'polo:chunk-reload-at';
+const CHUNK_ERROR_RE =
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload/i;
+
+function reloadOnceForStaleChunk(targetPath?: string): boolean {
+  const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+  if (Date.now() - last < 30_000) return false; // 30s 内已刷过 → 大概率不是版本问题，别循环
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+  if (targetPath) window.location.href = targetPath;
+  else window.location.reload();
+  return true;
+}
+
+router.onError((error, to) => {
+  if (CHUNK_ERROR_RE.test(String((error as Error)?.message ?? error))) {
+    if (!reloadOnceForStaleChunk(to?.fullPath)) {
+      ElMessage.error('页面资源加载失败，请按 Ctrl+F5 强制刷新');
+    }
+  }
+});
+
+// Vite 的 modulepreload 失败（CSS / 依赖 chunk）也走同一套刷新兜底
+window.addEventListener('vite:preloadError', (e) => {
+  if (reloadOnceForStaleChunk()) {
+    e.preventDefault();
+  }
 });
 
 router.beforeEach(async (to) => {
