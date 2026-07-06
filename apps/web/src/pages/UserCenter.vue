@@ -56,9 +56,10 @@ const initials = computed(() => {
 async function load() {
   loading.value = true;
   try {
-    const [local, forge, lg, rc, vip, pts, ptLogs] = await Promise.all([
+    const [local, forge, quota, lg, rc, vip, pts, ptLogs] = await Promise.all([
       api.myOrders({ page: 1, pageSize: 20 }) as Promise<any>,
       api.myForgeOrders({ page: 1, pageSize: 20 }).catch(() => ({ items: [] })),
+      api.forge.quota.myOrders({ page: 1, pageSize: 20 }).catch(() => ({ items: [] })) as Promise<any>,
       api.balanceLogs({ page: 1, pageSize: 20 }) as Promise<any>,
       api.recharge.listMine({ page: 1, pageSize: 10 }).catch(() => ({ items: [] })) as Promise<any>,
       api.vip.me().catch(() => null) as Promise<any>,
@@ -92,8 +93,20 @@ async function load() {
       createdAt: o.createdAt,
       detailRoute: `/forge-order/${o.orderNo}`,
     }));
+    const quotaItems = (quota.items || []).map((o: any) => ({
+      source: 'QUOTA' as const,
+      orderNo: o.orderNo,
+      title: o.packageName,
+      sub: `面值 $${o.quotaUsd}`,
+      qty: o.quantity,
+      amount: o.totalAmount,
+      payMethod: o.paymentMethod || 'ALIPAY',
+      status: o.status,
+      createdAt: o.createdAt,
+      detailRoute: `/quota-order/${o.orderNo}`,
+    }));
 
-    orders.value = [...localItems, ...forgeItems].sort(
+    orders.value = [...localItems, ...forgeItems, ...quotaItems].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
     logs.value = Array.isArray(lg) ? lg : (lg?.items || []);
@@ -368,7 +381,9 @@ function copyInvite() {
             class="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 text-base font-semibold"
             :class="o.source === 'FORGE'
               ? 'bg-violet-50 text-violet-600'
-              : 'bg-brand-50 text-brand-700'"
+              : o.source === 'QUOTA'
+                ? 'bg-emerald-50 text-emerald-600'
+                : 'bg-brand-50 text-brand-700'"
           >
             {{ o.title?.slice(0, 1) || '商' }}
           </div>

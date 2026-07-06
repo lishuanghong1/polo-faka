@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AdminPageHeader: typeof import('./components/admin/AdminPageHeader.vue')['default']
     AdminSearchInput: typeof import('./components/admin/AdminSearchInput.vue')['default']
+    AnnouncementBanner: typeof import('./components/AnnouncementBanner.vue')['default']
     AnnouncementDialog: typeof import('./components/AnnouncementDialog.vue')['default']
     BackToTop: typeof import('./components/BackToTop.vue')['default']
     BrandButton: typeof import('./components/BrandButton.vue')['default']
@@ -19,6 +20,7 @@ declare module 'vue' {
     EmailCodeBox: typeof import('./components/EmailCodeBox.vue')['default']
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     ForgeOrderDetailDrawer: typeof import('./components/admin/ForgeOrderDetailDrawer.vue')['default']
+    ForgeQuotaOrderDetailDrawer: typeof import('./components/admin/ForgeQuotaOrderDetailDrawer.vue')['default']
     OrderDetailDrawer: typeof import('./components/admin/OrderDetailDrawer.vue')['default']
     OrderStatusBadge: typeof import('./components/OrderStatusBadge.vue')['default']
     ProductCard: typeof import('./components/ProductCard.vue')['default']

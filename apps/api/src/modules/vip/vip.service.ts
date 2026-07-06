@@ -430,6 +430,11 @@ export class VipService implements OnModuleInit {
       }
       const p = await this.prisma.product.findUnique({ where: { id: pid } });
       if (!p) throw new NotFoundException('本站商品不存在');
+    } else if (body.productSource === 'FORGE_QUOTA') {
+      const p = await this.prisma.forgeQuotaPackage.findUnique({
+        where: { packageKey: body.productKey },
+      });
+      if (!p) throw new NotFoundException('额度包不存在');
     } else {
       const p = await this.prisma.forgeProduct.findUnique({
         where: { typeKey: body.productKey },

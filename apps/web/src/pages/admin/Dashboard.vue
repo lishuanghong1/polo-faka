@@ -34,25 +34,26 @@ function openOrder(orderNo: string) {
 const kpis = computed(() => {
   if (!data.value) return [];
   const d = data.value;
-  const b = d.order.breakdown || { local: {}, forge: {} };
+  const b = d.order.breakdown || { local: {}, forge: {}, forgeQuota: {} };
+  const q = b.forgeQuota || {};
   return [
     {
       label: '今日营收',
       value: `¥${Number(d.order.todayRevenue || 0).toLocaleString()}`,
-      hint: `本站 ¥${Number(b.local.todayRevenue || 0).toFixed(0)} · 三方 ¥${Number(b.forge.todayRevenue || 0).toFixed(0)} · 近 7 日 ¥${Number(d.order.weekRevenue || 0).toLocaleString()}`,
+      hint: `本站 ¥${Number(b.local.todayRevenue || 0).toFixed(0)} · 三方 ¥${Number(b.forge.todayRevenue || 0).toFixed(0)} · 额度包 ¥${Number(q.todayRevenue || 0).toFixed(0)} · 近 7 日 ¥${Number(d.order.weekRevenue || 0).toLocaleString()}`,
       tone: 'brand',
     },
     {
       label: '今日订单',
       value: d.order.today,
-      hint: `已支付 ${d.order.todayPaid}（本站 ${b.local.today || 0} · 三方 ${b.forge.today || 0}）`,
+      hint: `已支付 ${d.order.todayPaid}（本站 ${b.local.today || 0} · 三方 ${b.forge.today || 0} · 额度包 ${q.today || 0}）`,
       tone: 'ink',
     },
     {
       label: '待处理',
       value: d.order.pendingDeliver,
       hint: d.order.pendingDeliver > 0
-        ? `本站 ${b.local.pendingDeliver || 0} · 三方 ${b.forge.pendingDeliver || 0}`
+        ? `本站 ${b.local.pendingDeliver || 0} · 三方 ${b.forge.pendingDeliver || 0} · 额度包 ${q.pendingDeliver || 0}`
         : '已清空',
       tone: d.order.pendingDeliver > 0 ? 'warn' : 'ink',
     },

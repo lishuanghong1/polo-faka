@@ -370,6 +370,61 @@ export class PointsService {
     );
   }
 
+  async settleDeliveredForgeQuotaOrder(tx: Tx, orderNo: string) {
+    const order = await tx.forgeQuotaOrder.findUnique({
+      where: { orderNo },
+      select: {
+        orderNo: true,
+        userId: true,
+        payAmount: true,
+        totalAmount: true,
+        paymentMethod: true,
+        status: true,
+        package: { select: { pointsAwardEnabled: true, pointsAwardRate: true } },
+      },
+    });
+    if (!order?.userId || order.status !== 'DELIVERED') return;
+    if (!order.package?.pointsAwardEnabled) return;
+
+    const paidAmount = order.payAmount !== null
+      ? Number(order.payAmount)
+      : Number(order.totalAmount);
+    const reward = this.rewardForAmount(paidAmount, order.package.pointsAwardRate);
+    if (reward <= 0) return;
+
+    if (order.paymentMethod !== 'POINTS') {
+      await this.awardOnce(
+        tx,
+        order.userId,
+        reward,
+        'ORDER_REWARD',
+        order.orderNo,
+        `额度包订单 ${order.orderNo} 消费返积分`,
+      );
+    }
+
+    const invitee = await tx.user.findUnique({
+      where: { id: order.userId },
+      select: { inviterId: true, inviteRewardedAt: true },
+    });
+    if (!invitee?.inviterId || invitee.inviteRewardedAt) return;
+
+    const marked = await tx.user.updateMany({
+      where: { id: order.userId, inviterId: invitee.inviterId, inviteRewardedAt: null },
+      data: { inviteRewardedAt: new Date() },
+    });
+    if (marked.count === 0) return;
+
+    await this.awardOnce(
+      tx,
+      invitee.inviterId,
+      reward,
+      'INVITE_REWARD',
+      order.orderNo,
+      `邀请用户额度包首单 ${order.orderNo} 返积分`,
+    );
+  }
+
   async refundDeductedPoints(tx: Tx, userId: number, orderNo: string, points: number) {
     if (!Number.isInteger(points) || points <= 0) return false;
     return this.awardOnce(

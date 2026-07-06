@@ -175,3 +175,115 @@ export class OrderQueryDto {
   @IsString()
   contact?: string;
 }
+
+// ===================== 额度包（quota packages）=====================
+
+export class UpdateForgeQuotaPackageDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  displayPrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  sort?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  pointsAwardEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  pointsPayEnabled?: boolean;
+
+  /** 返积分倍率，0~1。null/不传 = 走全局默认 10% */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  pointsAwardRate?: number | null;
+
+  // ── 自定义详情：null/空串 = 清空回退到三方默认 ─────────
+  @IsOptional()
+  @IsString()
+  @Length(0, 128)
+  customName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 255)
+  subtitle?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 512)
+  coverImage?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 20000)
+  description?: string | null;
+
+  /** JSON 数组字符串 */
+  @IsOptional()
+  @IsString()
+  @Length(0, 4000)
+  highlights?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 4000)
+  notice?: string | null;
+}
+
+export class QuotaRedeemOrderDto {
+  @IsString()
+  @Length(4, 64)
+  code!: string;
+
+  @IsString()
+  @Length(1, 64)
+  packageKey!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  contact?: string;
+}
+
+export class QuotaPayOrderDto {
+  @IsString()
+  @Length(1, 64)
+  packageKey!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  contact?: string;
+}
+
+export class VoidQuotaCodesDto {
+  /** 兑换码列表（≤100，自动去重、大写化） */
+  @IsString({ each: true })
+  codes!: string[];
+
+  /** 作废原因（建议填退款单号，会记入三方 void_reason） */
+  @IsOptional()
+  @IsString()
+  @Length(0, 180)
+  reason?: string;
+}

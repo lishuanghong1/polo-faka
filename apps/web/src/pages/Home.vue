@@ -21,7 +21,7 @@ function copyContact(text: string, label: string) {
 }
 
 interface UnifiedProduct {
-  source: 'local' | 'forge';
+  source: 'local' | 'forge' | 'quota';
   /** 卡片 key */
   key: string;
   /** 显示名 */
@@ -138,15 +138,35 @@ function normalizeForge(p: any): UnifiedProduct {
   };
 }
 
+function normalizeQuota(p: any): UnifiedProduct {
+  const categoryName = '中转额度包';
+  return {
+    source: 'quota',
+    key: `quota:${p.packageKey}`,
+    typeKey: p.packageKey,
+    // name 已经在后端做过 customName 覆盖
+    typeName: p.name,
+    displayPrice: Number(p.displayPrice),
+    stock: 9999, // 虚拟商品无库存概念，卡片不显示库存
+    warrantyHours: null,
+    categoryKey: normCategoryKey(categoryName),
+    categoryName,
+    emailCodeEnabled: false,
+    subtitle: p.subtitle || `面值 $${p.quotaUsd} · 兑换码发货，官网核销即到账`,
+    coverImage: p.coverImage ?? null,
+  };
+}
+
 async function load(showRefreshing = false) {
   if (showRefreshing) refreshing.value = true;
   else loading.value = true;
   lastError.value = '';
 
-  // 并发拉两边，任意一边失败都不影响另一边
-  const [localRes, forgeRes] = await Promise.allSettled([
+  // 并发拉三边，任意一边失败都不影响其它
+  const [localRes, forgeRes, quotaRes] = await Promise.allSettled([
     api.products({ pageSize: 100 }),
     api.forge.listProducts(),
+    api.forge.quota.listPackages(),
   ]);
 
   const merged: UnifiedProduct[] = [];
@@ -160,8 +180,16 @@ async function load(showRefreshing = false) {
     for (const it of forgeRes.value as any[]) merged.push(normalizeForge(it));
   }
 
-  // 两个都失败才报错
-  if (localRes.status === 'rejected' && forgeRes.status === 'rejected') {
+  if (quotaRes.status === 'fulfilled') {
+    for (const it of quotaRes.value as any[]) merged.push(normalizeQuota(it));
+  }
+
+  // 全部失败才报错
+  if (
+    localRes.status === 'rejected' &&
+    forgeRes.status === 'rejected' &&
+    quotaRes.status === 'rejected'
+  ) {
     const e: any = forgeRes.reason || localRes.reason;
     lastError.value = e?.response?.data?.error?.message || e?.message || '加载商品失败';
   }
@@ -174,6 +202,8 @@ async function load(showRefreshing = false) {
 function gotoDetail(p: UnifiedProduct) {
   if (p.source === 'local') {
     router.push(`/product/${encodeURIComponent(p.typeKey)}`);
+  } else if (p.source === 'quota') {
+    router.push(`/quota-package/${encodeURIComponent(p.typeKey)}`);
   } else {
     router.push(`/forge-product/${encodeURIComponent(p.typeKey)}`);
   }

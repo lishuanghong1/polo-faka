@@ -33,6 +33,8 @@ const groups = [
     items: [
       { to: '/admin/forge-products', icon: 'M20 7l-8-4-8 4m16 0v10l-8 4m8-14L12 11M4 7v10l8 4m-8-14l8 4m0 0v10', label: '三方商品' },
       { to: '/admin/forge-redeem-codes', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z', label: '三方兑换码' },
+      { to: '/admin/forge-quota-packages', icon: 'M12 8c-3.9 0-7 1.3-7 3v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2c0-1.7-3.1-3-7-3zM5 15v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2M12 8c3.9 0 7-1.3 7-3s-3.1-3-7-3-7 1.3-7 3 3.1 3 7 3z', label: '额度包' },
+      { to: '/admin/forge-quota-orders', icon: 'M9 12h6m-6 4h4M5 8h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9a2 2 0 012-2zm3 0V6a2 2 0 012-2h4a2 2 0 012 2v2', label: '额度包订单' },
     ],
   },
   {

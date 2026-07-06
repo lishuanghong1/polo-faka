@@ -43,6 +43,8 @@ export class ForgeApiError extends Error {
     public httpStatus: number,
     public upstreamMessage: string,
     public requestId?: string,
+    /** 上游错误响应里的 data（如作废接口的 skipped 明细），可能为空 */
+    public data?: any,
   ) {
     super(upstreamMessage || code);
   }
@@ -170,6 +172,10 @@ export class ForgeOpenapiService {
       INVALID_PARAM: message || '参数错误',
       PRODUCT_NOT_FOUND: '该商品不存在或已下架',
       PRODUCT_NOT_OPENAPI_ENABLED: '该商品类型未对 OpenAPI 开放出货，请联系平台运营',
+      PACKAGE_NOT_FOUND: '该额度包不存在或已下架',
+      PACKAGE_NOT_OPENAPI_ENABLED: '该额度包未开启 OpenAPI 出库白名单，请联系平台运营',
+      EXTERNAL_ID_CONFLICT: '幂等 ID 冲突（同一 external_order_id 已用于其它订单）',
+      CODE_NOT_FOUND: '兑换码不存在或不是本代理出库的码',
       INSUFFICIENT_BALANCE: '代理余额不足，请联系平台运营充值',
       OUT_OF_STOCK: '该商品当前缺货',
       PURCHASE_LIMIT: '触发账号类型限购规则',
@@ -236,7 +242,13 @@ export class ForgeOpenapiService {
         this.logger.warn(
           `forge upstream rejected: ${method} ${path} status=${resp.status} code=${code} msg=${message} req_id=${requestId}`,
         );
-        throw new ForgeApiError(code || 'UPSTREAM_ERROR', resp.status, message || '', requestId);
+        throw new ForgeApiError(
+          code || 'UPSTREAM_ERROR',
+          resp.status,
+          message || '',
+          requestId,
+          respBody.data,
+        );
       }
 
       return {
@@ -258,6 +270,7 @@ export class ForgeOpenapiService {
           err.response.status,
           body.message || `上游错误 (HTTP ${err.response.status})`,
           body.request_id,
+          body.data,
         );
       }
       // 网络层错误：DNS / TCP / TLS / 超时 / 5xx

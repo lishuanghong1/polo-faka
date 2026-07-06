@@ -14,6 +14,8 @@ function submit() {
   const query = contact.value.trim() ? { contact: contact.value.trim() } : undefined;
   if (no.startsWith('F')) {
     router.push({ path: `/forge-order/${no}`, query });
+  } else if (no.startsWith('Q')) {
+    router.push({ path: `/quota-order/${no}`, query });
   } else {
     router.push({ path: `/order/${no}`, query });
   }

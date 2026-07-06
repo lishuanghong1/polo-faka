@@ -15,6 +15,7 @@ import { Request, Response } from 'express';
 import { AlipayService } from './alipay.service';
 import { OrdersService } from '../orders/orders.service';
 import { ForgeOrdersService } from '../forge-redeem/forge-orders.service';
+import { ForgeQuotaOrdersService } from '../forge-redeem/forge-quota-orders.service';
 import { RechargeService } from '../recharge/recharge.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Public } from '../../common/decorators/public.decorator';
@@ -24,10 +25,10 @@ import { AuditActions } from '../audit/audit.constants';
 import { AbuseGuardService } from '../../common/abuse/abuse-guard.service';
 
 /**
- * 我方订单号格式：P/F/R 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
+ * 我方订单号格式：P/F/R/Q 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
  * 严格白名单字符 + 长度，防止 SQL/XSS payload 进入审计日志。
  */
-const ORDER_NO_REGEX = /^[PFR][A-Za-z0-9-]{14,64}$/;
+const ORDER_NO_REGEX = /^[PFRQ][A-Za-z0-9-]{14,64}$/;
 /** 支付宝 trade_no：纯数字、长度 16-64 */
 const TRADE_NO_REGEX = /^\d{16,64}$/;
 
@@ -66,6 +67,7 @@ function isSafeReturnUrl(u?: string): boolean {
  *   - 本地卡密订单：以 'P' 开头
  *   - 代下订单：以 'F' 开头
  *   - 余额充值订单：以 'R' 开头
+ *   - 额度包购码订单：以 'Q' 开头
  */
 function isForgeOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('F');
@@ -73,6 +75,10 @@ function isForgeOrder(orderNo: string) {
 
 function isRechargeOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('R');
+}
+
+function isQuotaOrder(orderNo: string) {
+  return typeof orderNo === 'string' && orderNo.startsWith('Q');
 }
 
 /** 脱敏 buyer_logon_id（138****1234@qq.com → 138****1234@qq.com，邮箱/手机分别脱敏） */
@@ -97,6 +103,7 @@ export class AlipayController {
     private readonly alipay: AlipayService,
     private readonly orders: OrdersService,
     private readonly forgeOrders: ForgeOrdersService,
+    private readonly quotaOrders: ForgeQuotaOrdersService,
     private readonly recharge: RechargeService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -149,6 +156,21 @@ export class AlipayController {
       payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
       subject = order.typeName;
       body = `${order.typeName} × ${order.quantity}`;
+    } else if (isQuotaOrder(orderNo)) {
+      const order = await this.prisma.forgeQuotaOrder.findUnique({ where: { orderNo } });
+      if (!order) throw new BadRequestException('订单不存在');
+      if (order.paymentMethod !== 'ALIPAY') {
+        throw new BadRequestException('订单不是支付宝订单');
+      }
+      if (order.status !== 'PENDING') {
+        throw new BadRequestException('订单状态不允许支付');
+      }
+      if (order.expireAt && order.expireAt.getTime() < Date.now()) {
+        throw new BadRequestException('订单已过期');
+      }
+      payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
+      subject = order.packageName;
+      body = `${order.packageName} × ${order.quantity}`;
     } else {
       const order = await this.prisma.order.findUnique({ where: { orderNo } });
       if (!order) throw new BadRequestException('订单不存在');
@@ -347,6 +369,33 @@ export class AlipayController {
         }
       }
 
+      if (isQuotaOrder(orderNo)) {
+        // 额度包购码订单：仅做状态推进，购码异步
+        try {
+          const r = await this.quotaOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
+          if (r === 'recorded') {
+            this.quotaOrders.fulfillAsync(orderNo);
+          }
+          return res.status(200).send('success');
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (msg.includes('金额不一致')) {
+            await this.audit.record({
+              action: AuditActions.ALIPAY_AMOUNT_MISMATCH,
+              target: `forge-quota:${orderNo}`,
+              detail: { tradeNo, paidAmount: totalAmount, msg },
+            });
+            return res.status(200).send('success');
+          }
+          if (msg.includes('订单不存在') || msg.includes('不是支付宝订单') || msg.includes('不允许')) {
+            this.logger.warn(`quota notify hard-fail: ${orderNo} ${msg}`);
+            return res.status(200).send('success');
+          }
+          this.logger.error(`quota notify retryable: ${orderNo} ${msg}`);
+          return res.status(200).send('fail');
+        }
+      }
+
       // 本地卡密订单
       try {
         const r = await this.orders.markPaidOnly(orderNo, tradeNo, totalAmount, buyerLogonId);
@@ -407,6 +456,15 @@ export class AlipayController {
           }
           return res.redirect(`/forge-order/${encodeURIComponent(orderNo)}`);
         }
+        if (isQuotaOrder(orderNo)) {
+          try {
+            const r = await this.quotaOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
+            if (r === 'recorded') this.quotaOrders.fulfillAsync(orderNo);
+          } catch (e) {
+            this.logger.warn(`return-ack quota fallback: ${(e as Error).message}`);
+          }
+          return res.redirect(`/quota-order/${encodeURIComponent(orderNo)}`);
+        }
 
         try {
           const r = await this.orders.markPaidOnly(orderNo, tradeNo, totalAmount, buyerLogonId);
@@ -441,7 +499,11 @@ export class AlipayController {
   async adminQuery(@Param('orderNo') orderNo: string, @Req() req: Request) {
     const r = await this.alipay.tradeQuery(orderNo);
     await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_QUERY, {
-      target: isForgeOrder(orderNo) ? `forge:${orderNo}` : `order:${orderNo}`,
+      target: isForgeOrder(orderNo)
+        ? `forge:${orderNo}`
+        : isQuotaOrder(orderNo)
+          ? `forge-quota:${orderNo}`
+          : `order:${orderNo}`,
       detail: r,
     });
 
@@ -456,6 +518,14 @@ export class AlipayController {
             r.buyerLogonId,
           );
           if (x === 'recorded') this.forgeOrders.fulfillAsync(orderNo);
+        } else if (isQuotaOrder(orderNo)) {
+          const x = await this.quotaOrders.markPaid(
+            orderNo,
+            r.tradeNo!,
+            r.totalAmount!,
+            r.buyerLogonId,
+          );
+          if (x === 'recorded') this.quotaOrders.fulfillAsync(orderNo);
         } else {
           const x = await this.orders.markPaidOnly(
             orderNo,
@@ -514,6 +584,39 @@ export class AlipayController {
       });
       await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_REFUND, {
         target: `forge:${orderNo}`,
+        detail: { amount, reason, refundFee: r.refundFee },
+      });
+      return { ok: true, amount, refundFee: r.refundFee };
+    }
+
+    if (isQuotaOrder(orderNo)) {
+      const order = await this.prisma.forgeQuotaOrder.findUnique({ where: { orderNo } });
+      if (!order) throw new BadRequestException('订单不存在');
+      if (order.paymentMethod !== 'ALIPAY') {
+        throw new BadRequestException('非支付宝订单');
+      }
+      if (!['PAID', 'DELIVERED', 'FAILED'].includes(order.status)) {
+        throw new BadRequestException(`订单状态 ${order.status} 不可退款`);
+      }
+      const amount =
+        order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
+      const r = await this.alipay.tradeRefund({
+        orderNo,
+        refundAmount: amount,
+        refundReason: reason,
+      });
+      if (!r.ok) throw new BadRequestException(`退款失败：${r.reason}`);
+      await this.prisma.forgeQuotaOrder.update({
+        where: { orderNo },
+        data: {
+          status: 'REFUNDED',
+          refundAmount: amount as any,
+          refundedAt: new Date(),
+          refundReason: reason,
+        },
+      });
+      await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_REFUND, {
+        target: `forge-quota:${orderNo}`,
         detail: { amount, reason, refundFee: r.refundFee },
       });
       return { ok: true, amount, refundFee: r.refundFee };

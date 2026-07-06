@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 
 interface UnifiedProduct {
-  source: 'local' | 'forge';
+  source: 'local' | 'forge' | 'quota';
   key: string;
   typeName: string;
   typeKey: string;
