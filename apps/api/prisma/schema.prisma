@@ -913,6 +913,10 @@ model CursorSubAccount {
   status               String    @default("unsubscribed") @db.VarChar(16)
   /// Cursor 真实订阅类型（同步用量时写入）：free / pro / pro_plus / ultra / business ...
   membershipType       String?   @db.VarChar(32)
+  /// 用量快照（同步时写入）：已用 / 上限 / 已用百分比
+  planUsed             Float?
+  planLimit            Float?
+  planPercentUsed      Float?
   paidAt               DateTime?
   expiresAt            DateTime?
   subscriptionDays     Int       @default(30)

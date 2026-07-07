@@ -69,6 +69,29 @@ function remainText(row: any): string {
   return d > 0 ? `剩 ${d}天${h}小时` : `剩 ${h}小时`;
 }
 
+/** 用量列展示：优先百分比，其次 已用/上限；未同步则提示 */
+function usageText(row: any): string {
+  const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  if (row.planPercentUsed !== null && row.planPercentUsed !== undefined) {
+    return `${fmt(Number(row.planPercentUsed))}%`;
+  }
+  if (row.planLimit !== null && row.planLimit !== undefined) {
+    return `${fmt(Number(row.planUsed ?? 0))}/${fmt(Number(row.planLimit))}`;
+  }
+  if (row.planUsed !== null && row.planUsed !== undefined) {
+    return `已用 ${fmt(Number(row.planUsed))}`;
+  }
+  return row.hasCursorToken ? '未同步' : '无 token';
+}
+function usageCls(row: any): string {
+  const p = row.planPercentUsed;
+  if (p === null || p === undefined) return 'text-ink-400';
+  const n = Number(p);
+  if (n >= 90) return 'text-rose-600 font-medium';
+  if (n >= 60) return 'text-amber-600';
+  return 'text-emerald-600';
+}
+
 // ── 新增 / 编辑 ──────────────────────────────────────
 const editing = ref<any | null>(null);
 function openCreate() {
@@ -245,7 +268,7 @@ function search() {
       <tr>
         <th style="width:60px">ID</th>
         <th>邮箱</th>
-        <th>凭据</th>
+        <th>用量</th>
         <th>订阅状态</th>
         <th>到期</th>
         <th>销售状态</th>
@@ -256,13 +279,7 @@ function search() {
       <tr v-for="row in list" :key="row.id" class="cursor-pointer" @click="openDetail(row)">
         <td class="text-ink-400 font-mono text-xs">#{{ row.id }}</td>
         <td class="text-sm text-ink-800">{{ row.email }}</td>
-        <td class="text-xs">
-          <span :class="row.hasCursorToken ? 'text-emerald-600' : 'text-ink-300'" title="cursor token">T</span>
-          <span class="mx-1 text-ink-200">·</span>
-          <span :class="row.hasPassword ? 'text-emerald-600' : 'text-ink-300'" title="cursor 密码">P</span>
-          <span class="mx-1 text-ink-200">·</span>
-          <span :class="row.hasEmailPassword ? 'text-emerald-600' : 'text-ink-300'" title="邮箱密码">M</span>
-        </td>
+        <td class="text-xs" :class="usageCls(row)" title="Cursor 用量（点批量同步刷新）">{{ usageText(row) }}</td>
         <td>
           <span
             class="px-2 py-0.5 rounded text-xs font-medium"
