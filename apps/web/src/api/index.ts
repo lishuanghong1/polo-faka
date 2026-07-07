@@ -1,5 +1,11 @@
 import http from './http';
 
+/**
+ * 退款链在服务端同步串行执行（团队邀请→接受→踢出→轮询到 free，每个号约 30–40s，
+ * 批量按数量叠加），默认 15s 会请求超时。给退款相关接口放宽到 5 分钟。
+ */
+const REFUND_TIMEOUT = 5 * 60 * 1000;
+
 export type AdminUserDetail = {
   user: {
     id: number;
@@ -280,7 +286,7 @@ export const api = {
       http.post<{ refundStatus: string; amount?: number; refundLog?: string[] }>(
         `/warehouse/${id}/refund`,
         undefined,
-        { silent: true } as any,
+        { silent: true, timeout: REFUND_TIMEOUT } as any,
       ),
     warehouseRefundReset: (id: number) => http.post(`/warehouse/${id}/refund-reset`),
     warehouseBulkImport: (items: any[]) => http.post('/warehouse/bulk-import', { items }),
@@ -430,7 +436,10 @@ export const api = {
         body,
       ),
     refundWlRefundNow: (id: number) =>
-      http.post(`/admin/customer-refund/${id}/refund`, undefined, { silent: true } as any),
+      http.post(`/admin/customer-refund/${id}/refund`, undefined, {
+        silent: true,
+        timeout: REFUND_TIMEOUT,
+      } as any),
     refundWlReset: (id: number) => http.post(`/admin/customer-refund/${id}/refund-reset`),
 
     cursorRefundStatus: () =>
@@ -448,7 +457,7 @@ export const api = {
           finalMembership: string;
           error?: string;
         }>;
-      }>('/admin/cursor-refund/manual', { tokens }, { silent: true } as any),
+      }>('/admin/cursor-refund/manual', { tokens }, { silent: true, timeout: REFUND_TIMEOUT } as any),
 
     redeemGenerate: (body: any) => http.post('/admin/redeem-codes/generate', body),
     redeemList: (params: any) => http.get('/admin/redeem-codes', { params }),
