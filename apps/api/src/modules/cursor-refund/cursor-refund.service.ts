@@ -26,6 +26,7 @@ const K_TEAM = 'cursor_refund_team_id';
 
 export interface RefundResult {
   ok: boolean;
+  email: string;
   amount: number;          // 美元
   prevMembership: string;
   finalMembership: string;
@@ -168,7 +169,7 @@ export class CursorRefundService {
       log.push(m);
       this.logger.log(`[refund] ${m}`);
     };
-    const res: RefundResult = { ok: false, amount: 0, prevMembership: '', finalMembership: '', log };
+    const res: RefundResult = { ok: false, email: '', amount: 0, prevMembership: '', finalMembership: '', log };
 
     const target = normalizeToken(targetTokenRaw);
     if (!target) {
@@ -182,6 +183,9 @@ export class CursorRefundService {
     }
 
     try {
+      const me = await this.fillMe(target);
+      res.email = me.email;
+
       res.prevMembership = await this.membership(target);
       if (res.prevMembership === 'free') {
         res.ok = true;
@@ -190,7 +194,6 @@ export class CursorRefundService {
         return res;
       }
 
-      const me = await this.fillMe(target);
       if (!me.userId) {
         res.error = '获取账号 userId 失败（token 可能已失效）';
         return res;
@@ -237,5 +240,17 @@ export class CursorRefundService {
       this.logger.warn(`refundOne failed: ${res.error}`);
       return res;
     }
+  }
+
+  /** 手动批量退款：逐个执行（退款较慢，串行更稳），返回每个的结果 */
+  async refundMany(tokens: string[]): Promise<RefundResult[]> {
+    const list = Array.from(
+      new Set((tokens || []).map((t) => (t || '').trim()).filter(Boolean)),
+    );
+    const out: RefundResult[] = [];
+    for (const t of list) {
+      out.push(await this.refundOne(t));
+    }
+    return out;
   }
 }

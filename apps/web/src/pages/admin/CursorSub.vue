@@ -222,6 +222,34 @@ function search() {
   page.value = 1;
   load();
 }
+
+// ── 手动退款（粘贴 token）────────────────────────────
+const refundBox = ref<{ text: string } | null>(null);
+const refunding = ref(false);
+const refundResults = ref<any[] | null>(null);
+function openManualRefund() {
+  refundBox.value = { text: '' };
+  refundResults.value = null;
+}
+async function doManualRefund() {
+  const tokens = (refundBox.value?.text || '')
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!tokens.length) return ElMessage.warning('请粘贴至少一个 token（一行一个）');
+  if (tokens.length > 20) return ElMessage.warning('单次最多 20 个');
+  refunding.value = true;
+  refundResults.value = null;
+  try {
+    const r = await api.admin.cursorRefundManual(tokens);
+    refundResults.value = r.results;
+    ElMessage.success(`退款完成：成功 ${r.ok}，失败 ${r.failed}`);
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.message || '退款失败');
+  } finally {
+    refunding.value = false;
+  }
+}
 </script>
 
 <template>
@@ -239,6 +267,7 @@ function search() {
         :disabled="batchGenerating"
         @click="batchGenLinks"
       >{{ batchGenerating ? '生成中…' : '批量生成订阅链接' }}</button>
+      <button class="px-3 h-9 rounded-lg border border-rose-300 text-rose-700 hover:bg-rose-50 text-sm" @click="openManualRefund">手动退款</button>
       <button class="px-3 h-9 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="openImport">批量导入</button>
       <button class="px-3 h-9 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="openCreate">+ 新增账号</button>
     </template>
@@ -392,6 +421,49 @@ function search() {
     <template #footer>
       <button class="px-4 py-1.5 mr-2 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="importing = null">关闭</button>
       <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 rounded-lg text-white text-sm" @click="doImport">开始导入</button>
+    </template>
+  </el-dialog>
+
+  <!-- 手动退款：粘贴 token 直接退 -->
+  <el-dialog
+    :model-value="!!refundBox"
+    width="640px"
+    title="手动退款（粘贴 token）"
+    @update:model-value="(v: boolean) => !v && (refundBox = null)"
+    @close="refundBox = null"
+  >
+    <div v-if="refundBox" class="space-y-3 text-sm">
+      <div class="text-xs text-ink-500 bg-rose-50/60 border border-rose-200 rounded p-2.5 leading-relaxed">
+        对每个 token 执行「团队邀请按比例退款」（账号会变 Free）。一行一个 token（`user_xxx::JWT` 或含 WorkosCursorSessionToken 的 cookie），单次最多 20 个。
+        需先在「站点设置 → Cursor 退款」配置好 owner token / teamId。
+      </div>
+      <textarea
+        v-model="refundBox.text"
+        rows="8"
+        placeholder="一行一个 token&#10;user_xxx::eyJ...&#10;user_yyy::eyJ..."
+        class="w-full px-3 py-2 border border-ink-200 rounded-lg font-mono text-xs"
+      />
+      <div v-if="refundResults" class="text-xs bg-ink-50/60 rounded p-2 max-h-56 overflow-auto space-y-1">
+        <div
+          v-for="(r, i) in refundResults"
+          :key="i"
+          :class="r.ok ? 'text-emerald-700' : 'text-rose-600'"
+        >
+          {{ r.ok ? '✓' : '✗' }} {{ r.email || '(未知邮箱)' }}
+          <template v-if="r.ok">
+            退款成功 {{ r.prevMembership }} → {{ r.finalMembership }}<span v-if="r.amount"> · 约 ${{ Number(r.amount).toFixed(2) }}</span>
+          </template>
+          <template v-else>{{ r.error }}</template>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <button class="px-4 py-1.5 mr-2 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="refundBox = null">关闭</button>
+      <button
+        class="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 rounded-lg text-white text-sm disabled:opacity-50"
+        :disabled="refunding"
+        @click="doManualRefund"
+      >{{ refunding ? '退款中（较慢，请勿关闭）…' : '开始退款' }}</button>
     </template>
   </el-dialog>
 

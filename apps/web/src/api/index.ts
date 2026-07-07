@@ -395,6 +395,24 @@ export const api = {
         { silent: true } as any,
       ),
 
+    // ??????? token?
+    cursorRefundStatus: () =>
+      http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),
+    cursorRefundManual: (tokens: string[]) =>
+      http.post<{
+        total: number;
+        ok: number;
+        failed: number;
+        results: Array<{
+          email: string;
+          ok: boolean;
+          amount: number;
+          prevMembership: string;
+          finalMembership: string;
+          error?: string;
+        }>;
+      }>('/admin/cursor-refund/manual', { tokens }, { silent: true } as any),
+
     redeemGenerate: (body: any) => http.post('/admin/redeem-codes/generate', body),
     redeemList: (params: any) => http.get('/admin/redeem-codes', { params }),
     redeemOverview: () => http.get<{ ACTIVE: number; DISABLED: number; EXHAUSTED: number; EXPIRED: number; total: number }>('/admin/redeem-codes/overview'),
