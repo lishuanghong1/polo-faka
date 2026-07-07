@@ -129,7 +129,7 @@ async function fetchUsage() {
   acting.value = 'usage';
   try {
     const r: any = await api.admin.cursorSubUsage(acc.value.id);
-    if (!r.success) ElMessage.warning(r.error || '查询失败');
+    if (!r?.ok) ElMessage.warning(r?.error || '查询失败');
     usage.value = r;
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error?.message || '查询失败');
@@ -289,10 +289,10 @@ async function del() {
         <!-- 用量 -->
         <div v-if="usage">
           <div class="text-xs text-ink-400 uppercase tracking-wider font-medium mb-2">用量</div>
-          <div v-if="usage.success" class="text-sm text-ink-700 space-y-1">
+          <div v-if="usage.ok" class="text-sm text-ink-700 space-y-1">
             <div>会员：{{ membershipLabel(usage.membershipType).text }}</div>
-            <div>额度：{{ usage.planUsed ?? '-' }} / {{ usage.planLimit ?? '-' }}</div>
-            <div class="text-xs text-ink-500">账期：{{ usage.billingCycleStart || '-' }} ~ {{ usage.billingCycleEnd || '-' }}</div>
+            <div>已用：{{ usage.planPercentUsed != null ? usage.planPercentUsed + '%' : '-' }}（{{ usage.planUsed ?? '-' }} / {{ usage.planLimit ?? '-' }}）</div>
+            <div class="text-xs text-ink-500">账期：{{ formatDateTime(usage.billingCycleStart) || '-' }} ~ {{ formatDateTime(usage.billingCycleEnd) || '-' }}</div>
           </div>
           <div v-else class="text-xs text-rose-500">{{ usage.error || '查询失败' }}</div>
         </div>

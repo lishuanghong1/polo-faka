@@ -207,7 +207,14 @@ export class CursorSubService {
   async get(id: number) {
     const r = await this.prisma.cursorSubAccount.findUnique({ where: { id } });
     if (!r) throw new NotFoundException('账号不存在');
-    return this.toView(r);
+    // 关联仓库销售状态（按 warehouseRef），与 list 保持一致
+    const wh = r.warehouseRef
+      ? ((await this.prisma.warehouseAccount.findUnique({
+          where: { sourceRef: r.warehouseRef },
+          select: { status: true, soldAt: true, orderNo: true },
+        })) ?? undefined)
+      : undefined;
+    return this.toView(r, wh);
   }
 
   async create(dto: CreateCursorSubDto) {
@@ -385,14 +392,18 @@ export class CursorSubService {
     return { total: ids.length, ok, failed };
   }
 
-  /** 查用量（不落库，仅返回） */
+  /**
+   * 查用量（不落库，仅返回）。
+   * 注意：返回体不能带顶层 success 字段——那是全局响应信封的保留字
+   * （TransformInterceptor 会原样透传，前端拦截器会把它当信封解包成 undefined），统一用 ok。
+   */
   async fetchUsage(id: number) {
     const acc = await this.prisma.cursorSubAccount.findUnique({ where: { id } });
     if (!acc) throw new NotFoundException('账号不存在');
     const token = safeDecrypt(acc.cursorTokenEnc);
-    if (!token) return { success: false, hasToken: false, error: '该账号没有 token' };
-    const r = await this.usage.fetchUsage(token);
-    return { ...r, hasToken: true };
+    if (!token) return { ok: false, hasToken: false, error: '该账号没有 token' };
+    const { success, ...rest } = await this.usage.fetchUsage(token);
+    return { ...rest, ok: success, hasToken: true };
   }
 
   // ── 订阅结账链接 ────────────────────────────────────
