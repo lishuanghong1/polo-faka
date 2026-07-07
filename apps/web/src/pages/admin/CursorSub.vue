@@ -10,7 +10,18 @@ import { membershipLabel } from '@/utils/cursor-membership';
 const list = ref<any[]>([]);
 const total = ref(0);
 const loading = ref(false);
-const filterStatus = ref('');
+type TabKey = 'unsubscribed' | 'subscribed' | 'unlisted';
+const activeTab = ref<TabKey>('unsubscribed');
+const counts = ref<{ unsubscribed: number; subscribed: number; unlisted: number }>({
+  unsubscribed: 0,
+  subscribed: 0,
+  unlisted: 0,
+});
+const tabs: { key: TabKey; label: string }[] = [
+  { key: 'unsubscribed', label: '未订阅' },
+  { key: 'subscribed', label: '已订阅' },
+  { key: 'unlisted', label: '已下架' },
+];
 const keyword = ref('');
 const page = ref(1);
 const pageSize = 50;
@@ -21,19 +32,26 @@ async function load() {
   loading.value = true;
   try {
     const r: any = await api.admin.cursorSubList({
-      status: filterStatus.value || undefined,
+      status: activeTab.value,
       keyword: keyword.value || undefined,
       page: page.value,
       pageSize,
     });
     list.value = r.items;
     total.value = r.total;
+    if (r.counts) counts.value = r.counts;
   } finally {
     loading.value = false;
   }
 }
 onMounted(load);
-watch([filterStatus, page], load);
+watch([activeTab, page], load);
+
+function switchTab(key: TabKey) {
+  if (activeTab.value === key) return;
+  activeTab.value = key;
+  page.value = 1;
+}
 
 const saleMeta: Record<string, { text: string; cls: string }> = {
   PENDING: { text: '待分配', cls: 'text-amber-600' },
@@ -186,13 +204,6 @@ function search() {
 <template>
   <AdminPageHeader title="订阅号池" subtitle="Cursor 订阅账号管理（合并自 cursor-jb）：导入 → 推送仓库上架 → 售出">
     <template #actions>
-      <select v-model="filterStatus" class="admin-select" @change="search">
-        <option value="">全部状态</option>
-        <option value="unsubscribed">未订阅</option>
-        <option value="subscribed">已订阅</option>
-        <option value="expired">已过期</option>
-        <option value="unlisted">已下架</option>
-      </select>
       <input v-model="keyword" placeholder="搜索邮箱" class="admin-input w-44" @keyup.enter="search" />
       <button class="px-3 h-9 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="search">查询</button>
       <button
@@ -209,6 +220,25 @@ function search() {
       <button class="px-3 h-9 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium" @click="openCreate">+ 新增账号</button>
     </template>
   </AdminPageHeader>
+
+  <!-- 状态 tab -->
+  <div class="mb-4 flex items-center gap-1.5 border-b border-ink-100">
+    <button
+      v-for="t in tabs"
+      :key="t.key"
+      class="px-4 py-2 text-sm -mb-px border-b-2 transition"
+      :class="activeTab === t.key
+        ? 'border-brand-600 text-brand-700 font-medium'
+        : 'border-transparent text-ink-500 hover:text-ink-800'"
+      @click="switchTab(t.key)"
+    >
+      {{ t.label }}
+      <span
+        class="ml-1 text-xs px-1.5 py-0.5 rounded-full"
+        :class="activeTab === t.key ? 'bg-brand-50 text-brand-700' : 'bg-ink-100 text-ink-500'"
+      >{{ counts[t.key] }}</span>
+    </button>
+  </div>
 
   <DataTable :loading="loading" :is-empty="!list.length" empty="暂无账号，点右上角新增或批量导入" min-width="920px">
     <thead>

@@ -22,6 +22,16 @@ const COMMON_SEPARATORS = ['----', '\t', '|', ',', '::'];
 const LABELED_RE = /workos[_ ]?cursor[_ ]?session[_ ]?token|access[_ ]?token|session[_ ]?token/i;
 const EMAIL_LABEL_RE = /(邮箱|mail|账号|account)\s*[:：]/i;
 
+/** 免费 / 非付费的 membershipType（其余一律视为付费，如 pro/pro_plus/ultra/business…） */
+const FREE_MEMBERSHIPS = new Set(['free', 'free_trial', 'trial', 'none', 'free_tier', 'hobby']);
+
+/** membershipType 是否为「付费订阅」（pro 及以上） */
+function isPaidMembership(membershipType: string | null | undefined): boolean {
+  const m = (membershipType || '').trim().toLowerCase();
+  if (!m) return false;
+  return !FREE_MEMBERSHIPS.has(m);
+}
+
 interface ParsedLine {
   email: string;
   password?: string;
@@ -144,7 +154,12 @@ export class CursorSubService {
     const page = Math.max(1, Number(params.page) || 1);
     const pageSize = Math.min(200, Math.max(1, Number(params.pageSize) || 50));
     const where: Prisma.CursorSubAccountWhereInput = {};
-    if (params.status && params.status !== 'all') where.status = params.status;
+    // 「已订阅」tab 同时包含已过期（都属于"已订阅过"的号），不再单独暴露过期 tab
+    if (params.status === 'subscribed') {
+      where.status = { in: ['subscribed', 'expired'] };
+    } else if (params.status && params.status !== 'all') {
+      where.status = params.status;
+    }
     if (params.keyword) where.email = { contains: params.keyword.trim() };
 
     const [total, rows] = await this.prisma.$transaction([
@@ -156,6 +171,19 @@ export class CursorSubService {
         take: pageSize,
       }),
     ]);
+
+    const grouped = await this.prisma.cursorSubAccount.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+    });
+    const byStatus: Record<string, number> = {};
+    for (const g of grouped) byStatus[g.status] = g._count._all;
+    const counts = {
+      unsubscribed: byStatus.unsubscribed ?? 0,
+      // 已订阅 tab 计数含过期
+      subscribed: (byStatus.subscribed ?? 0) + (byStatus.expired ?? 0),
+      unlisted: byStatus.unlisted ?? 0,
+    };
 
     // 关联仓库销售状态（按 warehouseRef）
     const refs = rows.map((r) => r.warehouseRef).filter((x): x is string => !!x);
@@ -171,6 +199,7 @@ export class CursorSubService {
       total,
       page,
       pageSize,
+      counts,
       items: rows.map((r) => this.toView(r, r.warehouseRef ? whMap.get(r.warehouseRef) : undefined)),
     };
   }
@@ -304,7 +333,19 @@ export class CursorSubService {
     const start = r.billingCycleStart ? new Date(r.billingCycleStart) : null;
     const end = r.billingCycleEnd ? new Date(r.billingCycleEnd) : null;
     const now = new Date();
-    const status = end ? (end > now ? 'subscribed' : 'expired') : acc.status;
+    // 状态推进（不动「已下架」）：
+    //   付费订阅（pro 及以上）→ 已订阅；免费 → 未订阅；否则按账期判断
+    let status = acc.status;
+    if (acc.status !== 'unlisted') {
+      if (isPaidMembership(r.membershipType)) {
+        status = 'subscribed';
+      } else if (r.membershipType) {
+        // 明确查到是 free 类
+        status = 'unsubscribed';
+      } else if (end) {
+        status = end > now ? 'subscribed' : 'expired';
+      }
+    }
     const updated = await this.prisma.cursorSubAccount.update({
       where: { id },
       data: {
