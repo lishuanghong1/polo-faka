@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WeComService } from '../wecom/wecom.service';
+import { CursorRefundService } from '../cursor-refund/cursor-refund.service';
 
 interface BulkItem {
   sourceRef?: string;
@@ -20,6 +21,19 @@ const WAREHOUSE_SEPARATOR = '----';
 /** 退款延迟设置项 key（小时）；售出后 soldAt + 该小时数 = refundAt */
 const SETTING_REFUND_DELAY_HOURS = 'refund_delay_hours';
 const DEFAULT_REFUND_DELAY_HOURS = 24;
+
+/** 自动退款每账号最多尝试次数 */
+const REFUND_MAX_ATTEMPTS = 5;
+
+/** 从仓库 content 里提取 cursor token（user_xxx::JWT，可能 URL 编码） */
+function extractCursorToken(content: string): string | null {
+  const re = /^user_[A-Za-z0-9]+(::|%3A%3A)/i;
+  const parts = (content || '').split(WAREHOUSE_SEPARATOR).map((s) => s.trim());
+  const hit = parts.find((p) => re.test(p));
+  if (hit) return hit;
+  const whole = (content || '').trim();
+  return re.test(whole) ? whole : null;
+}
 
 /** 从仓库 content 解析邮箱（取第一段，需含 @），用于发货 / 入库自动回填 email 列 */
 function parseEmailFromContent(fullContent: string): string | null {
@@ -41,6 +55,7 @@ export class WarehouseService {
   constructor(
     private prisma: PrismaService,
     private wecom: WeComService,
+    private cursorRefund: CursorRefundService,
   ) {}
 
   /** 读退款延迟小时数（站点设置，缺省 24） */
@@ -466,6 +481,149 @@ export class WarehouseService {
   }
 
   /**
+   * 定时任务总入口：到点后
+   *   - 若已启用「Cursor 自动退款」→ 直接调 Cursor 退款链退款，退完推企微结果
+   *   - 否则 → 沿用旧行为，仅推企微提醒（人工去退）
+   */
+  async processDueRefunds(): Promise<{ mode: string; count: number }> {
+    if (await this.cursorRefund.isReady()) {
+      const r = await this.runAutoRefunds();
+      return { mode: 'auto', count: r.refunded };
+    }
+    const r = await this.runRefundNotifications();
+    return { mode: 'notify', count: r.notified };
+  }
+
+  /** 组装退款结果的企业微信提醒 */
+  private buildRefundResultMarkdown(wa: any, ok: boolean, amount: number, err?: string): string {
+    const lines = [
+      ok ? '## ✅ 账号已自动退款' : '## ⚠️ 账号自动退款失败',
+      `**邮箱**：${wa.email || '-'}`,
+      `**订单号**：${wa.orderNo || '-'}`,
+      `**售出时间**：${wa.soldAt ? new Date(wa.soldAt).toLocaleString('zh-CN') : '-'}`,
+    ];
+    if (ok) lines.push(`**退款金额（预估）**：$${(amount || 0).toFixed(2)}`);
+    else lines.push(`**失败原因**：${err || '未知'}`, '', '请到后台仓库手动处理或重试。');
+    return lines.join('\n');
+  }
+
+  /**
+   * 自动退款：扫「已售出 & 到点 & 未退成功」的账号，逐个走 Cursor 退款链。
+   * 成功 → refundStatus=DONE + refundedAt + refundAmount；失败 → FAILED（限次+节流后重试）。
+   */
+  async runAutoRefunds(limit = 20): Promise<{ checked: number; refunded: number; failed: number }> {
+    const now = new Date();
+    const threeMinAgo = new Date(now.getTime() - 3 * 60 * 1000);
+    const due = await this.prisma.warehouseAccount.findMany({
+      where: {
+        status: 'SOLD',
+        refundAt: { not: null, lte: now },
+        refundAttempts: { lt: REFUND_MAX_ATTEMPTS },
+        OR: [
+          { refundStatus: 'NONE' },
+          { refundStatus: 'FAILED', updatedAt: { lt: threeMinAgo } },
+        ],
+      },
+      orderBy: { refundAt: 'asc' },
+      take: limit,
+    });
+    if (!due.length) return { checked: 0, refunded: 0, failed: 0 };
+
+    let refunded = 0;
+    let failed = 0;
+    for (const wa of due) {
+      const token = extractCursorToken(wa.content);
+      if (!token) {
+        await this.prisma.warehouseAccount.update({
+          where: { id: wa.id },
+          data: {
+            refundStatus: 'FAILED',
+            refundError: '仓库内容里未找到 cursor token',
+            refundAttempts: { increment: 1 },
+          },
+        });
+        failed += 1;
+        continue;
+      }
+      const r = await this.cursorRefund.refundOne(token);
+      if (r.ok) {
+        await this.prisma.warehouseAccount.update({
+          where: { id: wa.id },
+          data: {
+            refundStatus: 'DONE',
+            refundedAt: new Date(),
+            refundAmount: r.amount || null,
+            refundError: null,
+            refundNotifiedAt: new Date(),
+            refundAttempts: { increment: 1 },
+          },
+        });
+        refunded += 1;
+        await this.wecom.sendMarkdown(this.buildRefundResultMarkdown(wa, true, r.amount)).catch(() => null);
+      } else {
+        await this.prisma.warehouseAccount.update({
+          where: { id: wa.id },
+          data: {
+            refundStatus: 'FAILED',
+            refundError: (r.error || '退款失败').slice(0, 500),
+            refundAttempts: { increment: 1 },
+          },
+        });
+        failed += 1;
+        // 达到上限才推失败提醒，避免每轮刷屏
+        if (wa.refundAttempts + 1 >= REFUND_MAX_ATTEMPTS) {
+          await this.wecom
+            .sendMarkdown(this.buildRefundResultMarkdown(wa, false, 0, r.error))
+            .catch(() => null);
+        }
+      }
+    }
+    if (refunded || failed) {
+      this.logger.log(`auto-refund: refunded ${refunded}, failed ${failed} (of ${due.length})`);
+    }
+    return { checked: due.length, refunded, failed };
+  }
+
+  /** 后台手动：立即对某售出账号执行 Cursor 退款 */
+  async refundNow(id: number) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    const token = extractCursorToken(wa.content);
+    if (!token) throw new BadRequestException('仓库内容里未找到 cursor token');
+    const r = await this.cursorRefund.refundOne(token);
+    const updated = await this.prisma.warehouseAccount.update({
+      where: { id },
+      data: r.ok
+        ? {
+            refundStatus: 'DONE',
+            refundedAt: new Date(),
+            refundAmount: r.amount || null,
+            refundError: null,
+            refundAttempts: { increment: 1 },
+          }
+        : {
+            refundStatus: 'FAILED',
+            refundError: (r.error || '退款失败').slice(0, 500),
+            refundAttempts: { increment: 1 },
+          },
+    });
+    if (!r.ok) throw new BadRequestException(r.error || '退款失败');
+    await this.wecom.sendMarkdown(this.buildRefundResultMarkdown(updated, true, r.amount)).catch(() => null);
+    return { ...this.toView(updated), refundLog: r.log, amount: r.amount };
+  }
+
+  /** 后台手动：重置退款状态（FAILED → NONE，重新排入自动退款） */
+  async resetRefund(id: number) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    const updated = await this.prisma.warehouseAccount.update({
+      where: { id },
+      data: { refundStatus: 'NONE', refundError: null, refundAttempts: 0 },
+    });
+    return this.toView(updated);
+  }
+
+  /**
    * 定时任务调用：扫「已售出 & 到退款时间 & 未通知」的账号，逐个推企业微信。
    * 推成功才写 refundNotifiedAt，失败留到下轮重试。
    */
@@ -517,6 +675,11 @@ export class WarehouseService {
       refundAt: r.refundAt,
       refundNotifiedAt: r.refundNotifiedAt,
       refundNote: r.refundNote,
+      refundStatus: r.refundStatus,
+      refundedAt: r.refundedAt,
+      refundAmount: r.refundAmount,
+      refundError: r.refundError,
+      refundAttempts: r.refundAttempts,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

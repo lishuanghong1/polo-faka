@@ -15,6 +15,7 @@ const SECRET_KEYS = new Set<string>([
   'alipay_public_key',
   'email_code_agent_secret',
   'aizhp_open_api_key',
+  'cursor_refund_owner_token',
 ]);
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */

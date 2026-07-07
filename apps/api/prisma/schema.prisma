@@ -852,18 +852,28 @@ model WarehouseAccount {
   assignedAt  DateTime?
   soldAt      DateTime?
   orderNo     String?   @db.VarChar(64)
-  /// 售出后到点自动把账号信息推企业微信的时间（soldAt + 退款延迟）；可后台手动改/清空
+  /// 售出后到点自动退款/通知的时间（soldAt + 退款延迟）；可后台手动改/清空
   refundAt        DateTime?
   /// 已推送企业微信退款提醒的时间（有值即已通知，避免重复推送）
   refundNotifiedAt DateTime?
   /// 退款备注（后台填，随企微提醒一起发出）
   refundNote      String?   @db.VarChar(500)
+  /// 自动退款状态：NONE(未退) / DONE(已退成功) / FAILED(退款失败)
+  refundStatus    String    @default("NONE") @db.VarChar(16)
+  /// 退款成功时间
+  refundedAt      DateTime?
+  /// 退款金额（美元，来自 preview 预估）
+  refundAmount    Float?
+  /// 退款失败原因
+  refundError     String?   @db.VarChar(500)
+  /// 自动退款尝试次数（用于节流 + 上限）
+  refundAttempts  Int       @default(0)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   @@index([status])
   @@index([skuId, status])
-  @@index([status, refundAt, refundNotifiedAt])
+  @@index([status, refundAt, refundStatus])
   @@map("warehouse_accounts")
 }
 

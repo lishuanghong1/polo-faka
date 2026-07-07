@@ -174,4 +174,21 @@ export class WarehouseController {
     });
     return r;
   }
+
+  /** 立即对该售出账号执行 Cursor 退款 */
+  @Post(':id/refund')
+  async refundNow(@Param('id') id: string, @Req() req: Request) {
+    const r = await this.svc.refundNow(Number(id));
+    this.audit.fromReq(req, AuditActions.WAREHOUSE_REFUND_RUN, {
+      target: `warehouse:${id}`,
+      detail: { amount: (r as any).amount },
+    });
+    return r;
+  }
+
+  /** 重置退款状态（失败后重试） */
+  @Post(':id/refund-reset')
+  resetRefund(@Param('id') id: string) {
+    return this.svc.resetRefund(Number(id));
+  }
 }

@@ -255,6 +255,13 @@ export const api = {
       body: { refundAt: string | null; refundNote?: string | null },
     ) => http.put(`/warehouse/${id}/refund-time`, body),
     warehouseNotifyRefund: (id: number) => http.post(`/warehouse/${id}/notify-refund`),
+    warehouseRefundNow: (id: number) =>
+      http.post<{ refundStatus: string; amount?: number; refundLog?: string[] }>(
+        `/warehouse/${id}/refund`,
+        undefined,
+        { silent: true } as any,
+      ),
+    warehouseRefundReset: (id: number) => http.post(`/warehouse/${id}/refund-reset`),
     warehouseBulkImport: (items: any[]) => http.post('/warehouse/bulk-import', { items }),
     warehouseManualAdd: (body: { content: string; remark?: string }) =>
       http.post<{ total: number; created: number; duplicated: number }>('/warehouse/manual-add', body),

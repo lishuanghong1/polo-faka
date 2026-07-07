@@ -59,10 +59,16 @@ const aizhpFields: Field[] = [
 const wecomFields: Field[] = [
   { key: 'wecom_notify_enabled', label: '启用企业微信通知', isPublic: false, type: 'switch', hint: '关闭后不再推送任何企微提醒' },
   { key: 'wecom_webhook_url', label: '群机器人 Webhook', placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx', isPublic: false, type: 'text', mono: true, hint: '企业微信群 → 添加群机器人 → 复制 Webhook 地址' },
-  { key: 'refund_delay_hours', label: '售出后退款延迟（小时）', placeholder: '24', isPublic: false, type: 'text', hint: '账号售出后 N 小时自动把完整账号信息推到企业微信；默认 24' },
+  { key: 'refund_delay_hours', label: '售出后退款延迟（小时）', placeholder: '24', isPublic: false, type: 'text', hint: '账号售出后 N 小时到点触发（自动退款或企微提醒）；默认 24' },
 ];
 
-const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key']);
+const cursorRefundFields: Field[] = [
+  { key: 'cursor_refund_enabled', label: '启用 Cursor 自动退款', isPublic: false, type: 'switch', hint: '开启后：售出账号到退款时间，服务器自动走"团队邀请按比例退款"链退款；关闭则只推企微提醒由人工退' },
+  { key: 'cursor_refund_team_id', label: '退款团队 TeamId', placeholder: '27451905', isPublic: false, type: 'text', mono: true, hint: 'owner 账号拥有的常驻退款团队 ID' },
+  { key: 'cursor_refund_owner_token', label: '团队 owner token', placeholder: 'user_xxx::eyJ...', isPublic: false, type: 'textarea', mono: true, hint: '常驻退款团队 owner 的 WorkosCursorSessionToken，加密存储；退款链用它发邀请/踢人' },
+];
+
+const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key', 'cursor_refund_owner_token']);
 const SECRET_PLACEHOLDER = '__keep__';
 
 const values = ref<Record<string, string>>({});
@@ -72,7 +78,7 @@ const hasValueMap = ref<Record<string, boolean>>({});
 const secretEdited = ref<Record<string, boolean>>({});
 const loading = ref(false);
 const saving = ref(false);
-const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp' | 'wecom'>('site');
+const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp' | 'wecom' | 'cursor_refund'>('site');
 
 async function load() {
   loading.value = true;
@@ -98,6 +104,7 @@ async function load() {
     if (!values.value.aizhp_open_api_base) values.value.aizhp_open_api_base = 'https://account.aizhp.site';
     if (values.value.wecom_notify_enabled === undefined) values.value.wecom_notify_enabled = 'false';
     if (!values.value.refund_delay_hours) values.value.refund_delay_hours = '24';
+    if (values.value.cursor_refund_enabled === undefined) values.value.cursor_refund_enabled = 'false';
   } finally {
     loading.value = false;
   }
@@ -107,7 +114,7 @@ async function save() {
   saving.value = true;
   try {
     const payload: Record<string, { value: string; isPublic?: boolean }> = {};
-    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields, ...wecomFields]) {
+    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields, ...wecomFields, ...cursorRefundFields]) {
       if (SECRET_KEYS.has(f.key)) {
         if (!secretEdited.value[f.key]) {
           // 没改过 → 发占位符，让后端跳过
@@ -177,6 +184,11 @@ onMounted(load);
           activeTab === 'wecom' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'wecom'"
       >企业微信</button>
+      <button
+        :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
+          activeTab === 'cursor_refund' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
+        @click="activeTab = 'cursor_refund'"
+      >Cursor 退款</button>
     </div>
 
     <!-- 站点信息 -->
@@ -461,6 +473,71 @@ onMounted(load);
         <div class="mt-6 pt-5 border-t border-ink-100 text-xs text-ink-500 space-y-1.5">
           <p>· 通知含账号完整凭据，请确保群成员可信。</p>
           <p>· 到点自动推送由后台每分钟轮询触发；也可在「仓库」页手动「立即通知」。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cursor 退款 -->
+    <div v-show="activeTab === 'cursor_refund'" class="space-y-4">
+      <div class="card p-4 bg-rose-50/40 border-rose-200 text-rose-900 text-xs flex gap-3">
+        <span class="text-base">⚠</span>
+        <div class="space-y-1.5 leading-relaxed">
+          <p><b>作用</b>：售出账号到「退款时间」后，服务器自动对该 Cursor 账号执行「团队邀请按比例退款」（账号变 Free），无需人工、无需桌面工具。</p>
+          <p><b>原理</b>：owner 账号建一个常驻团队 → 目标号被邀请加入触发按比例退款 → 踢出 → 轮询到 Free。owner token / teamId 在下面配置。</p>
+          <p><b>注意</b>：退款请求从<b>本服务器 IP</b> 发出，短时间大量退款可能触发 Cursor 风控；owner token 会过期，失效后需更新。关闭开关则退回「仅企微提醒、人工退」。</p>
+        </div>
+      </div>
+
+      <div class="card p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div
+            v-for="f in cursorRefundFields"
+            :key="f.key"
+            :class="f.type === 'textarea' ? 'md:col-span-2' : ''"
+          >
+            <label class="block text-sm font-medium text-ink-800 mb-1">{{ f.label }}</label>
+            <p class="text-[11px] text-ink-400 mb-1.5 font-mono">key: {{ f.key }}</p>
+
+            <label v-if="f.type === 'switch'" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox"
+                :checked="values[f.key] === 'true'"
+                @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
+              />
+              <span class="ml-2 text-sm text-ink-700">
+                {{ values[f.key] === 'true' ? '开启' : '关闭' }}
+              </span>
+            </label>
+
+            <div v-else-if="f.type === 'textarea'">
+              <textarea
+                v-model="values[f.key]"
+                rows="4"
+                :placeholder="SECRET_KEYS.has(f.key) && hasValueMap[f.key] && !secretEdited[f.key] ? '已设置（留空保持不变；输入新值覆盖）' : f.placeholder"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm font-mono break-all"
+                @input="SECRET_KEYS.has(f.key) && markSecretEdit(f.key)"
+              />
+              <p v-if="SECRET_KEYS.has(f.key) && hasValueMap[f.key]" class="text-[11px] text-brand-700 mt-1">
+                ✓ 已设置且加密保存于数据库
+              </p>
+              <p v-else-if="SECRET_KEYS.has(f.key)" class="text-[11px] text-ink-400 mt-1">
+                ✗ 尚未设置
+              </p>
+            </div>
+
+            <input
+              v-else
+              v-model="values[f.key]"
+              :placeholder="f.placeholder"
+              :class="['w-full px-3 py-2 border border-ink-200 rounded-lg text-sm', f.mono ? 'font-mono text-xs' : '']"
+            />
+
+            <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-ink-100 text-xs text-ink-500 space-y-1.5">
+          <p>· 到点自动退款由后台每分钟轮询触发；单账号失败会重试（最多 5 次），仍失败会推企微提醒。</p>
+          <p>· 也可在「仓库」页对单个售出账号点「立即退款」或「重置重试」。</p>
         </div>
       </div>
     </div>

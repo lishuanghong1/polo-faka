@@ -3,9 +3,10 @@ import { WarehouseController } from './warehouse.controller';
 import { WarehouseService } from './warehouse.service';
 import { WarehouseRefundCron } from './warehouse-refund.cron';
 import { WeComModule } from '../wecom/wecom.module';
+import { CursorRefundModule } from '../cursor-refund/cursor-refund.module';
 
 @Module({
-  imports: [WeComModule],
+  imports: [WeComModule, CursorRefundModule],
   controllers: [WarehouseController],
   providers: [WarehouseService, WarehouseRefundCron],
   exports: [WarehouseService],

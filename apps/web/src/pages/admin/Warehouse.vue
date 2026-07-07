@@ -219,11 +219,40 @@ async function notifyRefund(row: any) {
 
 function refundLabel(row: any): { text: string; cls: string } {
   if (row.status !== 'SOLD') return { text: '—', cls: 'text-ink-400' };
+  // 自动退款状态优先展示
+  if (row.refundStatus === 'DONE') {
+    const amt = row.refundAmount ? `（$${Number(row.refundAmount).toFixed(2)}）` : '';
+    return { text: `已退款${amt}`, cls: 'text-emerald-600' };
+  }
+  if (row.refundStatus === 'FAILED') return { text: '退款失败', cls: 'text-rose-600' };
   if (row.refundNotifiedAt) return { text: '已通知', cls: 'text-emerald-600' };
   if (!row.refundAt) return { text: '未设置', cls: 'text-ink-400' };
   const due = new Date(row.refundAt).getTime();
-  if (due <= Date.now()) return { text: '待推送', cls: 'text-amber-600' };
+  if (due <= Date.now()) return { text: '待处理', cls: 'text-amber-600' };
   return { text: new Date(row.refundAt).toLocaleString(), cls: 'text-ink-600' };
+}
+
+async function refundNow(row: any) {
+  await ElMessageBox.confirm(
+    `立即对账号 #${row.id} 执行 Cursor 退款（团队邀请按比例退款，账号将变 Free）？`,
+    '立即退款',
+    { type: 'warning', confirmButtonText: '退款' },
+  );
+  try {
+    const r = await api.admin.warehouseRefundNow(row.id);
+    ElMessage.success(`退款成功${r.amount ? `，约 $${Number(r.amount).toFixed(2)}` : ''}`);
+    load();
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.message || '退款失败');
+    load();
+  }
+}
+async function resetRefund(row: any) {
+  try {
+    await api.admin.warehouseRefundReset(row.id);
+    ElMessage.success('已重置，将重新排入自动退款');
+    load();
+  } catch { /* 全局拦截器提示 */ }
 }
 </script>
 
@@ -318,6 +347,20 @@ function refundLabel(row: any): { text: string; cls: string } {
             @click="openRefund(row)"
           >
             退款时间
+          </button>
+          <button
+            v-if="row.status === 'SOLD' && row.refundStatus !== 'DONE'"
+            class="text-rose-600 hover:text-rose-700 mr-3 text-sm"
+            @click="refundNow(row)"
+          >
+            立即退款
+          </button>
+          <button
+            v-if="row.status === 'SOLD' && row.refundStatus === 'FAILED'"
+            class="text-amber-600 hover:text-amber-700 mr-3 text-sm"
+            @click="resetRefund(row)"
+          >
+            重置重试
           </button>
           <button
             v-if="row.status === 'SOLD'"

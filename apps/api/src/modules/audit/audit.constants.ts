@@ -45,6 +45,7 @@ export const AuditActions = {
   WAREHOUSE_DELETE: 'WAREHOUSE_DELETE',
   WAREHOUSE_REFUND_SET: 'WAREHOUSE_REFUND_SET',       // 设置售出账号退款时间
   WAREHOUSE_REFUND_NOTIFY: 'WAREHOUSE_REFUND_NOTIFY', // 立即推送退款提醒到企微
+  WAREHOUSE_REFUND_RUN: 'WAREHOUSE_REFUND_RUN',       // 手动执行 Cursor 退款
 
   // 订阅号池（cursor-jb 合并）
   CURSOR_SUB_PUSH: 'CURSOR_SUB_PUSH',       // 订阅账号推送到仓库
@@ -109,6 +110,7 @@ export const AuditActionLabels: Record<string, string> = {
   WAREHOUSE_DELETE: '删除仓库账号',
   WAREHOUSE_REFUND_SET: '设置售出账号退款时间',
   WAREHOUSE_REFUND_NOTIFY: '推送退款提醒到企业微信',
+  WAREHOUSE_REFUND_RUN: '执行 Cursor 自动退款',
   CURSOR_SUB_PUSH: '订阅账号推送到仓库',
   CURSOR_SUB_MIGRATE: '迁移导入订阅账号',
   USER_UPDATE: '修改用户',
