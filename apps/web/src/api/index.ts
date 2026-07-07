@@ -357,6 +357,7 @@ export const api = {
     // ?????cursor-jb ???
     cursorSubList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
       http.get('/admin/cursor-sub', { params }),
+    cursorSubGet: (id: number) => http.get(`/admin/cursor-sub/${id}`),
     cursorSubCreate: (body: any) => http.post('/admin/cursor-sub', body),
     cursorSubUpdate: (id: number, body: any) => http.put(`/admin/cursor-sub/${id}`, body),
     cursorSubRemove: (id: number) => http.delete(`/admin/cursor-sub/${id}`),
@@ -366,6 +367,12 @@ export const api = {
       http.get(`/admin/cursor-sub/${id}/export`, { params: { separator } }),
     cursorSubMarkPaid: (id: number) => http.post(`/admin/cursor-sub/${id}/mark-paid`),
     cursorSubSync: (id: number) => http.post(`/admin/cursor-sub/${id}/sync-subscription`),
+    cursorSubSyncMany: (ids: number[]) =>
+      http.post<{ total: number; ok: number; failed: any[] }>(
+        '/admin/cursor-sub/sync-subscriptions',
+        { ids },
+        { silent: true } as any,
+      ),
     cursorSubUsage: (id: number) => http.get(`/admin/cursor-sub/${id}/usage`, { silent: true } as any),
     cursorSubPush: (id: number) => http.post(`/admin/cursor-sub/${id}/push-to-warehouse`),
     cursorSubCheckoutLink: (id: number) =>

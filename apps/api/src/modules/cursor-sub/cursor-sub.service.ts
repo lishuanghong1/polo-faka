@@ -310,11 +310,35 @@ export class CursorSubService {
       data: {
         paidAt: start ?? acc.paidAt,
         expiresAt: end ?? acc.expiresAt,
+        membershipType: r.membershipType ?? acc.membershipType,
         status,
         lastSyncedAt: now,
       },
     });
     return { ...this.toView(updated), usage: r };
+  }
+
+  /** 批量同步订阅状态（并发 5，用于让列表的「订阅」列显示真实类型） */
+  async syncMany(ids: number[]) {
+    if (!Array.isArray(ids) || !ids.length) throw new BadRequestException('请选择账号');
+    if (ids.length > 200) throw new BadRequestException('单次最多同步 200 个');
+    let ok = 0;
+    const failed: { id: number; error: string }[] = [];
+    const concurrency = 5;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < ids.length) {
+        const id = ids[cursor++];
+        try {
+          await this.syncSubscription(id);
+          ok += 1;
+        } catch (e) {
+          failed.push({ id, error: (e as Error)?.message || '同步失败' });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+    return { total: ids.length, ok, failed };
   }
 
   /** 查用量（不落库，仅返回） */
@@ -464,6 +488,7 @@ export class CursorSubService {
       hasCursorToken: !!r.cursorTokenEnc,
       note: r.note,
       status: r.status,
+      membershipType: r.membershipType ?? null,
       paidAt: r.paidAt,
       expiresAt: r.expiresAt,
       subscriptionDays: r.subscriptionDays,

@@ -14,6 +14,7 @@ declare module 'vue' {
     BackToTop: typeof import('./components/BackToTop.vue')['default']
     BrandButton: typeof import('./components/BrandButton.vue')['default']
     Captcha: typeof import('./components/Captcha.vue')['default']
+    CursorSubDetailDrawer: typeof import('./components/admin/CursorSubDetailDrawer.vue')['default']
     DataTable: typeof import('./components/admin/DataTable.vue')['default']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDrawer: typeof import('element-plus/es')['ElDrawer']

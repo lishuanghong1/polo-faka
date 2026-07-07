@@ -88,6 +88,12 @@ export class CursorSubController {
     return this.svc.syncSubscription(id);
   }
 
+  /** 批量同步订阅状态 */
+  @Post('sync-subscriptions')
+  syncMany(@Body() body: { ids: number[] }) {
+    return this.svc.syncMany(body?.ids || []);
+  }
+
   @Get(':id/usage')
   usage(@Param('id', ParseIntPipe) id: number) {
     return this.svc.fetchUsage(id);

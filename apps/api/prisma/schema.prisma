@@ -909,8 +909,10 @@ model CursorSubAccount {
   /// WorkosCursorSessionToken 值 user_xxx::jwt（加密，查订阅 / 生成结账链接用）
   cursorTokenEnc       String?   @db.Text
   note                 String?   @db.VarChar(500)
-  /// unsubscribed / subscribed / expired / unlisted
+  /// 本地跟踪状态：unsubscribed / subscribed / expired / unlisted
   status               String    @default("unsubscribed") @db.VarChar(16)
+  /// Cursor 真实订阅类型（同步用量时写入）：free / pro / pro_plus / ultra / business ...
+  membershipType       String?   @db.VarChar(32)
   paidAt               DateTime?
   expiresAt            DateTime?
   subscriptionDays     Int       @default(30)

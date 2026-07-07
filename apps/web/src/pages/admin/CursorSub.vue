@@ -4,7 +4,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
-import { copyText } from '@/utils/format';
+import CursorSubDetailDrawer from '@/components/admin/CursorSubDetailDrawer.vue';
+import { membershipLabel } from '@/utils/cursor-membership';
 
 const list = ref<any[]>([]);
 const total = ref(0);
@@ -13,7 +14,6 @@ const filterStatus = ref('');
 const keyword = ref('');
 const page = ref(1);
 const pageSize = 50;
-const acting = ref<number | null>(null);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 
@@ -35,12 +35,6 @@ async function load() {
 onMounted(load);
 watch([filterStatus, page], load);
 
-const statusMeta: Record<string, { text: string; cls: string }> = {
-  unsubscribed: { text: '未订阅', cls: 'bg-ink-100 text-ink-600' },
-  subscribed: { text: '已订阅', cls: 'bg-emerald-100 text-emerald-700' },
-  expired: { text: '已过期', cls: 'bg-rose-100 text-rose-700' },
-  unlisted: { text: '已下架', cls: 'bg-amber-100 text-amber-700' },
-};
 const saleMeta: Record<string, { text: string; cls: string }> = {
   PENDING: { text: '待分配', cls: 'text-amber-600' },
   ASSIGNED: { text: '已上架', cls: 'text-sky-600' },
@@ -128,64 +122,13 @@ async function doImport() {
   }
 }
 
-// ── 行操作 ──────────────────────────────────────────
-async function markPaid(row: any) {
-  acting.value = row.id;
-  try {
-    await api.admin.cursorSubMarkPaid(row.id);
-    ElMessage.success('已标记已付款');
-    load();
-  } catch { /* ignore */ } finally { acting.value = null; }
+// ── 详情抽屉 ────────────────────────────────────────
+const detailId = ref<number | null>(null);
+function openDetail(row: any) {
+  detailId.value = row.id;
 }
-async function sync(row: any) {
-  acting.value = row.id;
-  try {
-    const r: any = await api.admin.cursorSubSync(row.id);
-    ElMessage.success(`已同步：${r.usage?.membershipType || '未知'}`);
-    load();
-  } catch { /* ignore */ } finally { acting.value = null; }
-}
-async function usage(row: any) {
-  acting.value = row.id;
-  try {
-    const r: any = await api.admin.cursorSubUsage(row.id);
-    if (!r.success) return ElMessage.warning(r.error || '查询失败');
-    ElMessageBox.alert(
-      `会员：${r.membershipType || '-'}\n额度：${r.planUsed ?? '-'} / ${r.planLimit ?? '-'}\n账期：${r.billingCycleStart || '-'} ~ ${r.billingCycleEnd || '-'}`,
-      `用量 · ${row.email}`,
-      { confirmButtonText: '关闭' },
-    );
-  } catch { /* ignore */ } finally { acting.value = null; }
-}
-async function pushWarehouse(row: any) {
-  await ElMessageBox.confirm(`把账号 ${row.email} 推送到仓库（待分配）？`, '推送到仓库', { type: 'info', confirmButtonText: '推送' });
-  acting.value = row.id;
-  try {
-    await api.admin.cursorSubPush(row.id);
-    ElMessage.success('已推送到仓库');
-    load();
-  } catch { /* ignore */ } finally { acting.value = null; }
-}
-async function genLink(row: any) {
-  if (!row.hasCursorToken) return ElMessage.warning('该账号没有 token，无法生成');
-  acting.value = row.id;
-  try {
-    const r = await api.admin.cursorSubCheckoutLink(row.id);
-    row.lastCheckoutUrl = r.url;
-    row.lastCheckoutAt = r.at;
-    const ok = await copyText(r.url);
-    ElMessage.success(ok ? '订阅链接已生成并复制' : '订阅链接已生成');
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.message || '生成失败');
-  } finally {
-    acting.value = null;
-  }
-}
-async function copyLink(row: any) {
-  if (!row.lastCheckoutUrl) return;
-  const ok = await copyText(row.lastCheckoutUrl);
-  if (ok) ElMessage.success('已复制订阅链接');
-}
+
+// ── 批量：生成订阅链接 ───────────────────────────────
 const batchGenerating = ref(false);
 async function batchGenLinks() {
   const targets = list.value.filter((r) => r.status === 'unsubscribed' && r.hasCursorToken && !r.saleStatus);
@@ -213,21 +156,25 @@ async function batchGenLinks() {
   }
 }
 
-async function exportOne(row: any) {
+// ── 批量：同步订阅状态（刷新订阅列的真实类型）──────────
+const batchSyncing = ref(false);
+async function batchSync() {
+  const targets = list.value.filter((r) => r.hasCursorToken);
+  if (!targets.length) return ElMessage.warning('本页没有可同步的账号（需有 token）');
+  await ElMessageBox.confirm(`同步本页 ${targets.length} 个账号的订阅状态？（会逐个调 Cursor，稍慢）`, '批量同步', {
+    type: 'info',
+    confirmButtonText: '同步',
+  });
+  batchSyncing.value = true;
   try {
-    const r: any = await api.admin.cursorSubExport(row.id);
-    const ok = await copyText(r.formatted);
-    if (ok) ElMessage.success('已复制账号完整信息');
-    else ElMessageBox.alert(r.formatted, `账号 · ${row.email}`, { confirmButtonText: '关闭' });
-  } catch { /* ignore */ }
-}
-async function del(row: any) {
-  await ElMessageBox.confirm(`删除账号 ${row.email}？（仓库记录也会移除，保留订单/卡密）`, '删除', { type: 'warning' });
-  try {
-    await api.admin.cursorSubRemove(row.id);
-    ElMessage.success('已删除');
+    const r = await api.admin.cursorSubSyncMany(targets.map((t) => t.id));
+    ElMessage.success(`同步完成：成功 ${r.ok}，失败 ${r.failed.length}`);
     load();
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.message || '批量同步失败');
+  } finally {
+    batchSyncing.value = false;
+  }
 }
 
 function search() {
@@ -249,6 +196,11 @@ function search() {
       <input v-model="keyword" placeholder="搜索邮箱" class="admin-input w-44" @keyup.enter="search" />
       <button class="px-3 h-9 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700" @click="search">查询</button>
       <button
+        class="px-3 h-9 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700 disabled:opacity-50"
+        :disabled="batchSyncing"
+        @click="batchSync"
+      >{{ batchSyncing ? '同步中…' : '批量同步订阅' }}</button>
+      <button
         class="px-3 h-9 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-sm disabled:opacity-50"
         :disabled="batchGenerating"
         @click="batchGenLinks"
@@ -258,7 +210,7 @@ function search() {
     </template>
   </AdminPageHeader>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="暂无账号，点右上角新增或批量导入" min-width="1280px">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="暂无账号，点右上角新增或批量导入" min-width="920px">
     <thead>
       <tr>
         <th style="width:60px">ID</th>
@@ -267,11 +219,11 @@ function search() {
         <th>订阅状态</th>
         <th>到期</th>
         <th>销售状态</th>
-        <th class="!text-right" style="width:360px"></th>
+        <th class="!text-right" style="width:120px"></th>
       </tr>
     </thead>
     <tbody>
-      <tr v-for="row in list" :key="row.id">
+      <tr v-for="row in list" :key="row.id" class="cursor-pointer" @click="openDetail(row)">
         <td class="text-ink-400 font-mono text-xs">#{{ row.id }}</td>
         <td class="text-sm text-ink-800">{{ row.email }}</td>
         <td class="text-xs">
@@ -282,9 +234,11 @@ function search() {
           <span :class="row.hasEmailPassword ? 'text-emerald-600' : 'text-ink-300'" title="邮箱密码">M</span>
         </td>
         <td>
-          <span class="px-2 py-0.5 rounded text-xs font-medium" :class="(statusMeta[row.status] || {}).cls">
-            {{ (statusMeta[row.status] || { text: row.status }).text }}
-          </span>
+          <span
+            class="px-2 py-0.5 rounded text-xs font-medium"
+            :class="membershipLabel(row.membershipType).cls"
+            title="Cursor 真实订阅类型（点批量同步刷新）"
+          >{{ membershipLabel(row.membershipType).text }}</span>
         </td>
         <td class="text-xs text-ink-600">{{ remainText(row) }}</td>
         <td class="text-xs">
@@ -293,26 +247,8 @@ function search() {
           </span>
           <span v-else class="text-ink-300">未推送</span>
         </td>
-        <td class="text-right whitespace-nowrap text-sm">
-          <button
-            class="text-emerald-600 hover:text-emerald-700 font-medium mr-2 disabled:opacity-40"
-            :disabled="acting === row.id || !row.hasCursorToken"
-            :title="row.hasCursorToken ? '生成订阅结账链接' : '缺少 token'"
-            @click="genLink(row)"
-          >生成链接</button>
-          <button
-            v-if="row.lastCheckoutUrl"
-            class="text-ink-500 hover:text-brand-600 mr-2"
-            title="复制上次生成的链接"
-            @click="copyLink(row)"
-          >复制链接</button>
-          <button class="text-ink-500 hover:text-brand-600 mr-2" :disabled="acting === row.id" @click="sync(row)">同步</button>
-          <button class="text-ink-500 hover:text-brand-600 mr-2" :disabled="acting === row.id" @click="usage(row)">用量</button>
-          <button class="text-ink-500 hover:text-emerald-600 mr-2" :disabled="acting === row.id" @click="markPaid(row)">标记已付</button>
-          <button v-if="!row.saleStatus" class="text-sky-600 hover:text-sky-700 mr-2" :disabled="acting === row.id" @click="pushWarehouse(row)">推送仓库</button>
-          <button class="text-ink-500 hover:text-brand-600 mr-2" @click="exportOne(row)">导出</button>
-          <button class="text-ink-500 hover:text-brand-600 mr-2" @click="openEdit(row)">编辑</button>
-          <button class="text-ink-500 hover:text-rose-600" @click="del(row)">删除</button>
+        <td class="text-right whitespace-nowrap text-sm" @click.stop>
+          <button class="text-brand-600 hover:text-brand-700 font-medium" @click="openDetail(row)">详情</button>
         </td>
       </tr>
     </tbody>
@@ -411,4 +347,12 @@ function search() {
       <button class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 rounded-lg text-white text-sm" @click="doImport">开始导入</button>
     </template>
   </el-dialog>
+
+  <!-- 详情抽屉：所有账号操作都在这里 -->
+  <CursorSubDetailDrawer
+    :id="detailId"
+    @close="detailId = null"
+    @changed="load"
+    @edit="(row) => { detailId = null; openEdit(row); }"
+  />
 </template>
