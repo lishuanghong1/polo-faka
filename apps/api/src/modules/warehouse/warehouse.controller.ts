@@ -111,6 +111,18 @@ export class WarehouseController {
     });
   }
 
+  /** 单条详情 */
+  @Get(':id')
+  detail(@Param('id') id: string) {
+    return this.svc.get(Number(id));
+  }
+
+  /** 现查该账号订阅类型 + 用量 */
+  @Get(':id/cursor-info')
+  cursorInfo(@Param('id') id: string) {
+    return this.svc.getCursorInfo(Number(id));
+  }
+
   /** 分配到商品 */
   @Post(':id/assign')
   async assign(

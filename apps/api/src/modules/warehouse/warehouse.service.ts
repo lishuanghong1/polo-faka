@@ -313,6 +313,38 @@ export class WarehouseService {
     };
   }
 
+  /** 单条详情（含商品/SKU 名，供详情抽屉用） */
+  async get(id: number) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    let productTitle: string | null = null;
+    let skuName: string | null = null;
+    if (wa.productId) {
+      const p = await this.prisma.product.findUnique({
+        where: { id: wa.productId },
+        select: { title: true },
+      });
+      productTitle = p?.title ?? null;
+    }
+    if (wa.skuId) {
+      const s = await this.prisma.sku.findUnique({
+        where: { id: wa.skuId },
+        select: { name: true },
+      });
+      skuName = s?.name ?? null;
+    }
+    return { ...this.toView(wa), productTitle, skuName };
+  }
+
+  /** 用仓库 content 里的 token 现查该账号的订阅类型 + 用量 */
+  async getCursorInfo(id: number) {
+    const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
+    if (!wa) throw new NotFoundException('仓库账号不存在');
+    const token = extractCursorToken(wa.content);
+    if (!token) return { ok: false, error: '仓库内容里未找到 cursor token' };
+    return this.cursorRefund.getAccountInfo(token);
+  }
+
   async assign(id: number, productId: number, skuId: number) {
     const wa = await this.prisma.warehouseAccount.findUnique({ where: { id } });
     if (!wa) throw new NotFoundException('仓库账号不存在');

@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import WarehouseDetailDrawer from '@/components/admin/WarehouseDetailDrawer.vue';
 
 const list = ref<any[]>([]);
 const total = ref(0);
@@ -12,6 +13,9 @@ const filterStatus = ref('');
 const sourceRefFilter = ref('');
 const page = ref(1);
 const pageSize = ref(50);
+
+const detailId = ref<number | null>(null);
+function openDetail(row: any) { detailId.value = row.id; }
 
 const assignTarget = ref<any | null>(null);
 const productsCache = ref<any[]>([]);
@@ -136,37 +140,7 @@ async function doAssign() {
   }
 }
 
-async function unassign(row: any) {
-  await ElMessageBox.confirm(`撤回 #${row.id} 的分配？关联的卡密会被删除（必须是 AVAILABLE 状态）`, '撤回分配', {
-    type: 'warning',
-  });
-  await api.admin.warehouseUnassign(row.id);
-  ElMessage.success('已撤回');
-  load();
-}
-
-async function del(row: any) {
-  const tip =
-    row.status === 'SOLD'
-      ? `确认从仓库删除已售出账号 #${row.id}？订单与卡密会保留，仅移除仓库记录`
-      : `确认删除仓库账号 #${row.id}？`;
-  await ElMessageBox.confirm(tip, '删除', { type: 'warning' });
-  await api.admin.warehouseRemove(row.id);
-  ElMessage.success('已删除');
-  load();
-}
-
-async function reveal(row: any) {
-  await ElMessageBox({
-    title: `仓库账号 #${row.id} content`,
-    message: row.content,
-    customClass: 'token-reveal-dialog',
-    confirmButtonText: '我已复制',
-    type: 'info',
-  } as any).catch(() => null);
-}
-
-// ── 退款时间 / 企业微信通知 ──────────────────────────
+// ── 退款时间（详情抽屉触发，复用此弹窗）──────────────
 /** datetime-local 需要 'YYYY-MM-DDTHH:mm' 本地时间字符串 */
 function toLocalInput(v: string | null): string {
   if (!v) return '';
@@ -202,21 +176,6 @@ async function saveRefund() {
     /* 全局拦截器已提示 */
   }
 }
-async function notifyRefund(row: any) {
-  await ElMessageBox.confirm(
-    `立即把账号 #${row.id} 的完整信息推送到企业微信？`,
-    '立即通知',
-    { type: 'warning', confirmButtonText: '推送' },
-  );
-  try {
-    await api.admin.warehouseNotifyRefund(row.id);
-    ElMessage.success('已推送到企业微信');
-    load();
-  } catch {
-    /* 全局拦截器已提示 */
-  }
-}
-
 function refundLabel(row: any): { text: string; cls: string } {
   if (row.status !== 'SOLD') return { text: '—', cls: 'text-ink-400' };
   // 自动退款状态优先展示
@@ -230,29 +189,6 @@ function refundLabel(row: any): { text: string; cls: string } {
   const due = new Date(row.refundAt).getTime();
   if (due <= Date.now()) return { text: '待处理', cls: 'text-amber-600' };
   return { text: new Date(row.refundAt).toLocaleString(), cls: 'text-ink-600' };
-}
-
-async function refundNow(row: any) {
-  await ElMessageBox.confirm(
-    `立即对账号 #${row.id} 执行 Cursor 退款（团队邀请按比例退款，账号将变 Free）？`,
-    '立即退款',
-    { type: 'warning', confirmButtonText: '退款' },
-  );
-  try {
-    const r = await api.admin.warehouseRefundNow(row.id);
-    ElMessage.success(`退款成功${r.amount ? `，约 $${Number(r.amount).toFixed(2)}` : ''}`);
-    load();
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.message || '退款失败');
-    load();
-  }
-}
-async function resetRefund(row: any) {
-  try {
-    await api.admin.warehouseRefundReset(row.id);
-    ElMessage.success('已重置，将重新排入自动退款');
-    load();
-  } catch { /* 全局拦截器提示 */ }
 }
 </script>
 
@@ -300,24 +236,21 @@ async function resetRefund(row: any) {
     </div>
   </div>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号" min-width="1360px">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="仓库为空，请从外部系统推送账号" min-width="1040px">
     <thead>
       <tr>
         <th style="width: 60px">ID</th>
-        <th>来源</th>
         <th>邮箱 / 内容预览</th>
         <th>状态</th>
         <th>分配到</th>
         <th>售出时间</th>
-        <th>退款时间</th>
-        <th>订单</th>
-        <th class="!text-right" style="width: 300px"></th>
+        <th>退款状态</th>
+        <th class="!text-right" style="width: 90px"></th>
       </tr>
     </thead>
     <tbody>
-      <tr v-for="row in list" :key="row.id">
+      <tr v-for="row in list" :key="row.id" class="cursor-pointer" @click="openDetail(row)">
         <td class="text-ink-400 font-mono text-xs">#{{ row.id }}</td>
-        <td class="text-ink-600 font-mono text-xs">{{ row.sourceRef || '—' }}</td>
         <td>
           <div v-if="row.email" class="text-sm text-ink-800">{{ row.email }}</div>
           <div class="font-mono text-xs text-ink-500">{{ previewContent(row.content) }}</div>
@@ -338,57 +271,8 @@ async function resetRefund(row: any) {
         <td class="text-xs">
           <span :class="refundLabel(row).cls">{{ refundLabel(row).text }}</span>
         </td>
-        <td class="text-ink-500 text-xs font-mono">{{ row.orderNo || '—' }}</td>
-        <td class="text-right whitespace-nowrap">
-          <button class="text-ink-500 hover:text-amber-600 mr-3 text-sm" @click="reveal(row)">查看</button>
-          <button
-            v-if="row.status === 'SOLD'"
-            class="text-brand-600 hover:text-brand-700 mr-3 text-sm"
-            @click="openRefund(row)"
-          >
-            退款时间
-          </button>
-          <button
-            v-if="row.status === 'SOLD' && row.refundStatus !== 'DONE'"
-            class="text-rose-600 hover:text-rose-700 mr-3 text-sm"
-            @click="refundNow(row)"
-          >
-            立即退款
-          </button>
-          <button
-            v-if="row.status === 'SOLD' && row.refundStatus === 'FAILED'"
-            class="text-amber-600 hover:text-amber-700 mr-3 text-sm"
-            @click="resetRefund(row)"
-          >
-            重置重试
-          </button>
-          <button
-            v-if="row.status === 'SOLD'"
-            class="text-emerald-600 hover:text-emerald-700 mr-3 text-sm"
-            @click="notifyRefund(row)"
-          >
-            通知
-          </button>
-          <button
-            v-if="row.status === 'PENDING'"
-            class="text-sky-600 hover:text-sky-700 mr-3 text-sm"
-            @click="openAssign(row)"
-          >
-            分配
-          </button>
-          <button
-            v-if="row.status === 'ASSIGNED'"
-            class="text-ink-500 hover:text-amber-600 mr-3 text-sm"
-            @click="unassign(row)"
-          >
-            撤回
-          </button>
-          <button
-            class="text-ink-500 hover:text-rose-600 text-sm"
-            @click="del(row)"
-          >
-            删除
-          </button>
+        <td class="text-right whitespace-nowrap" @click.stop>
+          <button class="text-brand-600 hover:text-brand-700 font-medium text-sm" @click="openDetail(row)">详情</button>
         </td>
       </tr>
     </tbody>
@@ -557,4 +441,13 @@ async function resetRefund(row: any) {
       </button>
     </template>
   </el-dialog>
+
+  <!-- 详情抽屉：账号信息 + 退款/订阅/用量 + 全部操作 -->
+  <WarehouseDetailDrawer
+    :id="detailId"
+    @close="detailId = null"
+    @changed="load"
+    @assign="(row) => { detailId = null; openAssign(row); }"
+    @set-refund-time="(row) => { detailId = null; openRefund(row); }"
+  />
 </template>

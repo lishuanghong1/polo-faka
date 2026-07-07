@@ -33,5 +33,6 @@ declare module 'vue' {
     StatusTag: typeof import('./components/admin/StatusTag.vue')['default']
     TopProgress: typeof import('./components/TopProgress.vue')['default']
     UserDetailDrawer: typeof import('./components/admin/UserDetailDrawer.vue')['default']
+    WarehouseDetailDrawer: typeof import('./components/admin/WarehouseDetailDrawer.vue')['default']
   }
 }

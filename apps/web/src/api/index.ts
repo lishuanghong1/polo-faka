@@ -261,6 +261,12 @@ export const api = {
     poolRefresh: () => http.post('/pool/accounts/refresh-all'),
 
     warehouseList: (params: any) => http.get('/warehouse', { params }),
+    warehouseGet: (id: number) => http.get(`/warehouse/${id}`),
+    warehouseCursorInfo: (id: number) =>
+      http.get<{ ok: boolean; email?: string; membershipType?: string; usagePercent?: number | null; usageText?: string; error?: string }>(
+        `/warehouse/${id}/cursor-info`,
+        { silent: true } as any,
+      ),
     warehouseAssign: (id: number, body: { productId: number; skuId: number }) =>
       http.post(`/warehouse/${id}/assign`, body),
     warehouseUnassign: (id: number) => http.post(`/warehouse/${id}/unassign`),

@@ -242,6 +242,44 @@ export class CursorRefundService {
     }
   }
 
+  /** 查账号订阅类型 + 用量（不退款，供详情展示）。移植自 CursorManager FillUsageAndDevices。 */
+  async getAccountInfo(rawToken: string): Promise<{
+    ok: boolean;
+    email?: string;
+    membershipType?: string;
+    usagePercent?: number | null;
+    usageText?: string;
+    error?: string;
+  }> {
+    const token = normalizeToken(rawToken);
+    if (!token) return { ok: false, error: '缺少 token' };
+    try {
+      const me = await this.fillMe(token);
+      const membershipType = await this.membership(token);
+      let usagePercent: number | null = null;
+      let usageText = '';
+      try {
+        const pu = await this.request('POST', '/api/dashboard/get-current-period-usage', token, {});
+        const p = pu?.planUsage;
+        if (p) {
+          const total = Number(p.totalPercentUsed) || 0;
+          const api = Number(p.apiPercentUsed) || 0;
+          const auto = Number(p.autoPercentUsed) || 0;
+          usagePercent = total;
+          usageText = `已用 ${total.toFixed(1)}%（Auto ${auto.toFixed(1)}% · API ${api.toFixed(1)}%）`;
+        }
+      } catch {
+        /* 用量拿不到不影响 */
+      }
+      if (!me.userId && !membershipType) {
+        return { ok: false, error: 'token 可能已失效' };
+      }
+      return { ok: true, email: me.email, membershipType, usagePercent, usageText };
+    } catch (e) {
+      return { ok: false, error: (e as Error)?.message || '查询失败' };
+    }
+  }
+
   /** 手动批量退款：逐个执行（退款较慢，串行更稳），返回每个的结果 */
   async refundMany(tokens: string[]): Promise<RefundResult[]> {
     const list = Array.from(
