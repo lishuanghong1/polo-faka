@@ -546,17 +546,31 @@ export class WarehouseService {
   async runAutoRefunds(limit = 20): Promise<{ checked: number; refunded: number; failed: number }> {
     const now = new Date();
     const threeMinAgo = new Date(now.getTime() - 3 * 60 * 1000);
+    // 没单独设 refundAt 的，按「售出时间 + 默认延迟(24h)」兜底
+    const hours = await this.getRefundDelayHours();
+    const defaultCutoff = new Date(now.getTime() - hours * 3600 * 1000);
     const due = await this.prisma.warehouseAccount.findMany({
       where: {
         status: 'SOLD',
-        refundAt: { not: null, lte: now },
         refundAttempts: { lt: REFUND_MAX_ATTEMPTS },
-        OR: [
-          { refundStatus: 'NONE' },
-          { refundStatus: 'FAILED', updatedAt: { lt: threeMinAgo } },
+        AND: [
+          {
+            OR: [
+              { refundStatus: 'NONE' },
+              { refundStatus: 'FAILED', updatedAt: { lt: threeMinAgo } },
+            ],
+          },
+          {
+            OR: [
+              // 显式设了退款时间：到点即可
+              { refundAt: { not: null, lte: now } },
+              // 没设退款时间：按 售出时间 + 默认24h 兜底
+              { refundAt: null, soldAt: { not: null, lte: defaultCutoff } },
+            ],
+          },
         ],
       },
-      orderBy: { refundAt: 'asc' },
+      orderBy: { soldAt: 'asc' },
       take: limit,
     });
     if (!due.length) return { checked: 0, refunded: 0, failed: 0 };
@@ -662,13 +676,19 @@ export class WarehouseService {
   async runRefundNotifications(limit = 50): Promise<{ checked: number; notified: number }> {
     if (!(await this.wecom.isEnabled())) return { checked: 0, notified: 0 };
     const now = new Date();
+    // 没单独设 refundAt 的，按「售出时间 + 默认延迟(24h)」兜底
+    const hours = await this.getRefundDelayHours();
+    const defaultCutoff = new Date(now.getTime() - hours * 3600 * 1000);
     const due = await this.prisma.warehouseAccount.findMany({
       where: {
         status: 'SOLD',
-        refundAt: { not: null, lte: now },
         refundNotifiedAt: null,
+        OR: [
+          { refundAt: { not: null, lte: now } },
+          { refundAt: null, soldAt: { not: null, lte: defaultCutoff } },
+        ],
       },
-      orderBy: { refundAt: 'asc' },
+      orderBy: { soldAt: 'asc' },
       take: limit,
     });
     if (!due.length) return { checked: 0, notified: 0 };

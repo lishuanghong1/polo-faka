@@ -78,10 +78,14 @@ const refundMeta = computed(() => {
   }
   if (r.refundStatus === 'FAILED') return { text: '退款失败', cls: 'text-rose-600' };
   if (r.refundNotifiedAt) return { text: '已通知', cls: 'text-emerald-600' };
-  if (!r.refundAt) return { text: '未设置退款时间', cls: 'text-ink-400' };
-  return new Date(r.refundAt).getTime() <= Date.now()
-    ? { text: '待处理', cls: 'text-amber-600' }
-    : { text: '等待到点：' + new Date(r.refundAt).toLocaleString(), cls: 'text-ink-600' };
+  const eff = r.refundAt
+    ? new Date(r.refundAt).getTime()
+    : r.soldAt
+      ? new Date(r.soldAt).getTime() + 24 * 3600 * 1000
+      : null;
+  if (eff == null) return { text: '未设置退款时间', cls: 'text-ink-400' };
+  if (eff <= Date.now()) return { text: '待处理', cls: 'text-amber-600' };
+  return { text: '等待到点：' + new Date(eff).toLocaleString() + (r.refundAt ? '' : '（默认24h）'), cls: 'text-ink-600' };
 });
 
 const membership = computed(() => membershipLabel(cursorInfo.value?.membershipType));

@@ -185,10 +185,15 @@ function refundLabel(row: any): { text: string; cls: string } {
   }
   if (row.refundStatus === 'FAILED') return { text: '退款失败', cls: 'text-rose-600' };
   if (row.refundNotifiedAt) return { text: '已通知', cls: 'text-emerald-600' };
-  if (!row.refundAt) return { text: '未设置', cls: 'text-ink-400' };
-  const due = new Date(row.refundAt).getTime();
-  if (due <= Date.now()) return { text: '待处理', cls: 'text-amber-600' };
-  return { text: new Date(row.refundAt).toLocaleString(), cls: 'text-ink-600' };
+  // 没单独设退款时间 → 按 售出+24h 兜底展示
+  const eff = row.refundAt
+    ? new Date(row.refundAt).getTime()
+    : row.soldAt
+      ? new Date(row.soldAt).getTime() + 24 * 3600 * 1000
+      : null;
+  if (eff == null) return { text: '未设置', cls: 'text-ink-400' };
+  if (eff <= Date.now()) return { text: '待处理', cls: 'text-amber-600' };
+  return { text: new Date(eff).toLocaleString() + (row.refundAt ? '' : '（默认）'), cls: 'text-ink-600' };
 }
 </script>
 
