@@ -43,6 +43,7 @@ const groups = [
       { to: '/admin/pool', icon: 'M4 18l4-2 4 4 4-4 4 2M4 14l4-2 4 4 4-4 4 2M4 10l4-2 4 4 4-4 4 2', label: '号池' },
       { to: '/admin/warehouse', icon: 'M3 7v13h18V7M3 7l3-4h12l3 4M3 7h18M8 11h8', label: '仓库' },
       { to: '/admin/cursor-sub', icon: 'M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 20c0-3 4-5 8-5s8 2 8 5M12 7v0', label: '订阅号池' },
+      { to: '/admin/refund-whitelist', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '客户退款名单' },
       { to: '/admin/recycle', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '回收' },
       // Aizhp 渠道入口暂时隐藏（/admin/aizhp 路由保留，可直链访问）
       { to: '/admin/announcements', icon: 'M11 5h2a2 2 0 012 2v12l-3-2-3 2V7a2 2 0 012-2zM5 9h2M5 13h2M5 17h2', label: '公告' },

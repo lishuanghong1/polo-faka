@@ -945,3 +945,28 @@ model CursorSubAccount {
   @@index([expiresAt])
   @@map("cursor_sub_accounts")
 }
+
+/// 客户自助退款白名单：只有在此列表里的邮箱，前台输入邮箱才能触发自动退款。
+/// 后台批量导入（email----...----token / 带标签格式），存 cursor token（加密）用于退款。
+model RefundWhitelist {
+  id             Int       @id @default(autoincrement())
+  email          String    @unique @db.VarChar(255)
+  /// 加密的 cursor token（user_xxx::JWT），退款链用
+  cursorTokenEnc String    @db.Text
+  note           String?   @db.VarChar(255)
+  batchTag       String?   @db.VarChar(64)
+  /// NONE(可退未退) / PROCESSING(退款中) / DONE(已退) / FAILED(失败)
+  refundStatus   String    @default("NONE") @db.VarChar(16)
+  refundedAt     DateTime?
+  refundAmount   Float?
+  refundError    String?   @db.VarChar(500)
+  /// 客户前台申请时间 / IP
+  appliedAt      DateTime?
+  appliedIp      String?   @db.VarChar(64)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([refundStatus])
+  @@index([batchTag])
+  @@map("refund_whitelist")
+}

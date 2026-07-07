@@ -172,6 +172,21 @@ export const api = {
   // ??
   feedback: (body: any) => http.post('/feedbacks/submit', body),
 
+  // ?????????????????????????
+  customerRefund: {
+    apply: (email: string) =>
+      http.post<{ status: string; message: string }>(
+        '/customer-refund/apply',
+        { email },
+        { silent: true } as any,
+      ),
+    status: (email: string) =>
+      http.get<{ found: boolean; status: string; message: string }>(
+        '/customer-refund/status',
+        { params: { email }, silent: true } as any,
+      ),
+  },
+
   // ?????????????????? Cursor ??????
   recycle: (email: string, invoiceNumber: string) =>
     http.post<{
@@ -396,6 +411,22 @@ export const api = {
       ),
 
     // ??????? token?
+    // ???????
+    refundWlList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
+      http.get('/admin/customer-refund', { params }),
+    refundWlAdd: (body: { email: string; cursorToken: string; note?: string }) =>
+      http.post('/admin/customer-refund', body),
+    refundWlUpdate: (id: number, body: any) => http.put(`/admin/customer-refund/${id}`, body),
+    refundWlRemove: (id: number) => http.delete(`/admin/customer-refund/${id}`),
+    refundWlBulkImport: (body: { text: string; separator?: string }) =>
+      http.post<{ totalLines: number; created: number; skipped: any[]; batchTag: string }>(
+        '/admin/customer-refund/bulk-import',
+        body,
+      ),
+    refundWlRefundNow: (id: number) =>
+      http.post(`/admin/customer-refund/${id}/refund`, undefined, { silent: true } as any),
+    refundWlReset: (id: number) => http.post(`/admin/customer-refund/${id}/refund-reset`),
+
     cursorRefundStatus: () =>
       http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),
     cursorRefundManual: (tokens: string[]) =>
@@ -441,7 +472,7 @@ export const api = {
   },
 
   forge: {
-    // ??  ??
+    // ?? ? ??
     listProducts: () =>
       http.get<Array<{
         typeKey: string;
@@ -465,7 +496,7 @@ export const api = {
     getProduct: (typeKey: string) =>
       http.get<any>(`/forge-redeem/products/${encodeURIComponent(typeKey)}`),
 
-    // ??  ????
+    // ?? ? ????
     check: (code: string) =>
       http.post<{
         code: string;
@@ -488,23 +519,23 @@ export const api = {
         products: any[];
       }>('/forge-redeem/check', { code }, { silent: true } as any),
 
-    // ??  ??????????
+    // ?? ? ??????????
     order: (body: { code: string; typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/order', body, { silent: true } as any),
 
-    // ??  ??????????
+    // ?? ? ??????????
     alipayOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/alipay-order', body, { silent: true } as any),
 
-    // ??  ????????
+    // ?? ? ????????
     balanceOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/balance-order', body, { silent: true } as any),
 
-    // ??  ????????
+    // ?? ? ????????
     pointsOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
       http.post<any>('/forge-redeem/points-order', body, { silent: true } as any),
 
-    // ??  ?????? contact ????
+    // ?? ? ?????? contact ????
     orderDetail: (orderNo: string, contact?: string) =>
       http.get<any>(
         `/forge-redeem/order/${encodeURIComponent(orderNo)}`,
@@ -513,7 +544,7 @@ export const api = {
 
     // ?? ?????? Key ????????????????????????
     quota: {
-      // ??  ??????/ ??
+      // ?? ? ??????/ ??
       listPackages: () =>
         http.get<Array<{
           packageKey: string;
@@ -534,33 +565,33 @@ export const api = {
       getPackage: (packageKey: string) =>
         http.get<any>(`/forge-quota/packages/${encodeURIComponent(packageKey)}`),
 
-      // ??  ????????????
+      // ?? ? ????????????
       order: (body: { code: string; packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/order', body, { silent: true } as any),
-      // ??  ??????????
+      // ?? ? ??????????
       alipayOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/alipay-order', body, { silent: true } as any),
-      // ??  ????????
+      // ?? ? ????????
       balanceOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/balance-order', body, { silent: true } as any),
-      // ??  ????????
+      // ?? ? ????????
       pointsOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
         http.post<any>('/forge-quota/points-order', body, { silent: true } as any),
 
-      // ??  ?????? contact ????
+      // ?? ? ?????? contact ????
       orderDetail: (orderNo: string, contact?: string) =>
         http.get<any>(
           `/forge-quota/order/${encodeURIComponent(orderNo)}`,
           contact ? { params: { contact } } : undefined,
         ),
-      // ??  ???????????????
+      // ?? ? ???????????????
       refreshCodes: (orderNo: string, contact?: string) =>
         http.post<any>(
           `/forge-quota/order/${encodeURIComponent(orderNo)}/refresh-codes`,
           contact ? { contact } : {},
           { silent: true } as any,
         ),
-      // ??  ????????
+      // ?? ? ????????
       myOrders: (params: any) =>
         http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
           '/forge-quota/orders/mine',
