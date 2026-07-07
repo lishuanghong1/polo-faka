@@ -159,6 +159,38 @@ export class CursorRefundService {
     return idx >= 0 ? link.slice(idx + 5) : '';
   }
 
+  /** 从 owner token 自动检测它拥有的第一个团队 id（配置的 teamId 过期/不对时兜底）。 */
+  private async detectTeamId(ownerToken: string): Promise<number> {
+    try {
+      const e = await this.request('POST', '/api/dashboard/teams', ownerToken, { activeOnly: false });
+      const teams: any[] = Array.isArray(e?.teams) ? e.teams : [];
+      const owned = teams.find((t) => t?.role === 'TEAM_ROLE_OWNER' && Number(t?.id) > 0);
+      if (owned) return Number(owned.id);
+      const first = teams.find((t) => Number(t?.id) > 0);
+      return first ? Number(first.id) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * 拿邀请码：先用配置的 teamId；拿不到（团队 id 过期/无权限）时，
+   * 自动检测 owner 名下的团队再试一次。返回实际生效的 teamId + code。
+   */
+  private async resolveInvite(
+    ownerToken: string,
+    teamId: number,
+  ): Promise<{ code: string; teamId: number; detected?: number }> {
+    let code = teamId > 0 ? await this.getInviteCode(ownerToken, teamId) : '';
+    if (code) return { code, teamId };
+    const detected = await this.detectTeamId(ownerToken);
+    if (detected && detected !== teamId) {
+      code = await this.getInviteCode(ownerToken, detected);
+      if (code) return { code, teamId: detected, detected };
+    }
+    return { code: '', teamId, detected: detected || undefined };
+  }
+
   /**
    * 对单个目标账号执行退款。
    * @param targetTokenRaw 目标账号的 cursor token（原始/编码均可）
@@ -202,10 +234,15 @@ export class CursorRefundService {
 
       res.amount = await this.previewRefundUsd(target);
 
-      const code = await this.getInviteCode(ownerToken, teamId);
+      const { code, teamId: effectiveTeamId, detected } = await this.resolveInvite(ownerToken, teamId);
       if (!code) {
-        res.error = '获取团队邀请码失败（检查 owner token / teamId）';
+        res.error =
+          '获取团队邀请码失败（检查 owner token / teamId）' +
+          (detected ? `；owner 名下检测到团队 ${detected}，但仍拿不到邀请码` : '；owner 名下未检测到任何团队');
         return res;
+      }
+      if (effectiveTeamId !== teamId) {
+        L(`配置的 teamId=${teamId} 无效，自动改用 owner 名下团队 ${effectiveTeamId}`);
       }
 
       const acc = await this.request('POST', '/api/accept-invite', target, { inviteCode: code });
@@ -217,7 +254,7 @@ export class CursorRefundService {
 
       await new Promise((r) => setTimeout(r, 2000));
       await this.request('POST', '/api/dashboard/remove-member', ownerToken, {
-        teamId,
+        teamId: effectiveTeamId,
         userId: me.userId,
       });
       L('已踢出团队');
