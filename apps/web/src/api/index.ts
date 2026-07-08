@@ -186,6 +186,13 @@ export const api = {
         { email },
         { silent: true } as any,
       ),
+    // 凭 token 直接退款（不校验白名单）：服务端立即返回「已提交」，退款链在后台异步跑
+    applyToken: (token: string) =>
+      http.post<{ status: string; message: string; email?: string }>(
+        '/customer-refund/apply-token',
+        { token },
+        { silent: true } as any,
+      ),
     status: (email: string) =>
       http.get<{ found: boolean; status: string; message: string }>(
         '/customer-refund/status',

@@ -30,6 +30,14 @@ export class CustomerRefundPublicController {
     return this.svc.apply(body?.email, req.ip);
   }
 
+  /** 凭 token 直接退款（不校验白名单）。同步执行，退款链较慢，限流更严格。 */
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('apply-token')
+  applyByToken(@Body() body: { token: string }) {
+    return this.svc.applyByToken(body?.token);
+  }
+
   @Public()
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('status')

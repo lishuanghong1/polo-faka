@@ -237,6 +237,32 @@ export class CustomerRefundService {
     return { status: 'PROCESSING', message: '退款申请已提交，正在处理（约 30 秒），请稍后刷新' };
   }
 
+  /**
+   * 前台凭 token 直接退款：不校验白名单（token 本身即凭证）。
+   * 只做格式校验后立即返回「已提交」，退款链在后台异步执行（不阻塞前台、不回传结果，
+   * 结果只记录到服务日志）。
+   */
+  async applyByToken(tokenInput: string) {
+    const token = (tokenInput || '').trim();
+    if (!token) throw new BadRequestException('请输入账号 token');
+    if (!/^user_[A-Za-z0-9]+(::|%3A%3A)/i.test(token) && !/WorkosCursorSessionToken=/i.test(token)) {
+      throw new BadRequestException('token 格式不正确（应形如 user_xxx::eyJ...）');
+    }
+    setImmediate(() => {
+      this.cursorRefund
+        .refundOne(token)
+        .then((res) => {
+          if (res.ok) {
+            this.logger.log(`token 退款成功: ${res.email || '?'} 约 $${res.amount}`);
+          } else {
+            this.logger.warn(`token 退款失败: ${res.email || '?'} - ${res.error}`);
+          }
+        })
+        .catch((e) => this.logger.error(`token 退款异常: ${(e as Error).message}`));
+    });
+    return { status: 'SUBMITTED', message: '提交成功，请耐心等待，退款将在后台自动办理' };
+  }
+
   /** 前台查询进度（只按邮箱，返回状态，不泄露 token） */
   async status(emailInput: string) {
     const email = (emailInput || '').trim().toLowerCase();
