@@ -970,3 +970,41 @@ model RefundWhitelist {
   @@index([batchTag])
   @@map("refund_whitelist")
 }
+
+/// 前台「凭 token 直接退款」的记录（不校验白名单，token 本身即凭证）。
+/// 仅用于后台查看退款历史与结果；不落明文 token，只存掩码用于识别。
+/// Ultra 账号需先支付手续费（¥10）才办理退款，相关支付字段记录在此。
+model TokenRefundLog {
+  id              Int       @id @default(autoincrement())
+  /// 退款账号邮箱（退款链解析 token 后回填，可能为空）
+  email           String?   @db.VarChar(255)
+  /// token 掩码（首尾片段），用于识别，不存完整明文
+  tokenMask       String    @db.VarChar(80)
+  /// 加密的完整 token：仅「需付费后退款」的场景暂存，退款完成后可清空
+  cursorTokenEnc  String?   @db.Text
+  /// NEED_PAY(待支付手续费) / PROCESSING(处理中) / DONE(已退) / FAILED(失败)
+  status          String    @default("PROCESSING") @db.VarChar(16)
+  membershipType  String?   @db.VarChar(32)
+  refundAmount    Float?
+  prevMembership  String?   @db.VarChar(32)
+  finalMembership String?   @db.VarChar(32)
+  refundError     String?   @db.VarChar(500)
+  /// 手续费（Ultra 账号退款前需支付），单位元；为 null 表示无需付费
+  feeAmount       Float?
+  /// 手续费支付订单号（T 开头），支付宝对账用
+  payOrderNo      String?   @unique @db.VarChar(64)
+  /// NONE(无需支付) / UNPAID(待支付) / PAID(已支付)
+  payStatus       String    @default("NONE") @db.VarChar(16)
+  payTradeNo      String?   @db.VarChar(64)
+  paidAt          DateTime?
+  /// 前台提交时的 IP
+  ip              String?   @db.VarChar(64)
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([status])
+  @@index([payStatus])
+  @@index([createdAt])
+  @@map("token_refund_logs")
+}

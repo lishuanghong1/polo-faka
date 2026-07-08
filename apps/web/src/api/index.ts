@@ -186,13 +186,15 @@ export const api = {
         { email },
         { silent: true } as any,
       ),
-    // 凭 token 直接退款（不校验白名单）：服务端立即返回「已提交」，退款链在后台异步跑
+    // 凭 token 直接退款（不校验白名单）：服务端先判会员类型
+    //   free → DONE；ultra → NEED_PAY（需先充值余额）；其它付费档 → SUBMITTED（后台异步退款）
     applyToken: (token: string) =>
-      http.post<{ status: string; message: string; email?: string }>(
-        '/customer-refund/apply-token',
-        { token },
-        { silent: true } as any,
-      ),
+      http.post<{
+        status: 'DONE' | 'NEED_PAY' | 'SUBMITTED';
+        message: string;
+        id?: number;
+        rechargeAmount?: number;
+      }>('/customer-refund/apply-token', { token }, { silent: true } as any),
     status: (email: string) =>
       http.get<{ found: boolean; status: string; message: string }>(
         '/customer-refund/status',
@@ -448,6 +450,11 @@ export const api = {
         timeout: REFUND_TIMEOUT,
       } as any),
     refundWlReset: (id: number) => http.post(`/admin/customer-refund/${id}/refund-reset`),
+
+    // 前台「凭 token 直接退款」的记录
+    tokenRefundList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
+      http.get('/admin/customer-refund/token-logs', { params }),
+    tokenRefundRemove: (id: number) => http.delete(`/admin/customer-refund/token-logs/${id}`),
 
     cursorRefundStatus: () =>
       http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),

@@ -317,6 +317,27 @@ export class CursorRefundService {
     }
   }
 
+  /** 只查会员类型（用于退款前判断是否 Ultra 需收费），不退款。 */
+  async checkMembership(rawToken: string): Promise<{
+    ok: boolean;
+    email?: string;
+    membershipType?: string;
+    error?: string;
+  }> {
+    const token = normalizeToken(rawToken);
+    if (!token) return { ok: false, error: '缺少 token' };
+    try {
+      const me = await this.fillMe(token);
+      const membershipType = await this.membership(token);
+      if (!me.userId && !membershipType) {
+        return { ok: false, error: 'token 可能已失效' };
+      }
+      return { ok: true, email: me.email, membershipType };
+    } catch (e) {
+      return { ok: false, error: (e as Error)?.message || '查询失败' };
+    }
+  }
+
   /** 手动批量退款：逐个执行（退款较慢，串行更稳），返回每个的结果 */
   async refundMany(tokens: string[]): Promise<RefundResult[]> {
     const list = Array.from(

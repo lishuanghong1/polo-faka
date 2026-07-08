@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
+import { useUserStore } from '@/stores/user';
 import BrandButton from '@/components/BrandButton.vue';
+
+const router = useRouter();
+const userStore = useUserStore();
 
 type Mode = 'email' | 'token';
 const mode = ref<Mode>('email');
@@ -11,6 +16,10 @@ const token = ref('');
 const submitting = ref(false);
 const result = ref<{ status: string; message: string } | null>(null);
 let pollTimer: number | undefined;
+
+// Ultra 账号需先充值余额：弹窗
+const RECHARGE_AMOUNT = 99;
+const ultraDialog = ref(false);
 
 function switchMode(m: Mode) {
   if (mode.value === m) return;
@@ -24,6 +33,7 @@ const statusMeta = computed(() => {
   if (s === 'DONE') return { cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', label: '已退款' };
   if (s === 'SUBMITTED') return { cls: 'text-emerald-700 bg-emerald-50 border-emerald-200', label: '已提交' };
   if (s === 'PROCESSING') return { cls: 'text-sky-700 bg-sky-50 border-sky-200', label: '处理中' };
+  if (s === 'NEED_PAY') return { cls: 'text-amber-700 bg-amber-50 border-amber-200', label: '待支付' };
   if (s === 'FAILED') return { cls: 'text-rose-700 bg-rose-50 border-rose-200', label: '失败' };
   return { cls: 'text-ink-600 bg-ink-50 border-ink-200', label: '可申请' };
 });
@@ -82,13 +92,28 @@ async function submitByToken() {
   result.value = null;
   try {
     const r = await api.customerRefund.applyToken(t);
-    result.value = { status: r.status || 'SUBMITTED', message: r.message || '提交成功，请耐心等待' };
-    token.value = '';
+    if (r.status === 'NEED_PAY') {
+      // Ultra：弹窗引导充值余额
+      ultraDialog.value = true;
+    } else {
+      result.value = { status: r.status || 'SUBMITTED', message: r.message || '提交成功，请耐心等待' };
+      token.value = '';
+    }
   } catch (err: any) {
     const msg = err?.response?.data?.error?.message || err?.response?.data?.message || '提交失败，请稍后重试';
     result.value = { status: 'FAILED', message: msg };
   } finally {
     submitting.value = false;
+  }
+}
+
+/** 充值余额 → 未登录去登录，已登录去账户充值（预填 99） */
+function rechargeBalance() {
+  ultraDialog.value = false;
+  if (!userStore.isLoggedIn) {
+    router.push({ name: 'login', query: { redirect: `/recharge?amount=${RECHARGE_AMOUNT}` } });
+  } else {
+    router.push({ name: 'recharge', query: { amount: RECHARGE_AMOUNT } });
   }
 }
 </script>
@@ -174,6 +199,7 @@ async function submitByToken() {
         <template v-if="mode === 'token'">
           <p>· 粘贴账号 token 可直接退款，无需在退款名单内。</p>
           <p>· 提交后由后台自动办理，可关闭页面；成功后账号恢复为免费版。</p>
+          <p>· Ultra 账号需先充值 ¥{{ RECHARGE_AMOUNT }} 余额后办理。</p>
         </template>
         <template v-else>
           <p>· 仅支持在本店购买、且符合退款条件的账号，输入对应邮箱即可申请。</p>
@@ -181,5 +207,35 @@ async function submitByToken() {
         </template>
       </div>
     </div>
+
+    <!-- Ultra 账号：引导充值余额 -->
+    <el-dialog
+      :model-value="ultraDialog"
+      width="440px"
+      title="该账号为 Ultra"
+      :close-on-click-modal="false"
+      @update:model-value="(v: boolean) => (ultraDialog = v)"
+      @close="ultraDialog = false"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-ink-600 leading-relaxed">
+          Ultra 账号退款需先充值 <b class="text-amber-600">¥{{ RECHARGE_AMOUNT }}</b> 余额，充值后请联系客服办理退款。
+        </p>
+
+        <button
+          class="w-full text-left rounded-xl border border-ink-200 hover:border-amber-400 hover:bg-amber-50/40 transition p-4"
+          @click="rechargeBalance"
+        >
+          <div class="flex items-center justify-between">
+            <span class="font-medium text-ink-900">去充值余额</span>
+            <span class="text-lg font-semibold text-amber-600">¥{{ RECHARGE_AMOUNT }}</span>
+          </div>
+          <div class="text-xs text-ink-500 mt-1">跳转账户充值（未登录将先去登录）</div>
+        </button>
+      </div>
+      <template #footer>
+        <button class="px-4 py-1.5 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="ultraDialog = false">取消</button>
+      </template>
+    </el-dialog>
   </div>
 </template>

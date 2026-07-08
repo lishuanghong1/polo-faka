@@ -10,6 +10,12 @@ import { encryptString, decryptString, isEncrypted } from '../../common/crypto.u
 import { CursorRefundService } from '../cursor-refund/cursor-refund.service';
 
 const SEPARATOR = '----';
+/** Ultra 账号 token 退款需先充值的余额（元） */
+const RECHARGE_AMOUNT = 99;
+/** Ultra 账号 token 退款手续费（元，兼容历史支付回调） */
+const TOKEN_REFUND_FEE = 10;
+/** 视为「免费/无需退款」的会员类型 */
+const FREE_MEMBERSHIPS = new Set(['free', 'free_trial', 'trial']);
 const COMMON_SEPARATORS = ['----', '\t', '|', ',', '::'];
 const LABELED_RE = /workos[_ ]?cursor[_ ]?session[_ ]?token|access[_ ]?token|session[_ ]?token/i;
 const EMAIL_LABEL_RE = /(邮箱|mail|账号|account)\s*[:：]/i;
@@ -22,6 +28,14 @@ function safeDecrypt(v: string | null | undefined): string {
   } catch {
     return '';
   }
+}
+
+/** token 掩码：首段 + … + 末 6 位，用于日志识别，不落完整明文。 */
+function maskToken(raw: string): string {
+  const t = (raw || '').replace(/%3A%3A/gi, '::').trim();
+  if (!t) return '';
+  const head = t.slice(0, 20);
+  return t.length > 30 ? `${head}…${t.slice(-6)}` : head;
 }
 
 interface ParsedLine {
@@ -239,28 +253,220 @@ export class CustomerRefundService {
 
   /**
    * 前台凭 token 直接退款：不校验白名单（token 本身即凭证）。
-   * 只做格式校验后立即返回「已提交」，退款链在后台异步执行（不阻塞前台、不回传结果，
-   * 结果只记录到服务日志）。
+   * 流程：
+   *   1. 校验格式 → 查会员类型（顺带校验 token 是否有效）
+   *   2. free → 直接标记「已是免费版」；ultra → 先收 ¥10 手续费（建 T 支付单，付款后再退）
+   *   3. 其它付费档（pro/pro+ 等）→ 落 PROCESSING 记录，后台异步退款
    */
-  async applyByToken(tokenInput: string) {
+  async applyByToken(tokenInput: string, ip?: string) {
     const token = (tokenInput || '').trim();
     if (!token) throw new BadRequestException('请输入账号 token');
     if (!/^user_[A-Za-z0-9]+(::|%3A%3A)/i.test(token) && !/WorkosCursorSessionToken=/i.test(token)) {
       throw new BadRequestException('token 格式不正确（应形如 user_xxx::eyJ...）');
     }
+
+    // 查会员类型（同时验证 token 有效性）
+    const info = await this.cursorRefund.checkMembership(token);
+    if (!info.ok) {
+      throw new BadRequestException(info.error || 'token 无效或已失效，请重新获取');
+    }
+    const membership = (info.membershipType || '').trim();
+    const isUltra = membership.toLowerCase() === 'ultra';
+    const isFree = !membership || FREE_MEMBERSHIPS.has(membership.toLowerCase());
+
+    // 已是免费版：无需退款
+    if (isFree) {
+      await this.prisma.tokenRefundLog.create({
+        data: {
+          tokenMask: maskToken(token),
+          email: info.email || null,
+          membershipType: membership || null,
+          status: 'DONE',
+          prevMembership: membership || 'free',
+          finalMembership: 'free',
+          payStatus: 'NONE',
+          ip: ip?.slice(0, 64),
+          finishedAt: new Date(),
+        },
+      });
+      return { status: 'DONE', message: '该账号已是免费版，无需退款' };
+    }
+
+    // Ultra：需先充值余额（引导到账户充值，不在此处自动退款）
+    if (isUltra) {
+      const log = await this.prisma.tokenRefundLog.create({
+        data: {
+          tokenMask: maskToken(token),
+          email: info.email || null,
+          membershipType: membership,
+          status: 'NEED_PAY',
+          payStatus: 'NONE',
+          ip: ip?.slice(0, 64),
+        },
+      });
+      return {
+        status: 'NEED_PAY',
+        message: `该账号为 Ultra，需充值 ¥${RECHARGE_AMOUNT} 余额后办理退款`,
+        id: log.id,
+        rechargeAmount: RECHARGE_AMOUNT,
+      };
+    }
+
+    // 其它付费档：落库后台退款
+    const log = await this.prisma.tokenRefundLog.create({
+      data: {
+        tokenMask: maskToken(token),
+        email: info.email || null,
+        membershipType: membership,
+        status: 'PROCESSING',
+        payStatus: 'NONE',
+        ip: ip?.slice(0, 64),
+      },
+    });
+    this.runTokenRefund(log.id, token);
+    return { status: 'SUBMITTED', message: '提交成功，请耐心等待，退款将在后台自动办理', id: log.id };
+  }
+
+  /** 后台异步执行退款链并回填 TokenRefundLog（applyByToken 与付费后共用）。 */
+  private runTokenRefund(logId: number, token: string) {
     setImmediate(() => {
       this.cursorRefund
         .refundOne(token)
-        .then((res) => {
+        .then(async (res) => {
           if (res.ok) {
             this.logger.log(`token 退款成功: ${res.email || '?'} 约 $${res.amount}`);
           } else {
             this.logger.warn(`token 退款失败: ${res.email || '?'} - ${res.error}`);
           }
+          await this.prisma.tokenRefundLog.update({
+            where: { id: logId },
+            data: {
+              status: res.ok ? 'DONE' : 'FAILED',
+              email: res.email || undefined,
+              refundAmount: res.amount || null,
+              prevMembership: res.prevMembership || null,
+              finalMembership: res.finalMembership || null,
+              refundError: res.ok ? null : (res.error || '退款失败').slice(0, 500),
+              // 退款结束后清掉暂存 token
+              cursorTokenEnc: null,
+              finishedAt: new Date(),
+            },
+          });
         })
-        .catch((e) => this.logger.error(`token 退款异常: ${(e as Error).message}`));
+        .catch(async (e) => {
+          const msg = (e as Error)?.message || '退款异常';
+          this.logger.error(`token 退款异常: ${msg}`);
+          await this.prisma.tokenRefundLog
+            .update({
+              where: { id: logId },
+              data: { status: 'FAILED', refundError: msg.slice(0, 500), finishedAt: new Date() },
+            })
+            .catch(() => null);
+        });
     });
-    return { status: 'SUBMITTED', message: '提交成功，请耐心等待，退款将在后台自动办理' };
+  }
+
+  /**
+   * 手续费支付成功回调（支付宝 notify/return 调用）：校验金额、幂等，触发退款。
+   * 返回 'recorded' 表示本次刚标记成功并已触发退款；'duplicate' 表示已处理过。
+   */
+  async markFeePaid(
+    payOrderNo: string,
+    tradeNo: string,
+    paidAmount: number,
+  ): Promise<'recorded' | 'duplicate'> {
+    const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo } });
+    if (!log) throw new Error('订单不存在');
+    if (log.payStatus === 'PAID') return 'duplicate';
+    const expect = Number(log.feeAmount || TOKEN_REFUND_FEE);
+    if (Math.abs(Number(paidAmount) - expect) > 0.01) {
+      throw new Error(`金额不一致：期望 ${expect}，实付 ${paidAmount}`);
+    }
+    await this.prisma.tokenRefundLog.update({
+      where: { id: log.id },
+      data: {
+        payStatus: 'PAID',
+        payTradeNo: tradeNo,
+        paidAt: new Date(),
+        status: 'PROCESSING',
+      },
+    });
+    const token = safeDecrypt(log.cursorTokenEnc);
+    if (token) this.runTokenRefund(log.id, token);
+    else {
+      await this.prisma.tokenRefundLog.update({
+        where: { id: log.id },
+        data: { status: 'FAILED', refundError: 'token 丢失，无法退款', finishedAt: new Date() },
+      });
+    }
+    return 'recorded';
+  }
+
+  /** 前台查 token 退款进度（按记录 id） */
+  async tokenStatus(id: number) {
+    const row = await this.prisma.tokenRefundLog.findUnique({ where: { id } });
+    if (!row) return { found: false, status: 'NOT_FOUND', message: '记录不存在' };
+    const map: Record<string, string> = {
+      NEED_PAY: '待支付手续费',
+      PROCESSING: '退款处理中，请稍候刷新',
+      DONE: '退款完成，账号已恢复免费版',
+      FAILED: row.refundError || '退款失败，请稍后重试或联系客服',
+    };
+    return {
+      found: true,
+      status: row.status,
+      payStatus: row.payStatus,
+      message: map[row.status] || row.status,
+    };
+  }
+
+  // ── Token 退款记录（后台查看） ────────────────────
+
+  async listTokenRefunds(params: { status?: string; keyword?: string; page?: number; pageSize?: number }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const pageSize = Math.min(200, Math.max(1, Number(params.pageSize) || 50));
+    const where: Prisma.TokenRefundLogWhereInput = {};
+    if (params.status && params.status !== 'all') where.status = params.status;
+    if (params.keyword) {
+      const kw = params.keyword.trim();
+      where.OR = [{ email: { contains: kw } }, { tokenMask: { contains: kw } }];
+    }
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.tokenRefundLog.count({ where }),
+      this.prisma.tokenRefundLog.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+    return { total, page, pageSize, items: rows.map((r) => this.toTokenView(r)) };
+  }
+
+  async removeTokenRefund(id: number) {
+    await this.prisma.tokenRefundLog.delete({ where: { id } }).catch(() => null);
+    return { ok: true };
+  }
+
+  private toTokenView(r: any) {
+    return {
+      id: r.id,
+      email: r.email,
+      tokenMask: r.tokenMask,
+      membershipType: r.membershipType,
+      status: r.status,
+      refundAmount: r.refundAmount,
+      prevMembership: r.prevMembership,
+      finalMembership: r.finalMembership,
+      refundError: r.refundError,
+      feeAmount: r.feeAmount,
+      payStatus: r.payStatus,
+      payOrderNo: r.payOrderNo,
+      paidAt: r.paidAt,
+      ip: r.ip,
+      finishedAt: r.finishedAt,
+      createdAt: r.createdAt,
+    };
   }
 
   /** 前台查询进度（只按邮箱，返回状态，不泄露 token） */

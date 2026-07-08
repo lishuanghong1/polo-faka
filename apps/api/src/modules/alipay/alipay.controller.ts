@@ -17,6 +17,7 @@ import { OrdersService } from '../orders/orders.service';
 import { ForgeOrdersService } from '../forge-redeem/forge-orders.service';
 import { ForgeQuotaOrdersService } from '../forge-redeem/forge-quota-orders.service';
 import { RechargeService } from '../recharge/recharge.service';
+import { CustomerRefundService } from '../customer-refund/customer-refund.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -25,10 +26,11 @@ import { AuditActions } from '../audit/audit.constants';
 import { AbuseGuardService } from '../../common/abuse/abuse-guard.service';
 
 /**
- * 我方订单号格式：P/F/R/Q 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
+ * 我方订单号格式：P/F/R/Q/T 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
  * 严格白名单字符 + 长度，防止 SQL/XSS payload 进入审计日志。
+ * T = Token 退款手续费（Ultra 账号退款前收 ¥10）
  */
-const ORDER_NO_REGEX = /^[PFRQ][A-Za-z0-9-]{14,64}$/;
+const ORDER_NO_REGEX = /^[PFRQT][A-Za-z0-9-]{14,64}$/;
 /** 支付宝 trade_no：纯数字、长度 16-64 */
 const TRADE_NO_REGEX = /^\d{16,64}$/;
 
@@ -81,6 +83,11 @@ function isQuotaOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('Q');
 }
 
+/** Token 退款手续费订单（Ultra 账号退款前收 ¥10） */
+function isTokenRefundOrder(orderNo: string) {
+  return typeof orderNo === 'string' && orderNo.startsWith('T');
+}
+
 /** 脱敏 buyer_logon_id（138****1234@qq.com → 138****1234@qq.com，邮箱/手机分别脱敏） */
 function maskBuyerLogon(s?: string): string | undefined {
   if (!s) return undefined;
@@ -105,6 +112,7 @@ export class AlipayController {
     private readonly forgeOrders: ForgeOrdersService,
     private readonly quotaOrders: ForgeQuotaOrdersService,
     private readonly recharge: RechargeService,
+    private readonly customerRefund: CustomerRefundService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly abuse: AbuseGuardService,
@@ -171,6 +179,14 @@ export class AlipayController {
       payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
       subject = order.packageName;
       body = `${order.packageName} × ${order.quantity}`;
+    } else if (isTokenRefundOrder(orderNo)) {
+      const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo: orderNo } });
+      if (!log) throw new BadRequestException('订单不存在');
+      if (log.payStatus === 'PAID') throw new BadRequestException('该手续费已支付');
+      payAmount = Number(log.feeAmount || 0);
+      if (!(payAmount > 0)) throw new BadRequestException('订单金额异常');
+      subject = 'Ultra 账号退款手续费';
+      body = `账号退款手续费 ${orderNo}`;
     } else {
       const order = await this.prisma.order.findUnique({ where: { orderNo } });
       if (!order) throw new BadRequestException('订单不存在');
@@ -396,6 +412,30 @@ export class AlipayController {
         }
       }
 
+      if (isTokenRefundOrder(orderNo)) {
+        // Ultra 退款手续费：标记已付 + 触发退款（退款链后台异步）
+        try {
+          await this.customerRefund.markFeePaid(orderNo, tradeNo, totalAmount);
+          return res.status(200).send('success');
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (msg.includes('金额不一致')) {
+            await this.audit.record({
+              action: AuditActions.ALIPAY_AMOUNT_MISMATCH,
+              target: `token-refund:${orderNo}`,
+              detail: { tradeNo, paidAmount: totalAmount, msg },
+            });
+            return res.status(200).send('success');
+          }
+          if (msg.includes('订单不存在')) {
+            this.logger.warn(`token-refund notify hard-fail: ${orderNo} ${msg}`);
+            return res.status(200).send('success');
+          }
+          this.logger.error(`token-refund notify retryable: ${orderNo} ${msg}`);
+          return res.status(200).send('fail');
+        }
+      }
+
       // 本地卡密订单
       try {
         const r = await this.orders.markPaidOnly(orderNo, tradeNo, totalAmount, buyerLogonId);
@@ -464,6 +504,14 @@ export class AlipayController {
             this.logger.warn(`return-ack quota fallback: ${(e as Error).message}`);
           }
           return res.redirect(`/quota-order/${encodeURIComponent(orderNo)}`);
+        }
+        if (isTokenRefundOrder(orderNo)) {
+          try {
+            await this.customerRefund.markFeePaid(orderNo, tradeNo, totalAmount);
+          } catch (e) {
+            this.logger.warn(`return-ack token-refund fallback: ${(e as Error).message}`);
+          }
+          return res.redirect(`/refund?paid=1`);
         }
 
         try {

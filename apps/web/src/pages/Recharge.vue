@@ -121,6 +121,16 @@ const rechargeStatusInfo = (s: string) => {
 
 onMounted(async () => {
   await loadEnabled();
+  // 支持 ?amount=99 预填（如从「账号退款」引导充值）
+  const qAmount = Number(route.query.amount);
+  if (Number.isFinite(qAmount) && qAmount >= 50 && qAmount <= 10000) {
+    if (presetAmounts.includes(qAmount)) {
+      amount.value = qAmount;
+      customAmount.value = '';
+    } else {
+      customAmount.value = String(qAmount);
+    }
+  }
   if (userStore.isLoggedIn) {
     loadHistory();
     const urlOrder = route.params.orderNo as string | undefined;

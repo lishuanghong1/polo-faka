@@ -30,12 +30,12 @@ export class CustomerRefundPublicController {
     return this.svc.apply(body?.email, req.ip);
   }
 
-  /** 凭 token 直接退款（不校验白名单）。同步执行，退款链较慢，限流更严格。 */
+  /** 凭 token 直接退款（不校验白名单）。提交即返回，退款链后台异步执行，限流更严格。 */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('apply-token')
-  applyByToken(@Body() body: { token: string }) {
-    return this.svc.applyByToken(body?.token);
+  applyByToken(@Body() body: { token: string }, @Req() req: Request) {
+    return this.svc.applyByToken(body?.token, req.ip);
   }
 
   @Public()
@@ -43,6 +43,14 @@ export class CustomerRefundPublicController {
   @Get('status')
   status(@Query('email') email: string) {
     return this.svc.status(email);
+  }
+
+  /** Token 退款进度（按记录 id 轮询） */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get('token-status')
+  tokenStatus(@Query('id') id: string) {
+    return this.svc.tokenStatus(Number(id));
   }
 }
 
@@ -100,5 +108,26 @@ export class CustomerRefundAdminController {
   @Post(':id/refund-reset')
   resetRefund(@Param('id', ParseIntPipe) id: number) {
     return this.svc.resetRefund(id);
+  }
+
+  /** Token 退款记录列表（前台「凭 token 直接退款」的历史） */
+  @Get('token-logs')
+  tokenLogs(
+    @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.svc.listTokenRefunds({
+      status,
+      keyword,
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+    });
+  }
+
+  @Delete('token-logs/:id')
+  removeTokenLog(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.removeTokenRefund(id);
   }
 }
