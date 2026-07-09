@@ -22,6 +22,8 @@ function copyContact(text: string, label: string) {
 
 interface UnifiedProduct {
   source: 'local' | 'forge' | 'quota';
+  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL / AIZHP */
+  deliveryType?: string;
   /** 卡片 key */
   key: string;
   /** 显示名 */
@@ -104,6 +106,7 @@ function normalizeLocal(p: any): UnifiedProduct {
     p.cover || (Array.isArray(p.images) && p.images.length ? p.images[0] : null) || null;
   return {
     source: 'local',
+    deliveryType: p.deliveryType,
     key: `local:${p.id}`,
     typeKey: String(p.id),
     typeName: p.title,

@@ -3,6 +3,8 @@ import { computed } from 'vue';
 
 interface UnifiedProduct {
   source: 'local' | 'forge' | 'quota';
+  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL / AIZHP */
+  deliveryType?: string;
   key: string;
   typeName: string;
   typeKey: string;
@@ -19,6 +21,11 @@ interface UnifiedProduct {
 
 const props = defineProps<{ product: UnifiedProduct }>();
 defineEmits<{ (e: 'click'): void }>();
+
+// 人工代发商品不按库存售卖，首页不展示「缺货」等库存字样；无限库存（AIZHP）同样不展示
+const showStock = computed(
+  () => props.product.stock < 9999 && props.product.deliveryType !== 'MANUAL',
+);
 
 const stockClass = computed(() => {
   const p = props.product;
@@ -114,7 +121,7 @@ function onImgError(e: Event) {
         </div>
         <div v-if="product.warrantyHours" class="text-[11px] text-ink-400 mt-1">质保 {{ product.warrantyHours }} 小时</div>
       </div>
-      <div v-if="product.stock < 9999" class="text-right">
+      <div v-if="showStock" class="text-right">
         <div :class="stockClass" :title="stockTitle">
           <span
             v-if="product.stock <= 0"
