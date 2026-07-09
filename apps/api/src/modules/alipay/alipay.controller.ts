@@ -185,7 +185,7 @@ export class AlipayController {
       if (log.payStatus === 'PAID') throw new BadRequestException('该手续费已支付');
       payAmount = Number(log.feeAmount || 0);
       if (!(payAmount > 0)) throw new BadRequestException('订单金额异常');
-      subject = 'Ultra 账号退款手续费';
+      subject = '账号退款手续费';
       body = `账号退款手续费 ${orderNo}`;
     } else {
       const order = await this.prisma.order.findUnique({ where: { orderNo } });

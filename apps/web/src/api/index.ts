@@ -187,14 +187,22 @@ export const api = {
         { silent: true } as any,
       ),
     // 凭 token 直接退款（不校验白名单）：服务端先判会员类型
-    //   free → DONE；ultra → NEED_PAY（需先充值余额）；其它付费档 → SUBMITTED（后台异步退款）
+    //   free → DONE；付费档 → NEED_PAY（需先付手续费，Ultra ¥50 / 其它 ¥10）
     applyToken: (token: string) =>
       http.post<{
-        status: 'DONE' | 'NEED_PAY' | 'SUBMITTED';
+        status: 'DONE' | 'NEED_PAY';
         message: string;
         id?: number;
-        rechargeAmount?: number;
+        payOrderNo?: string;
+        feeAmount?: number;
+        membershipType?: string;
       }>('/customer-refund/apply-token', { token }, { silent: true } as any),
+    // 轮询 token 退款进度（按记录 id）
+    tokenStatus: (id: number) =>
+      http.get<{ found: boolean; status: string; payStatus?: string; message: string }>(
+        '/customer-refund/token-status',
+        { params: { id }, silent: true } as any,
+      ),
     status: (email: string) =>
       http.get<{ found: boolean; status: string; message: string }>(
         '/customer-refund/status',

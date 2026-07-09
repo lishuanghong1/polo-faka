@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
-import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
-import { useUserStore } from '@/stores/user';
+import { membershipLabel } from '@/utils/cursor-membership';
 import BrandButton from '@/components/BrandButton.vue';
-
-const router = useRouter();
-const userStore = useUserStore();
 
 type Mode = 'email' | 'token';
 const mode = ref<Mode>('email');
@@ -17,9 +13,9 @@ const submitting = ref(false);
 const result = ref<{ status: string; message: string } | null>(null);
 let pollTimer: number | undefined;
 
-// Ultra 账号需先充值余额：弹窗
-const RECHARGE_AMOUNT = 99;
-const ultraDialog = ref(false);
+// 付费档退款需先付手续费：弹窗信息
+const payInfo = ref<{ id: number; payOrderNo: string; feeAmount: number; membershipType?: string } | null>(null);
+const paying = ref(false);
 
 function switchMode(m: Mode) {
   if (mode.value === m) return;
@@ -92,11 +88,16 @@ async function submitByToken() {
   result.value = null;
   try {
     const r = await api.customerRefund.applyToken(t);
-    if (r.status === 'NEED_PAY') {
-      // Ultra：弹窗引导充值余额
-      ultraDialog.value = true;
+    if (r.status === 'NEED_PAY' && r.id && r.payOrderNo) {
+      // 付费档：弹窗提示需支付手续费
+      payInfo.value = {
+        id: r.id,
+        payOrderNo: r.payOrderNo,
+        feeAmount: r.feeAmount || 10,
+        membershipType: r.membershipType,
+      };
     } else {
-      result.value = { status: r.status || 'SUBMITTED', message: r.message || '提交成功，请耐心等待' };
+      result.value = { status: r.status || 'DONE', message: r.message || '提交成功' };
       token.value = '';
     }
   } catch (err: any) {
@@ -107,14 +108,37 @@ async function submitByToken() {
   }
 }
 
-/** 充值余额 → 未登录去登录，已登录去账户充值（预填 99） */
-function rechargeBalance() {
-  ultraDialog.value = false;
-  if (!userStore.isLoggedIn) {
-    router.push({ name: 'login', query: { redirect: `/recharge?amount=${RECHARGE_AMOUNT}` } });
-  } else {
-    router.push({ name: 'recharge', query: { amount: RECHARGE_AMOUNT } });
+/** 支付手续费 → 拉起支付宝，付完后台自动退款，本页轮询进度 */
+async function payFee() {
+  if (!payInfo.value || paying.value) return;
+  paying.value = true;
+  try {
+    const { payUrl } = await api.pay.alipayCreate(payInfo.value.payOrderNo);
+    window.open(payUrl, '_blank');
+    const id = payInfo.value.id;
+    payInfo.value = null;
+    token.value = '';
+    result.value = { status: 'PROCESSING', message: '请在新打开的页面完成支付，支付后将自动办理退款，本页会自动刷新进度…' };
+    startTokenPoll(id);
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.error?.message || err?.response?.data?.message || '发起支付失败');
+  } finally {
+    paying.value = false;
   }
+}
+
+function startTokenPoll(id: number) {
+  stopPoll();
+  pollTimer = window.setInterval(async () => {
+    try {
+      const r = await api.customerRefund.tokenStatus(id);
+      const message = r.status === 'NEED_PAY' ? '等待支付中，请在新页面完成支付…' : r.message;
+      result.value = { status: r.status, message };
+      if (r.status === 'DONE' || r.status === 'FAILED') stopPoll();
+    } catch {
+      /* 网络抖动，继续轮询 */
+    }
+  }, 4000);
 }
 </script>
 
@@ -189,7 +213,7 @@ function rechargeBalance() {
       >
         <div class="font-medium">{{ statusMeta.label }}</div>
         <div class="mt-0.5">{{ result.message }}</div>
-        <div v-if="result.status === 'PROCESSING'" class="mt-2 flex items-center gap-2 text-xs">
+        <div v-if="result.status === 'PROCESSING' || result.status === 'NEED_PAY'" class="mt-2 flex items-center gap-2 text-xs">
           <span class="w-3.5 h-3.5 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
           正在为你办理，本页会自动刷新状态…
         </div>
@@ -198,8 +222,8 @@ function rechargeBalance() {
       <div class="mt-5 pt-5 border-t border-ink-100 text-[11px] text-ink-400 leading-relaxed">
         <template v-if="mode === 'token'">
           <p>· 粘贴账号 token 可直接退款，无需在退款名单内。</p>
-          <p>· 提交后由后台自动办理，可关闭页面；成功后账号恢复为免费版。</p>
-          <p>· Ultra 账号需先充值 ¥{{ RECHARGE_AMOUNT }} 余额后办理。</p>
+          <p>· 付费账号需先支付手续费（Ultra ¥50，其它 ¥10），支付后自动办理退款。</p>
+          <p>· 退款成功后账号恢复为免费版；免费账号无需退款。</p>
         </template>
         <template v-else>
           <p>· 仅支持在本店购买、且符合退款条件的账号，输入对应邮箱即可申请。</p>
@@ -208,33 +232,31 @@ function rechargeBalance() {
       </div>
     </div>
 
-    <!-- Ultra 账号：引导充值余额 -->
+    <!-- 付费账号：支付手续费 -->
     <el-dialog
-      :model-value="ultraDialog"
-      width="440px"
-      title="该账号为 Ultra"
+      :model-value="!!payInfo"
+      width="420px"
+      title="退款需先支付手续费"
       :close-on-click-modal="false"
-      @update:model-value="(v: boolean) => (ultraDialog = v)"
-      @close="ultraDialog = false"
+      @update:model-value="(v: boolean) => !v && (payInfo = null)"
+      @close="payInfo = null"
     >
-      <div class="space-y-3">
+      <div v-if="payInfo" class="space-y-4">
         <p class="text-sm text-ink-600 leading-relaxed">
-          Ultra 账号退款需先充值 <b class="text-amber-600">¥{{ RECHARGE_AMOUNT }}</b> 余额，充值后请联系客服办理退款。
+          该账号当前为
+          <span class="px-1.5 py-0.5 rounded text-xs font-medium" :class="membershipLabel(payInfo.membershipType).cls">{{ membershipLabel(payInfo.membershipType).text }}</span>
+          ，退款需先支付手续费，支付成功后系统会自动办理退款并把账号恢复为免费版。
         </p>
-
-        <button
-          class="w-full text-left rounded-xl border border-ink-200 hover:border-amber-400 hover:bg-amber-50/40 transition p-4"
-          @click="rechargeBalance"
-        >
-          <div class="flex items-center justify-between">
-            <span class="font-medium text-ink-900">去充值余额</span>
-            <span class="text-lg font-semibold text-amber-600">¥{{ RECHARGE_AMOUNT }}</span>
-          </div>
-          <div class="text-xs text-ink-500 mt-1">跳转账户充值（未登录将先去登录）</div>
-        </button>
+        <div class="rounded-xl bg-ink-50 p-4 flex items-center justify-between">
+          <span class="text-sm text-ink-600">手续费</span>
+          <span class="text-2xl font-semibold text-brand-600">¥{{ payInfo.feeAmount }}</span>
+        </div>
+        <BrandButton variant="primary" size="md" block :loading="paying" @click="payFee">
+          支付宝支付 ¥{{ payInfo.feeAmount }}
+        </BrandButton>
       </div>
       <template #footer>
-        <button class="px-4 py-1.5 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="ultraDialog = false">取消</button>
+        <button class="px-4 py-1.5 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="payInfo = null">取消</button>
       </template>
     </el-dialog>
   </div>

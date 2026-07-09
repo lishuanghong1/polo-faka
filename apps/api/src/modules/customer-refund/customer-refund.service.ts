@@ -5,17 +5,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { customAlphabet } from 'nanoid';
+import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 import { CursorRefundService } from '../cursor-refund/cursor-refund.service';
 
 const SEPARATOR = '----';
-/** Ultra 账号 token 退款需先充值的余额（元） */
-const RECHARGE_AMOUNT = 99;
-/** Ultra 账号 token 退款手续费（元，兼容历史支付回调） */
-const TOKEN_REFUND_FEE = 10;
+/** token 退款手续费（元）：Ultra ¥50，其它付费档（Pro/Pro+ 等）¥10 */
+const REFUND_FEE_ULTRA = 50;
+const REFUND_FEE_DEFAULT = 10;
 /** 视为「免费/无需退款」的会员类型 */
 const FREE_MEMBERSHIPS = new Set(['free', 'free_trial', 'trial']);
+const orderNano = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 12);
+
+/** 按会员档位取退款手续费 */
+function refundFeeFor(membership: string): number {
+  return (membership || '').trim().toLowerCase() === 'ultra'
+    ? REFUND_FEE_ULTRA
+    : REFUND_FEE_DEFAULT;
+}
 const COMMON_SEPARATORS = ['----', '\t', '|', ',', '::'];
 const LABELED_RE = /workos[_ ]?cursor[_ ]?session[_ ]?token|access[_ ]?token|session[_ ]?token/i;
 const EMAIL_LABEL_RE = /(邮箱|mail|账号|account)\s*[:：]/i;
@@ -255,8 +264,9 @@ export class CustomerRefundService {
    * 前台凭 token 直接退款：不校验白名单（token 本身即凭证）。
    * 流程：
    *   1. 校验格式 → 查会员类型（顺带校验 token 是否有效）
-   *   2. free → 直接标记「已是免费版」；ultra → 先收 ¥10 手续费（建 T 支付单，付款后再退）
-   *   3. 其它付费档（pro/pro+ 等）→ 落 PROCESSING 记录，后台异步退款
+   *   2. free → 直接标记「已是免费版，无需退款」
+   *   3. 付费档（含 Ultra）→ 先收手续费（Ultra ¥50，其它 ¥10），建 T 支付单，
+   *      付款成功后（支付宝回调）再自动办理退款
    */
   async applyByToken(tokenInput: string, ip?: string) {
     const token = (tokenInput || '').trim();
@@ -271,7 +281,6 @@ export class CustomerRefundService {
       throw new BadRequestException(info.error || 'token 无效或已失效，请重新获取');
     }
     const membership = (info.membershipType || '').trim();
-    const isUltra = membership.toLowerCase() === 'ultra';
     const isFree = !membership || FREE_MEMBERSHIPS.has(membership.toLowerCase());
 
     // 已是免费版：无需退款
@@ -292,39 +301,30 @@ export class CustomerRefundService {
       return { status: 'DONE', message: '该账号已是免费版，无需退款' };
     }
 
-    // Ultra：需先充值余额（引导到账户充值，不在此处自动退款）
-    if (isUltra) {
-      const log = await this.prisma.tokenRefundLog.create({
-        data: {
-          tokenMask: maskToken(token),
-          email: info.email || null,
-          membershipType: membership,
-          status: 'NEED_PAY',
-          payStatus: 'NONE',
-          ip: ip?.slice(0, 64),
-        },
-      });
-      return {
-        status: 'NEED_PAY',
-        message: `该账号为 Ultra，需充值 ¥${RECHARGE_AMOUNT} 余额后办理退款`,
-        id: log.id,
-        rechargeAmount: RECHARGE_AMOUNT,
-      };
-    }
-
-    // 其它付费档：落库后台退款
+    // 付费档：先收手续费，付款后再退
+    const fee = refundFeeFor(membership);
+    const payOrderNo = `T${dayjs().format('YYYYMMDDHHmmss')}${orderNano()}`;
     const log = await this.prisma.tokenRefundLog.create({
       data: {
         tokenMask: maskToken(token),
+        cursorTokenEnc: encryptString(token),
         email: info.email || null,
         membershipType: membership,
-        status: 'PROCESSING',
-        payStatus: 'NONE',
+        status: 'NEED_PAY',
+        feeAmount: fee,
+        payOrderNo,
+        payStatus: 'UNPAID',
         ip: ip?.slice(0, 64),
       },
     });
-    this.runTokenRefund(log.id, token);
-    return { status: 'SUBMITTED', message: '提交成功，请耐心等待，退款将在后台自动办理', id: log.id };
+    return {
+      status: 'NEED_PAY',
+      message: `需支付 ¥${fee} 手续费后自动办理退款`,
+      id: log.id,
+      payOrderNo,
+      feeAmount: fee,
+      membershipType: membership,
+    };
   }
 
   /** 后台异步执行退款链并回填 TokenRefundLog（applyByToken 与付费后共用）。 */
@@ -378,7 +378,7 @@ export class CustomerRefundService {
     const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo } });
     if (!log) throw new Error('订单不存在');
     if (log.payStatus === 'PAID') return 'duplicate';
-    const expect = Number(log.feeAmount || TOKEN_REFUND_FEE);
+    const expect = Number(log.feeAmount || REFUND_FEE_DEFAULT);
     if (Math.abs(Number(paidAmount) - expect) > 0.01) {
       throw new Error(`金额不一致：期望 ${expect}，实付 ${paidAmount}`);
     }
