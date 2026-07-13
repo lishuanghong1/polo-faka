@@ -15,9 +15,18 @@ const SEPARATOR = '----';
 /** token 退款手续费（元）：Ultra ¥50，其它付费档（Pro/Pro+ 等）¥10 */
 const REFUND_FEE_ULTRA = 50;
 const REFUND_FEE_DEFAULT = 10;
-/** 视为「免费/无需退款」的会员类型 */
-const FREE_MEMBERSHIPS = new Set(['free', 'free_trial', 'trial']);
+/** 处理中超过该时间视为进程中断，可由定时任务重新接管。 */
+const TOKEN_REFUND_STALE_MS = 20 * 60 * 1000;
+/** Token 自助退款在触发后最多复查约 2 分钟，吸收 Cursor 状态延迟。 */
+const TOKEN_VERIFY_ATTEMPTS = 24;
+const TOKEN_VERIFY_INTERVAL_MS = 5000;
+const NON_REFUNDABLE_MEMBERSHIPS = new Set(['free_trial', 'trial']);
 const orderNano = customAlphabet('23456789abcdefghjkmnpqrstuvwxyz', 12);
+
+/** 退款成功只认 Cursor 明确返回的 free，空值/试用/未知档位都不能算成功。 */
+export function isRefundSuccessMembership(membership: string | null | undefined): boolean {
+  return (membership || '').trim().toLowerCase() === 'free';
+}
 
 /** 按会员档位取退款手续费 */
 function refundFeeFor(membership: string): number {
@@ -280,18 +289,20 @@ export class CustomerRefundService {
     if (!info.ok) {
       throw new BadRequestException(info.error || 'token 无效或已失效，请重新获取');
     }
-    const membership = (info.membershipType || '').trim();
-    const isFree = !membership || FREE_MEMBERSHIPS.has(membership.toLowerCase());
+    const membership = (info.membershipType || '').trim().toLowerCase();
+    if (!membership) {
+      throw new BadRequestException('未获取到明确的订阅类型，请稍后重试');
+    }
 
     // 已是免费版：无需退款
-    if (isFree) {
+    if (isRefundSuccessMembership(membership)) {
       await this.prisma.tokenRefundLog.create({
         data: {
           tokenMask: maskToken(token),
           email: info.email || null,
-          membershipType: membership || null,
+          membershipType: membership,
           status: 'DONE',
-          prevMembership: membership || 'free',
+          prevMembership: membership,
           finalMembership: 'free',
           payStatus: 'NONE',
           ip: ip?.slice(0, 64),
@@ -299,6 +310,9 @@ export class CustomerRefundService {
         },
       });
       return { status: 'DONE', message: '该账号已是免费版，无需退款' };
+    }
+    if (NON_REFUNDABLE_MEMBERSHIPS.has(membership)) {
+      throw new BadRequestException(`当前订阅为 ${membership}，不是可退款的付费订阅`);
     }
 
     // 付费档：先收手续费，付款后再退
@@ -330,40 +344,68 @@ export class CustomerRefundService {
   /** 后台异步执行退款链并回填 TokenRefundLog（applyByToken 与付费后共用）。 */
   private runTokenRefund(logId: number, token: string) {
     setImmediate(() => {
-      this.cursorRefund
-        .refundOne(token)
-        .then(async (res) => {
-          if (res.ok) {
-            this.logger.log(`token 退款成功: ${res.email || '?'} 约 $${res.amount}`);
-          } else {
-            this.logger.warn(`token 退款失败: ${res.email || '?'} - ${res.error}`);
-          }
-          await this.prisma.tokenRefundLog.update({
-            where: { id: logId },
-            data: {
-              status: res.ok ? 'DONE' : 'FAILED',
-              email: res.email || undefined,
-              refundAmount: res.amount || null,
-              prevMembership: res.prevMembership || null,
-              finalMembership: res.finalMembership || null,
-              refundError: res.ok ? null : (res.error || '退款失败').slice(0, 500),
-              // 退款结束后清掉暂存 token
-              cursorTokenEnc: null,
-              finishedAt: new Date(),
-            },
-          });
-        })
-        .catch(async (e) => {
-          const msg = (e as Error)?.message || '退款异常';
-          this.logger.error(`token 退款异常: ${msg}`);
-          await this.prisma.tokenRefundLog
-            .update({
-              where: { id: logId },
-              data: { status: 'FAILED', refundError: msg.slice(0, 500), finishedAt: new Date() },
-            })
-            .catch(() => null);
-        });
+      this.executeTokenRefund(logId, token).catch((e) =>
+        this.logger.error(`token 退款任务 ${logId} 未处理异常: ${(e as Error).message}`),
+      );
     });
+  }
+
+  private async executeTokenRefund(logId: number, token: string) {
+    try {
+      const res = await this.cursorRefund.refundOne(token, {
+        verifyAttempts: TOKEN_VERIFY_ATTEMPTS,
+        verifyIntervalMs: TOKEN_VERIFY_INTERVAL_MS,
+      });
+      // 双重保险：即使下层意外返回 ok，也必须明确查到 free 才能落 DONE。
+      const verifiedFree = res.ok && isRefundSuccessMembership(res.finalMembership);
+      if (verifiedFree) {
+        this.logger.log(`token 退款成功: ${res.email || '?'} 约 $${res.amount}`);
+        // 成功可以覆盖并发任务先写入的 FAILED；成功后才清掉暂存 token。
+        await this.prisma.tokenRefundLog.updateMany({
+          where: { id: logId, status: { in: ['PROCESSING', 'FAILED'] } },
+          data: {
+            status: 'DONE',
+            email: res.email || undefined,
+            refundAmount: res.amount || null,
+            prevMembership: res.prevMembership || null,
+            finalMembership: 'free',
+            refundError: null,
+            cursorTokenEnc: null,
+            finishedAt: new Date(),
+          },
+        });
+        return;
+      }
+
+      const error = (
+        res.error ||
+        `退款结果未通过订阅校验（membership=${res.finalMembership || '未知'}）`
+      ).slice(0, 500);
+      this.logger.warn(`token 退款失败: ${res.email || '?'} - ${error}`);
+      // 失败只允许从 PROCESSING 写入，不能覆盖另一个并发任务已经确认的 DONE。
+      await this.prisma.tokenRefundLog.updateMany({
+        where: { id: logId, status: 'PROCESSING' },
+        data: {
+          status: 'FAILED',
+          email: res.email || undefined,
+          refundAmount: res.amount || null,
+          prevMembership: res.prevMembership || null,
+          finalMembership: res.finalMembership || null,
+          refundError: error,
+          // 失败保留加密 token，供后台复查或重试。
+          finishedAt: new Date(),
+        },
+      });
+    } catch (e) {
+      const msg = (e as Error)?.message || '退款异常';
+      this.logger.error(`token 退款异常: ${msg}`);
+      await this.prisma.tokenRefundLog
+        .updateMany({
+          where: { id: logId, status: 'PROCESSING' },
+          data: { status: 'FAILED', refundError: msg.slice(0, 500), finishedAt: new Date() },
+        })
+        .catch(() => null);
+    }
   }
 
   /**
@@ -378,24 +420,32 @@ export class CustomerRefundService {
     const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo } });
     if (!log) throw new Error('订单不存在');
     if (log.payStatus === 'PAID') return 'duplicate';
+    if (log.status !== 'NEED_PAY' || log.payStatus !== 'UNPAID') {
+      throw new Error(`订单状态不允许支付：${log.status}/${log.payStatus}`);
+    }
     const expect = Number(log.feeAmount || REFUND_FEE_DEFAULT);
     if (Math.abs(Number(paidAmount) - expect) > 0.01) {
       throw new Error(`金额不一致：期望 ${expect}，实付 ${paidAmount}`);
     }
-    await this.prisma.tokenRefundLog.update({
-      where: { id: log.id },
+    // notify 与 return 可能并发到达；条件更新保证只有一个请求能启动退款任务。
+    const claimed = await this.prisma.tokenRefundLog.updateMany({
+      where: { id: log.id, status: 'NEED_PAY', payStatus: 'UNPAID' },
       data: {
         payStatus: 'PAID',
         payTradeNo: tradeNo,
         paidAt: new Date(),
         status: 'PROCESSING',
+        refundError: null,
+        finishedAt: null,
       },
     });
+    if (claimed.count === 0) return 'duplicate';
+
     const token = safeDecrypt(log.cursorTokenEnc);
     if (token) this.runTokenRefund(log.id, token);
     else {
-      await this.prisma.tokenRefundLog.update({
-        where: { id: log.id },
+      await this.prisma.tokenRefundLog.updateMany({
+        where: { id: log.id, status: 'PROCESSING' },
         data: { status: 'FAILED', refundError: 'token 丢失，无法退款', finishedAt: new Date() },
       });
     }
@@ -443,8 +493,147 @@ export class CustomerRefundService {
     return { total, page, pageSize, items: rows.map((r) => this.toTokenView(r)) };
   }
 
+  /** 管理端只复查当前订阅；明确为 free 时修正为 DONE，不会重复调用退款。 */
+  async recheckTokenRefund(id: number) {
+    const row = await this.prisma.tokenRefundLog.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('记录不存在');
+    if (row.status === 'DONE') {
+      return { ok: true, status: 'DONE', membershipType: 'free', message: '该记录已确认退款成功' };
+    }
+    if (!['PROCESSING', 'FAILED'].includes(row.status)) {
+      throw new BadRequestException(`当前状态 ${row.status} 不能复查订阅`);
+    }
+
+    const token = safeDecrypt(row.cursorTokenEnc);
+    if (!token) throw new BadRequestException('该记录没有可用 token，无法复查');
+    const info = await this.cursorRefund.checkMembership(token);
+    if (!info.ok || !info.membershipType) {
+      const message = info.error || '未获取到明确的订阅类型';
+      await this.prisma.tokenRefundLog.updateMany({
+        where: { id, status: { in: ['PROCESSING', 'FAILED'] } },
+        data: { refundError: `复查失败：${message}`.slice(0, 500) },
+      });
+      throw new BadRequestException(message);
+    }
+
+    const membershipType = info.membershipType.trim().toLowerCase();
+    if (isRefundSuccessMembership(membershipType)) {
+      await this.prisma.tokenRefundLog.updateMany({
+        where: { id, status: { in: ['PROCESSING', 'FAILED'] } },
+        data: {
+          status: 'DONE',
+          email: info.email || undefined,
+          finalMembership: 'free',
+          refundError: null,
+          cursorTokenEnc: null,
+          finishedAt: new Date(),
+        },
+      });
+      return { ok: true, status: 'DONE', membershipType, message: '账号订阅已是 Free，退款成功' };
+    }
+
+    await this.prisma.tokenRefundLog.updateMany({
+      where: { id, status: { in: ['PROCESSING', 'FAILED'] } },
+      data: {
+        email: info.email || undefined,
+        finalMembership: membershipType,
+        refundError:
+          row.status === 'FAILED' ? `复查后账号仍为 ${membershipType}`.slice(0, 500) : undefined,
+      },
+    });
+    return {
+      ok: false,
+      status: row.status,
+      membershipType,
+      message: `账号当前仍为 ${membershipType}，尚未确认退款成功`,
+    };
+  }
+
+  /** 管理端重试已失败且手续费已支付的退款任务。 */
+  async retryTokenRefund(id: number) {
+    const row = await this.prisma.tokenRefundLog.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('记录不存在');
+    if (row.status !== 'FAILED') throw new BadRequestException('只有失败记录可以重试');
+    if (row.payStatus !== 'PAID') throw new BadRequestException('手续费尚未支付，不能重试');
+    const token = safeDecrypt(row.cursorTokenEnc);
+    if (!token) throw new BadRequestException('该记录没有可用 token，无法重试');
+
+    const claimed = await this.prisma.tokenRefundLog.updateMany({
+      where: { id, status: 'FAILED', payStatus: 'PAID', cursorTokenEnc: { not: null } },
+      data: { status: 'PROCESSING', refundError: null, finishedAt: null },
+    });
+    if (claimed.count === 0) throw new BadRequestException('记录状态已变化，请刷新后重试');
+    this.runTokenRefund(id, token);
+    return { ok: true, status: 'PROCESSING', message: '已重新提交退款任务' };
+  }
+
+  /** 定时恢复因服务重启而遗留的 PROCESSING 任务。 */
+  async recoverStaleTokenRefunds(limit = 10) {
+    const staleBefore = new Date(Date.now() - TOKEN_REFUND_STALE_MS);
+    const missing = await this.prisma.tokenRefundLog.updateMany({
+      where: {
+        status: 'PROCESSING',
+        updatedAt: { lt: staleBefore },
+        OR: [{ payStatus: { not: 'PAID' } }, { cursorTokenEnc: null }],
+      },
+      data: {
+        status: 'FAILED',
+        refundError: '退款任务中断且缺少已支付状态或可用 token，请人工核查',
+        finishedAt: new Date(),
+      },
+    });
+
+    const candidates = await this.prisma.tokenRefundLog.findMany({
+      where: {
+        status: 'PROCESSING',
+        payStatus: 'PAID',
+        cursorTokenEnc: { not: null },
+        updatedAt: { lt: staleBefore },
+      },
+      select: { id: true, cursorTokenEnc: true },
+      orderBy: { updatedAt: 'asc' },
+      take: limit,
+    });
+
+    let recovered = 0;
+    for (const row of candidates) {
+      const token = safeDecrypt(row.cursorTokenEnc);
+      if (!token) {
+        await this.prisma.tokenRefundLog.updateMany({
+          where: { id: row.id, status: 'PROCESSING', updatedAt: { lt: staleBefore } },
+          data: {
+            status: 'FAILED',
+            refundError: 'token 解密失败，无法自动恢复退款任务',
+            finishedAt: new Date(),
+          },
+        });
+        continue;
+      }
+      // 更新时间同时作为轻量租约，多实例下只有一个进程能接管。
+      const claimed = await this.prisma.tokenRefundLog.updateMany({
+        where: { id: row.id, status: 'PROCESSING', updatedAt: { lt: staleBefore } },
+        data: { refundError: '检测到任务中断，正在自动恢复', finishedAt: null },
+      });
+      if (claimed.count === 1) {
+        this.runTokenRefund(row.id, token);
+        recovered += 1;
+      }
+    }
+    if (recovered || missing.count) {
+      this.logger.warn(
+        `token refund recovery: resumed=${recovered}, markedFailed=${missing.count}`,
+      );
+    }
+    return { recovered, markedFailed: missing.count };
+  }
+
   async removeTokenRefund(id: number) {
-    await this.prisma.tokenRefundLog.delete({ where: { id } }).catch(() => null);
+    const row = await this.prisma.tokenRefundLog.findUnique({ where: { id } });
+    if (!row) return { ok: true };
+    if (row.status === 'NEED_PAY' || row.status === 'PROCESSING') {
+      throw new BadRequestException('待支付或处理中的记录不能删除');
+    }
+    await this.prisma.tokenRefundLog.delete({ where: { id } });
     return { ok: true };
   }
 
@@ -466,6 +655,11 @@ export class CustomerRefundService {
       ip: r.ip,
       finishedAt: r.finishedAt,
       createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      canRecheck:
+        !!r.cursorTokenEnc && (r.status === 'PROCESSING' || r.status === 'FAILED'),
+      canRetry:
+        !!r.cursorTokenEnc && r.status === 'FAILED' && r.payStatus === 'PAID',
     };
   }
 

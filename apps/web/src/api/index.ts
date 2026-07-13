@@ -463,6 +463,21 @@ export const api = {
     tokenRefundList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
       http.get('/admin/customer-refund/token-logs', { params }),
     tokenRefundRemove: (id: number) => http.delete(`/admin/customer-refund/token-logs/${id}`),
+    tokenRefundRecheck: (id: number) =>
+      http.post<{
+        ok: boolean;
+        status: string;
+        membershipType?: string;
+        message: string;
+      }>(`/admin/customer-refund/token-logs/${id}/recheck`, undefined, {
+        silent: true,
+      } as any),
+    tokenRefundRetry: (id: number) =>
+      http.post<{ ok: boolean; status: string; message: string }>(
+        `/admin/customer-refund/token-logs/${id}/retry`,
+        undefined,
+        { silent: true } as any,
+      ),
 
     cursorRefundStatus: () =>
       http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),

@@ -28,7 +28,7 @@ import { AbuseGuardService } from '../../common/abuse/abuse-guard.service';
 /**
  * 我方订单号格式：P/F/R/Q/T 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
  * 严格白名单字符 + 长度，防止 SQL/XSS payload 进入审计日志。
- * T = Token 退款手续费（Ultra 账号退款前收 ¥10）
+ * T = Token 退款手续费
  */
 const ORDER_NO_REGEX = /^[PFRQT][A-Za-z0-9-]{14,64}$/;
 /** 支付宝 trade_no：纯数字、长度 16-64 */
@@ -83,7 +83,7 @@ function isQuotaOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('Q');
 }
 
-/** Token 退款手续费订单（Ultra 账号退款前收 ¥10） */
+/** Token 退款手续费订单 */
 function isTokenRefundOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('T');
 }
@@ -183,6 +183,9 @@ export class AlipayController {
       const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo: orderNo } });
       if (!log) throw new BadRequestException('订单不存在');
       if (log.payStatus === 'PAID') throw new BadRequestException('该手续费已支付');
+      if (log.status !== 'NEED_PAY' || log.payStatus !== 'UNPAID') {
+        throw new BadRequestException('订单状态不允许支付');
+      }
       payAmount = Number(log.feeAmount || 0);
       if (!(payAmount > 0)) throw new BadRequestException('订单金额异常');
       subject = '账号退款手续费';
@@ -413,7 +416,7 @@ export class AlipayController {
       }
 
       if (isTokenRefundOrder(orderNo)) {
-        // Ultra 退款手续费：标记已付 + 触发退款（退款链后台异步）
+        // Token 退款手续费：标记已付 + 触发退款（退款链后台异步）
         try {
           await this.customerRefund.markFeePaid(orderNo, tradeNo, totalAmount);
           return res.status(200).send('success');
@@ -427,7 +430,7 @@ export class AlipayController {
             });
             return res.status(200).send('success');
           }
-          if (msg.includes('订单不存在')) {
+          if (msg.includes('订单不存在') || msg.includes('状态不允许支付')) {
             this.logger.warn(`token-refund notify hard-fail: ${orderNo} ${msg}`);
             return res.status(200).send('success');
           }
@@ -551,7 +554,9 @@ export class AlipayController {
         ? `forge:${orderNo}`
         : isQuotaOrder(orderNo)
           ? `forge-quota:${orderNo}`
-          : `order:${orderNo}`,
+          : isTokenRefundOrder(orderNo)
+            ? `token-refund:${orderNo}`
+            : `order:${orderNo}`,
       detail: r,
     });
 
@@ -574,6 +579,8 @@ export class AlipayController {
             r.buyerLogonId,
           );
           if (x === 'recorded') this.quotaOrders.fulfillAsync(orderNo);
+        } else if (isTokenRefundOrder(orderNo)) {
+          await this.customerRefund.markFeePaid(orderNo, r.tradeNo!, r.totalAmount!);
         } else {
           const x = await this.orders.markPaidOnly(
             orderNo,

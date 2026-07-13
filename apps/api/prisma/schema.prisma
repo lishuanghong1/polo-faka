@@ -973,7 +973,7 @@ model RefundWhitelist {
 
 /// 前台「凭 token 直接退款」的记录（不校验白名单，token 本身即凭证）。
 /// 仅用于后台查看退款历史与结果；不落明文 token，只存掩码用于识别。
-/// Ultra 账号需先支付手续费（¥10）才办理退款，相关支付字段记录在此。
+/// 付费账号需先支付手续费（Ultra ¥50，其它 ¥10）才办理退款，相关支付字段记录在此。
 model TokenRefundLog {
   id              Int       @id @default(autoincrement())
   /// 退款账号邮箱（退款链解析 token 后回填，可能为空）
@@ -989,7 +989,7 @@ model TokenRefundLog {
   prevMembership  String?   @db.VarChar(32)
   finalMembership String?   @db.VarChar(32)
   refundError     String?   @db.VarChar(500)
-  /// 手续费（Ultra 账号退款前需支付），单位元；为 null 表示无需付费
+  /// 退款手续费，单位元；为 null 表示无需付费
   feeAmount       Float?
   /// 手续费支付订单号（T 开头），支付宝对账用
   payOrderNo      String?   @unique @db.VarChar(64)

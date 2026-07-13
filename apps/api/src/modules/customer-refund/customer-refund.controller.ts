@@ -130,4 +130,16 @@ export class CustomerRefundAdminController {
   removeTokenLog(@Param('id', ParseIntPipe) id: number) {
     return this.svc.removeTokenRefund(id);
   }
+
+  /** 只重新查询 Cursor 订阅，明确为 free 时修正为退款成功。 */
+  @Post('token-logs/:id/recheck')
+  recheckTokenLog(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.recheckTokenRefund(id);
+  }
+
+  /** 对已支付但执行失败的记录重新发起退款。 */
+  @Post('token-logs/:id/retry')
+  retryTokenLog(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.retryTokenRefund(id);
+  }
 }

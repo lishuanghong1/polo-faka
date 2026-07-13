@@ -8,6 +8,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "start:prod": "node dist/main.js",
+    "test:refund": "node --require ts-node/register --test test/customer-refund.service.spec.ts",
     "seed": "ts-node prisma/seed.ts",
     "prisma": "prisma",
     "lint": "eslint \"src/**/*.ts\" --fix"

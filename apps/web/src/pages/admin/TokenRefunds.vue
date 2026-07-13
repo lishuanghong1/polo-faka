@@ -14,6 +14,7 @@ const filterStatus = ref('');
 const keyword = ref('');
 const page = ref(1);
 const pageSize = 50;
+const actionKey = ref('');
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 
 async function load() {
@@ -54,7 +55,45 @@ async function copyMask(row: any) {
 
 async function del(row: any) {
   await ElMessageBox.confirm('删除这条退款记录？（仅删记录，不影响已办理的退款）', '删除', { type: 'warning' });
-  try { await api.admin.tokenRefundRemove(row.id); ElMessage.success('已删除'); load(); } catch { /* ignore */ }
+  try {
+    await api.admin.tokenRefundRemove(row.id);
+    ElMessage.success('已删除');
+    load();
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.message || '删除失败');
+  }
+}
+
+async function recheck(row: any) {
+  actionKey.value = `check:${row.id}`;
+  try {
+    const r = await api.admin.tokenRefundRecheck(row.id);
+    if (r.ok) ElMessage.success(r.message);
+    else ElMessage.warning(r.message);
+    await load();
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.message || '复查订阅失败');
+    await load();
+  } finally {
+    actionKey.value = '';
+  }
+}
+
+async function retry(row: any) {
+  await ElMessageBox.confirm('重新执行这条退款任务？系统仍会以订阅变为 Free 作为成功条件。', '重试退款', {
+    type: 'warning',
+  });
+  actionKey.value = `retry:${row.id}`;
+  try {
+    const r = await api.admin.tokenRefundRetry(row.id);
+    ElMessage.success(r.message);
+    await load();
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.message || '重试失败');
+    await load();
+  } finally {
+    actionKey.value = '';
+  }
 }
 </script>
 
@@ -73,7 +112,7 @@ async function del(row: any) {
     </template>
   </AdminPageHeader>
 
-  <DataTable :loading="loading" :is-empty="!list.length" empty="暂无 Token 退款记录" min-width="1120px">
+  <DataTable :loading="loading" :is-empty="!list.length" empty="暂无 Token 退款记录" min-width="1240px">
     <thead>
       <tr>
         <th style="width:60px">ID</th>
@@ -85,7 +124,7 @@ async function del(row: any) {
         <th>退款金额</th>
         <th>会员变化</th>
         <th>提交时间</th>
-        <th class="!text-right" style="width:80px"></th>
+        <th class="!text-right" style="width:220px"></th>
       </tr>
     </thead>
     <tbody>
@@ -120,7 +159,30 @@ async function del(row: any) {
         </td>
         <td class="text-xs text-ink-500">{{ formatDateTime(row.createdAt) }}</td>
         <td class="text-right whitespace-nowrap text-sm">
-          <button class="text-ink-500 hover:text-rose-600" @click="del(row)">删除</button>
+          <button
+            v-if="row.canRecheck"
+            class="text-brand-600 hover:text-brand-700 disabled:opacity-50"
+            :disabled="!!actionKey"
+            @click="recheck(row)"
+          >
+            {{ actionKey === `check:${row.id}` ? '复查中…' : '复查订阅' }}
+          </button>
+          <button
+            v-if="row.canRetry"
+            class="ml-3 text-amber-600 hover:text-amber-700 disabled:opacity-50"
+            :disabled="!!actionKey"
+            @click="retry(row)"
+          >
+            {{ actionKey === `retry:${row.id}` ? '重试中…' : '重试退款' }}
+          </button>
+          <button
+            v-if="row.status !== 'NEED_PAY' && row.status !== 'PROCESSING'"
+            class="ml-3 text-ink-500 hover:text-rose-600 disabled:opacity-50"
+            :disabled="!!actionKey"
+            @click="del(row)"
+          >
+            删除
+          </button>
         </td>
       </tr>
     </tbody>

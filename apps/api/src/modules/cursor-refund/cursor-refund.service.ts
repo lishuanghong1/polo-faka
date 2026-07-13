@@ -19,6 +19,8 @@ const BASE = 'https://cursor.com';
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 const TIMEOUT = 30000;
+const DEFAULT_VERIFY_ATTEMPTS = 8;
+const DEFAULT_VERIFY_INTERVAL_MS = 2500;
 
 const K_ENABLED = 'cursor_refund_enabled';
 const K_OWNER = 'cursor_refund_owner_token';
@@ -32,6 +34,11 @@ export interface RefundResult {
   finalMembership: string;
   error?: string;
   log: string[];
+}
+
+export interface RefundOptions {
+  verifyAttempts?: number;
+  verifyIntervalMs?: number;
 }
 
 /** user_xxx::JWT / %3A%3A → :: */
@@ -57,6 +64,29 @@ function normalizeToken(raw: string): string {
 function jwtOf(token: string): string {
   const i = token.indexOf('::');
   return i >= 0 ? token.slice(i + 2) : token;
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+/** 只提取上游可安全展示的一小段错误，避免把响应或凭据完整写进日志。 */
+function upstreamError(data: any): string {
+  const value = data?.error?.message ?? data?.error ?? data?.message ?? data?.detail;
+  if (typeof value === 'string') return value.replace(/[\r\n]+/g, ' ').slice(0, 160);
+  return '';
+}
+
+/** 部分 Cursor 接口会用 2xx + error 字段表达业务失败。 */
+function upstreamBusinessError(data: any): string {
+  const value = data?.error ?? data?.errors;
+  if (value === undefined || value === null || value === false || value === '') return '';
+  if (typeof value === 'string') return value.replace(/[\r\n]+/g, ' ').slice(0, 200);
+  try {
+    return JSON.stringify(value).slice(0, 200);
+  } catch {
+    return '未知业务错误';
+  }
 }
 
 @Injectable()
@@ -120,11 +150,18 @@ export class CursorRefundService {
       method,
       url,
       timeout: TIMEOUT,
-      validateStatus: (s) => s < 500,
+      // 手动判断，确保 401/403/404/429 不会被当成正常业务响应。
+      validateStatus: () => true,
       headers,
       data: body !== undefined ? JSON.stringify(body) : undefined,
       transformRequest: [(d) => d],
     });
+    if (resp.status < 200 || resp.status >= 300) {
+      const detail = upstreamError(resp.data);
+      throw new Error(
+        `Cursor ${path} 请求失败（HTTP ${resp.status}${detail ? `：${detail}` : ''}）`,
+      );
+    }
     return resp.data;
   }
 
@@ -135,7 +172,11 @@ export class CursorRefundService {
 
   private async membership(token: string): Promise<string> {
     const e = await this.request('GET', '/api/auth/stripe', token);
-    return String(e?.membershipType || '');
+    const membershipType = String(e?.membershipType || '').trim().toLowerCase();
+    if (!membershipType) {
+      throw new Error('Cursor 订阅接口未返回 membershipType');
+    }
+    return membershipType;
   }
 
   private async previewRefundUsd(token: string): Promise<number> {
@@ -181,11 +222,22 @@ export class CursorRefundService {
     ownerToken: string,
     teamId: number,
   ): Promise<{ code: string; teamId: number; detected?: number }> {
-    let code = teamId > 0 ? await this.getInviteCode(ownerToken, teamId) : '';
+    let code = '';
+    if (teamId > 0) {
+      try {
+        code = await this.getInviteCode(ownerToken, teamId);
+      } catch (e) {
+        this.logger.warn(`configured team ${teamId} invite failed: ${(e as Error).message}`);
+      }
+    }
     if (code) return { code, teamId };
     const detected = await this.detectTeamId(ownerToken);
     if (detected && detected !== teamId) {
-      code = await this.getInviteCode(ownerToken, detected);
+      try {
+        code = await this.getInviteCode(ownerToken, detected);
+      } catch (e) {
+        this.logger.warn(`detected team ${detected} invite failed: ${(e as Error).message}`);
+      }
       if (code) return { code, teamId: detected, detected };
     }
     return { code: '', teamId, detected: detected || undefined };
@@ -195,7 +247,10 @@ export class CursorRefundService {
    * 对单个目标账号执行退款。
    * @param targetTokenRaw 目标账号的 cursor token（原始/编码均可）
    */
-  async refundOne(targetTokenRaw: string): Promise<RefundResult> {
+  async refundOne(
+    targetTokenRaw: string,
+    options: RefundOptions = {},
+  ): Promise<RefundResult> {
     const log: string[] = [];
     const L = (m: string) => {
       log.push(m);
@@ -204,6 +259,14 @@ export class CursorRefundService {
     const res: RefundResult = { ok: false, email: '', amount: 0, prevMembership: '', finalMembership: '', log };
 
     const target = normalizeToken(targetTokenRaw);
+    const verifyAttempts = Math.min(
+      60,
+      Math.max(1, Number(options.verifyAttempts) || DEFAULT_VERIFY_ATTEMPTS),
+    );
+    const verifyIntervalMs = Math.min(
+      30_000,
+      Math.max(1000, Number(options.verifyIntervalMs) || DEFAULT_VERIFY_INTERVAL_MS),
+    );
     if (!target) {
       res.error = '缺少目标账号 token';
       return res;
@@ -246,31 +309,48 @@ export class CursorRefundService {
       }
 
       const acc = await this.request('POST', '/api/accept-invite', target, { inviteCode: code });
-      if (JSON.stringify(acc ?? '').toLowerCase().includes('"error"')) {
-        res.error = '加入团队失败：' + JSON.stringify(acc).slice(0, 200);
+      const acceptError = upstreamBusinessError(acc);
+      if (acceptError) {
+        res.error = `加入团队失败：${acceptError}`;
         return res;
       }
       L('已加入团队，退款已触发');
 
-      await new Promise((r) => setTimeout(r, 2000));
-      await this.request('POST', '/api/dashboard/remove-member', ownerToken, {
+      await sleep(2000);
+      const removed = await this.request('POST', '/api/dashboard/remove-member', ownerToken, {
         teamId: effectiveTeamId,
         userId: me.userId,
       });
+      const removeError = upstreamBusinessError(removed);
+      if (removeError) {
+        res.error = `踢出团队失败：${removeError}`;
+        return res;
+      }
       L('已踢出团队');
 
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 2500));
-        const m = await this.membership(target);
-        res.finalMembership = m;
-        L(`检测状态：membership=${m}`);
-        if (m === 'free') {
-          res.ok = true;
-          L('账号已变 Free，退款完成');
-          break;
+      let lastCheckError = '';
+      for (let i = 0; i < verifyAttempts; i++) {
+        await sleep(verifyIntervalMs);
+        try {
+          const m = await this.membership(target);
+          res.finalMembership = m;
+          lastCheckError = '';
+          L(`检测状态（${i + 1}/${verifyAttempts}）：membership=${m}`);
+          if (m === 'free') {
+            res.ok = true;
+            L('账号已变 Free，退款完成');
+            break;
+          }
+        } catch (e) {
+          lastCheckError = (e as Error)?.message || '查询失败';
+          L(`检测状态（${i + 1}/${verifyAttempts}）失败：${lastCheckError}`);
         }
       }
-      if (!res.ok) res.error = `退款后账号仍为 ${res.finalMembership || '未知'}`;
+      if (!res.ok) {
+        res.error = res.finalMembership
+          ? `退款后账号仍为 ${res.finalMembership}`
+          : `退款后无法确认订阅状态${lastCheckError ? `：${lastCheckError}` : ''}`;
+      }
       return res;
     } catch (e) {
       res.error = (e as Error)?.message || '退款异常';
@@ -329,8 +409,8 @@ export class CursorRefundService {
     try {
       const me = await this.fillMe(token);
       const membershipType = await this.membership(token);
-      if (!me.userId && !membershipType) {
-        return { ok: false, error: 'token 可能已失效' };
+      if (!me.userId) {
+        return { ok: false, error: '获取账号 userId 失败（token 可能已失效）' };
       }
       return { ok: true, email: me.email, membershipType };
     } catch (e) {
