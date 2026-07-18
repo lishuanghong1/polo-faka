@@ -224,7 +224,9 @@ export class CursorQuotaService {
 
     const report = await this.cursor.queryReport(token);
     await this.persistReport(id, report);
-    return report;
+    // `success` 是全局响应信封的保留字段，直接返回会被前端误拆成 undefined。
+    const { success, ...data } = report;
+    return { ...data, ok: success };
   }
 
   async refresh(id: number) {
