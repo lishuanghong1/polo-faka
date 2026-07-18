@@ -1,4 +1,6 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsNumber,
   IsOptional,
@@ -43,6 +45,11 @@ export class CreateCursorQuotaDto {
   pricePerUsd?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  autoPricePerUsd?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   note?: string;
@@ -78,6 +85,11 @@ export class UpdateCursorQuotaDto {
   pricePerUsd?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  autoPricePerUsd?: number | null;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   note?: string | null;
@@ -91,6 +103,11 @@ export class BulkImportCursorQuotaDto {
   @IsNumber()
   @Min(0)
   pricePerUsd?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  autoPricePerUsd?: number;
 
   @IsOptional()
   @IsNumber()
@@ -122,4 +139,18 @@ export class QueryCursorQuotaDto {
   @ValidateIf((_o, v) => v !== '' && v !== undefined && v !== null)
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';
+}
+
+export class UpdateCursorQuotaModelSettingsDto {
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  premiumModels: string[];
+
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  @MaxLength(255, { each: true })
+  autoModels: string[];
 }

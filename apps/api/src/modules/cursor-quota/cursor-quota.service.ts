@@ -3,13 +3,23 @@ import { CursorQuotaAccountStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { encryptString, decryptString, maskSecret } from '../../common/crypto.util';
 import { CursorUsageService, QuotaCheckError } from './cursor-usage.service';
-import { reportToAccountUpdate, calcSoldAmount } from './usage-mapper';
+import { reportToAccountUpdate } from './usage-mapper';
 import {
   CreateCursorQuotaDto,
   UpdateCursorQuotaDto,
   BulkImportCursorQuotaDto,
   QueryCursorQuotaDto,
+  UpdateCursorQuotaModelSettingsDto,
 } from './dto';
+import {
+  calculateModelRevenue,
+  calculateModelUsage,
+  CURSOR_QUOTA_AUTO_MODELS_KEY,
+  CURSOR_QUOTA_PREMIUM_MODELS_KEY,
+  ModelPricingSettings,
+  normalizeModelList,
+  parseModelList,
+} from './model-pricing';
 
 const SEP = '----';
 
@@ -40,12 +50,41 @@ export class CursorQuotaService {
     private readonly cursor: CursorUsageService,
   ) {}
 
-  private toDto(a: any) {
-    const purchasePrice = Number(a.purchasePrice ?? 0);
+  private async readModelPricingSettings(): Promise<ModelPricingSettings> {
+    const rows = await this.prisma.siteSetting.findMany({
+      where: {
+        key: { in: [CURSOR_QUOTA_PREMIUM_MODELS_KEY, CURSOR_QUOTA_AUTO_MODELS_KEY] },
+      },
+    });
+    const values = new Map(rows.map((row) => [row.key, row.value]));
+    return {
+      premiumModels: parseModelList(values.get(CURSOR_QUOTA_PREMIUM_MODELS_KEY)),
+      autoModels: parseModelList(values.get(CURSOR_QUOTA_AUTO_MODELS_KEY)),
+    };
+  }
+
+  private accountPricing(a: any, settings: ModelPricingSettings) {
     const pricePerUsd = Number(a.pricePerUsd ?? 0);
+    // 新字段为空代表历史账号，沿用原单价，避免升级后历史收益发生变化。
+    const autoPricePerUsd = Number(a.autoPricePerUsd ?? a.pricePerUsd ?? 0);
+    const usage = calculateModelUsage(a.modelBreakdown, a.totalCostCents, settings);
+    const revenue = calculateModelRevenue(usage, pricePerUsd, autoPricePerUsd);
+    return {
+      pricePerUsd,
+      autoPricePerUsd,
+      premiumUsedUsd: Number((usage.premiumCostCents / 100).toFixed(4)),
+      autoUsedUsd: Number((usage.autoCostCents / 100).toFixed(4)),
+      hasDetailedUsage: usage.hasDetailedUsage,
+      modelCategories: usage.modelCategories,
+      ...revenue,
+    };
+  }
+
+  private toDto(a: any, settings: ModelPricingSettings) {
+    const purchasePrice = Number(a.purchasePrice ?? 0);
     const usedUsd = Number(((a.totalCostCents ?? 0) / 100).toFixed(4));
-    const soldAmount = calcSoldAmount(a.totalCostCents, pricePerUsd);
-    const profit = Number((soldAmount - purchasePrice).toFixed(2));
+    const pricing = this.accountPricing(a, settings);
+    const profit = Number((pricing.soldAmount - purchasePrice).toFixed(2));
 
     return {
       id: a.id,
@@ -56,9 +95,16 @@ export class CursorQuotaService {
       tokenMask: a.tokenEnc ? maskSecret(decryptString(a.tokenEnc) || '') : '',
       purchasedAt: a.purchasedAt,
       purchasePrice,
-      pricePerUsd,
+      pricePerUsd: pricing.pricePerUsd,
+      autoPricePerUsd: pricing.autoPricePerUsd,
+      autoPricePerUsdInherited: a.autoPricePerUsd === null || a.autoPricePerUsd === undefined,
       usedUsd,
-      soldAmount,
+      premiumUsedUsd: pricing.premiumUsedUsd,
+      autoUsedUsd: pricing.autoUsedUsd,
+      hasDetailedUsage: pricing.hasDetailedUsage,
+      premiumSoldAmount: pricing.premiumSoldAmount,
+      autoSoldAmount: pricing.autoSoldAmount,
+      soldAmount: pricing.soldAmount,
       profit,
       membershipType: a.membershipType,
       isUnlimited: a.isUnlimited,
@@ -95,6 +141,7 @@ export class CursorQuotaService {
       'purchasedAt',
       'purchasePrice',
       'pricePerUsd',
+      'autoPricePerUsd',
       'totalCostCents',
       'planPercent',
       'lastCheckedAt',
@@ -103,7 +150,7 @@ export class CursorQuotaService {
     const sortBy = allowed.has(q.sortBy || '') ? (q.sortBy as string) : 'createdAt';
     const sortOrder = q.sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const [rows, total] = await Promise.all([
+    const [rows, total, settings] = await Promise.all([
       this.prisma.cursorQuotaAccount.findMany({
         where,
         orderBy: { [sortBy]: sortOrder },
@@ -111,15 +158,19 @@ export class CursorQuotaService {
         take: pageSize,
       }),
       this.prisma.cursorQuotaAccount.count({ where }),
+      this.readModelPricingSettings(),
     ]);
 
-    return { rows: rows.map((r) => this.toDto(r)), total, page, pageSize };
+    return { rows: rows.map((r) => this.toDto(r, settings)), total, page, pageSize };
   }
 
   async get(id: number) {
-    const a = await this.prisma.cursorQuotaAccount.findUnique({ where: { id } });
+    const [a, settings] = await Promise.all([
+      this.prisma.cursorQuotaAccount.findUnique({ where: { id } }),
+      this.readModelPricingSettings(),
+    ]);
     if (!a) throw new NotFoundException('账号不存在');
-    return this.toDto(a);
+    return this.toDto(a, settings);
   }
 
   async create(dto: CreateCursorQuotaDto) {
@@ -136,14 +187,18 @@ export class CursorQuotaService {
         purchasedAt: dto.purchasedAt ? new Date(dto.purchasedAt) : new Date(),
         purchasePrice: dto.purchasePrice ?? 0,
         pricePerUsd: dto.pricePerUsd ?? 1,
+        autoPricePerUsd: dto.autoPricePerUsd ?? dto.pricePerUsd ?? 1,
         note: dto.note ?? null,
       },
     });
-    return this.toDto(a);
+    return this.toDto(a, { premiumModels: [], autoModels: [] });
   }
 
   async update(id: number, dto: UpdateCursorQuotaDto) {
-    const a = await this.prisma.cursorQuotaAccount.findUnique({ where: { id } });
+    const [a, settings] = await Promise.all([
+      this.prisma.cursorQuotaAccount.findUnique({ where: { id } }),
+      this.readModelPricingSettings(),
+    ]);
     if (!a) throw new NotFoundException('账号不存在');
 
     const data: Prisma.CursorQuotaAccountUpdateInput = {};
@@ -157,10 +212,11 @@ export class CursorQuotaService {
     }
     if (dto.purchasePrice !== undefined) data.purchasePrice = dto.purchasePrice;
     if (dto.pricePerUsd !== undefined) data.pricePerUsd = dto.pricePerUsd;
+    if (dto.autoPricePerUsd !== undefined) data.autoPricePerUsd = dto.autoPricePerUsd;
     if (dto.note !== undefined) data.note = dto.note;
 
     const updated = await this.prisma.cursorQuotaAccount.update({ where: { id }, data });
-    return this.toDto(updated);
+    return this.toDto(updated, settings);
   }
 
   async remove(id: number) {
@@ -181,6 +237,7 @@ export class CursorQuotaService {
     let skipped = 0;
     const errors: string[] = [];
     const pricePerUsd = dto.pricePerUsd ?? 1;
+    const autoPricePerUsd = dto.autoPricePerUsd ?? pricePerUsd;
     const purchasePrice = dto.purchasePrice ?? 0;
 
     for (const line of lines) {
@@ -205,6 +262,7 @@ export class CursorQuotaService {
             purchasedAt: new Date(),
             purchasePrice,
             pricePerUsd,
+            autoPricePerUsd,
           },
         });
         created += 1;
@@ -217,7 +275,10 @@ export class CursorQuotaService {
   }
 
   async report(id: number) {
-    const a = await this.prisma.cursorQuotaAccount.findUnique({ where: { id } });
+    const [a, settings] = await Promise.all([
+      this.prisma.cursorQuotaAccount.findUnique({ where: { id } }),
+      this.readModelPricingSettings(),
+    ]);
     if (!a) throw new NotFoundException('账号不存在');
     const token = a.tokenEnc ? decryptString(a.tokenEnc) : null;
     if (!token) throw new BadRequestException('该账号未配置 Token，无法查询额度');
@@ -226,7 +287,28 @@ export class CursorQuotaService {
     await this.persistReport(id, report);
     // `success` 是全局响应信封的保留字段，直接返回会被前端误拆成 undefined。
     const { success, ...data } = report;
-    return { ...data, ok: success };
+    const pricing = this.accountPricing(
+      {
+        ...a,
+        totalCostCents: report.totalCostCents,
+        modelBreakdown: report.modelBreakdown,
+      },
+      settings,
+    );
+    return {
+      ...data,
+      ok: success,
+      pricing: {
+        pricePerUsd: pricing.pricePerUsd,
+        autoPricePerUsd: pricing.autoPricePerUsd,
+        premiumUsedUsd: pricing.premiumUsedUsd,
+        autoUsedUsd: pricing.autoUsedUsd,
+        premiumSoldAmount: pricing.premiumSoldAmount,
+        autoSoldAmount: pricing.autoSoldAmount,
+        soldAmount: pricing.soldAmount,
+      },
+      modelCategories: pricing.modelCategories,
+    };
   }
 
   async refresh(id: number) {
@@ -269,7 +351,13 @@ export class CursorQuotaService {
   private async persistReport(id: number, report: any) {
     const update = reportToAccountUpdate(report);
     await this.prisma.$transaction([
-      this.prisma.cursorQuotaAccount.update({ where: { id }, data: update }),
+      this.prisma.cursorQuotaAccount.update({
+        where: { id },
+        data: {
+          ...update,
+          modelBreakdown: report.modelBreakdown as Prisma.InputJsonValue,
+        },
+      }),
       this.prisma.cursorQuotaSnapshot.create({
         data: {
           accountId: id,
@@ -287,10 +375,10 @@ export class CursorQuotaService {
     if (!a) throw new NotFoundException('账号不存在');
     const rows = await this.prisma.cursorQuotaSnapshot.findMany({
       where: { accountId: id },
-      orderBy: { checkedAt: 'asc' },
+      orderBy: { checkedAt: 'desc' },
       take: Math.min(limitN, 500),
     });
-    return rows.map((r) => ({
+    return rows.reverse().map((r) => ({
       checkedAt: r.checkedAt,
       totalCostCents: r.totalCostCents,
       usedCents: r.usedCents,
@@ -298,8 +386,69 @@ export class CursorQuotaService {
     }));
   }
 
+  async modelPricingSettings() {
+    const [settings, accounts] = await Promise.all([
+      this.readModelPricingSettings(),
+      this.prisma.cursorQuotaAccount.findMany({ select: { modelBreakdown: true } }),
+    ]);
+    const knownModels = new Set<string>([...settings.premiumModels, ...settings.autoModels]);
+    for (const account of accounts) {
+      const breakdown = account.modelBreakdown;
+      if (!breakdown || typeof breakdown !== 'object' || Array.isArray(breakdown)) continue;
+      for (const model of Object.keys(breakdown as Record<string, unknown>)) {
+        if (model.trim()) knownModels.add(model.trim());
+      }
+    }
+    return {
+      ...settings,
+      knownModels: [...knownModels].sort((a, b) =>
+        a.localeCompare(b, 'zh-CN', { sensitivity: 'base' }),
+      ),
+    };
+  }
+
+  async updateModelPricingSettings(dto: UpdateCursorQuotaModelSettingsDto) {
+    const premiumModels = normalizeModelList(dto.premiumModels);
+    const autoModels = normalizeModelList(dto.autoModels);
+    const premiumNames = new Set(premiumModels.map((model) => model.toLowerCase()));
+    const overlap = autoModels.filter((model) => premiumNames.has(model.toLowerCase()));
+    if (overlap.length) {
+      throw new BadRequestException(`模型不能同时属于两类：${overlap.slice(0, 5).join('、')}`);
+    }
+    const premiumValue = JSON.stringify(premiumModels);
+    const autoValue = JSON.stringify(autoModels);
+    if (Buffer.byteLength(premiumValue, 'utf8') > 60_000) {
+      throw new BadRequestException('高级模型配置过长，请减少模型数量或名称长度');
+    }
+    if (Buffer.byteLength(autoValue, 'utf8') > 60_000) {
+      throw new BadRequestException('Auto 模型配置过长，请减少模型数量或名称长度');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.siteSetting.upsert({
+        where: { key: CURSOR_QUOTA_PREMIUM_MODELS_KEY },
+        update: { value: premiumValue, isPublic: false },
+        create: {
+          key: CURSOR_QUOTA_PREMIUM_MODELS_KEY,
+          value: premiumValue,
+          isPublic: false,
+        },
+      }),
+      this.prisma.siteSetting.upsert({
+        where: { key: CURSOR_QUOTA_AUTO_MODELS_KEY },
+        update: { value: autoValue, isPublic: false },
+        create: {
+          key: CURSOR_QUOTA_AUTO_MODELS_KEY,
+          value: autoValue,
+          isPublic: false,
+        },
+      }),
+    ]);
+    return this.modelPricingSettings();
+  }
+
   async stats() {
-    const [total, tokenInvalid, exhausted, lowQuota, all] = await Promise.all([
+    const [total, tokenInvalid, exhausted, lowQuota, all, settings] = await Promise.all([
       this.prisma.cursorQuotaAccount.count(),
       this.prisma.cursorQuotaAccount.count({
         where: { accountStatus: CursorQuotaAccountStatus.TOKEN_INVALID },
@@ -311,23 +460,37 @@ export class CursorQuotaService {
         where: { accountStatus: CursorQuotaAccountStatus.LOW_QUOTA },
       }),
       this.prisma.cursorQuotaAccount.findMany({
-        select: { purchasePrice: true, pricePerUsd: true, totalCostCents: true },
+        select: {
+          purchasePrice: true,
+          pricePerUsd: true,
+          autoPricePerUsd: true,
+          totalCostCents: true,
+          modelBreakdown: true,
+        },
       }),
+      this.readModelPricingSettings(),
     ]);
 
     let purchaseTotal = 0;
-    let soldTotal = 0;
+    let soldPremiumTotal = 0;
+    let soldAutoTotal = 0;
     for (const a of all) {
       purchaseTotal += Number(a.purchasePrice ?? 0);
-      soldTotal += calcSoldAmount(a.totalCostCents, Number(a.pricePerUsd));
+      const pricing = this.accountPricing(a, settings);
+      soldPremiumTotal += pricing.premiumSoldAmount;
+      soldAutoTotal += pricing.autoSoldAmount;
     }
     purchaseTotal = Number(purchaseTotal.toFixed(2));
-    soldTotal = Number(soldTotal.toFixed(2));
+    soldPremiumTotal = Number(soldPremiumTotal.toFixed(2));
+    soldAutoTotal = Number(soldAutoTotal.toFixed(2));
+    const soldTotal = Number((soldPremiumTotal + soldAutoTotal).toFixed(2));
     const profitTotal = Number((soldTotal - purchaseTotal).toFixed(2));
 
     return {
       counts: { total, tokenInvalid, exhausted, lowQuota },
       purchaseTotal,
+      soldPremiumTotal,
+      soldAutoTotal,
       soldTotal,
       profitTotal,
     };

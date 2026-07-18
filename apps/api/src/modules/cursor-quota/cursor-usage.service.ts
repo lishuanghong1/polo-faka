@@ -18,7 +18,10 @@ const CURSOR_EVENTS_URL =
   'https://cursor.com/api/dashboard/get-filtered-usage-events';
 const DEFAULT_TIMEOUT_MS = Number(process.env.CURSOR_QUOTA_TIMEOUT_MS || 45_000);
 const EVENT_PAGE_SIZE = 500;
-const MAX_EVENT_PAGES = 20;
+const MAX_EVENT_PAGES = Math.max(
+  1,
+  Math.floor(Number(process.env.CURSOR_USAGE_MAX_EVENT_PAGES || 20) || 20),
+);
 
 const WORKOS_TOKEN_PATTERN =
   /^user_[A-Za-z0-9_-]+::[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
@@ -156,8 +159,34 @@ function eventMeteredTokenTotal(event: any): number {
 function eventCostCents(event: any): number {
   return Math.max(
     0,
-    toFiniteNumber(event?.tokenUsage?.totalCents) ?? toFiniteNumber(event?.chargedCents) ?? 0,
+    toFiniteNumber(event?.tokenUsage?.totalCents) ??
+      toFiniteNumber(event?.chargedCents) ??
+      0,
   );
+}
+
+/**
+ * 把一组可能含小数的美分汇总为整数美分。
+ * 先保留各项整数部分，再按小数余数从大到小分配尾差，确保分项之和等于目标总额。
+ */
+function allocateRoundedCents(values: number[], targetTotal?: number): number[] {
+  if (!values.length) return [];
+  const normalized = values.map((value) =>
+    Number.isFinite(value) ? Math.max(0, value) : 0,
+  );
+  const result = normalized.map(Math.floor);
+  const target =
+    targetTotal === undefined
+      ? Math.round(normalized.reduce((total, value) => total + value, 0))
+      : Math.max(0, Math.round(targetTotal));
+  const remainder = Math.max(0, target - result.reduce((total, value) => total + value, 0));
+  const order = normalized
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (let i = 0; i < remainder; i += 1) {
+    result[order[i % order.length].index] += 1;
+  }
+  return result;
 }
 
 function isReportableEvent(event: any): boolean {
@@ -268,9 +297,18 @@ export class CursorUsageService {
 
       const data = await this.fetchJson(CURSOR_EVENTS_URL, token, signal, 'POST', body);
       const pageRows = Array.isArray(data?.usageEventsDisplay) ? data.usageEventsDisplay : [];
-      upstreamTotal = Number(data?.totalUsageEventsCount || pageRows.length);
       rows.push(...pageRows);
-      if (pageRows.length < EVENT_PAGE_SIZE || rows.length >= upstreamTotal) break;
+      const reportedTotal = toFiniteNumber(data?.totalUsageEventsCount);
+      upstreamTotal =
+        reportedTotal === null
+          ? rows.length + (pageRows.length === EVENT_PAGE_SIZE ? 1 : 0)
+          : Math.max(0, reportedTotal);
+      if (
+        pageRows.length < EVENT_PAGE_SIZE ||
+        (reportedTotal !== null && rows.length >= upstreamTotal)
+      ) {
+        break;
+      }
     }
 
     return { rows, truncated: rows.length < upstreamTotal, upstreamTotal };
@@ -300,9 +338,18 @@ export class CursorUsageService {
     const sum = (rows: NormalizedEvent[], key: keyof NormalizedEvent) =>
       rows.reduce((t, r) => t + (Number(r[key]) || 0), 0);
 
-    const includedCostCents = sum(included, 'costCents');
-    const onDemandCostCents = sum(onDemand, 'costCents');
+    const rawIncludedCostCents = sum(included, 'costCents');
+    const rawOnDemandCostCents = sum(onDemand, 'costCents');
+    const [includedCostCents, onDemandCostCents] = allocateRoundedCents([
+      rawIncludedCostCents,
+      rawOnDemandCostCents,
+    ]);
     const totalCostCents = includedCostCents + onDemandCostCents;
+    const [includedApiCostCents, includedAutoCostCents] = allocateRoundedCents(
+      [sum(includedApi, 'costCents'), sum(includedAuto, 'costCents')],
+      includedCostCents,
+    );
+    const includedLimitCents = Math.round(Math.max(0, toFiniteNumber(plan.limit) ?? 0));
     const membershipType = String(summary.membershipType || 'unknown');
     const membershipKey = membershipType.toLowerCase();
     const planPrice =
@@ -310,10 +357,16 @@ export class CursorUsageService {
         membershipKey
       ] ?? '-';
 
-    const modelBreakdown: Record<string, { costCents: number; tokens: number; requests: number }> =
-      {};
+    const modelBreakdown: Record<
+      string,
+      { costCents: number; tokens: number; requests: number }
+    > = {};
     for (const event of events) {
-      const cur = modelBreakdown[event.model] ?? { costCents: 0, tokens: 0, requests: 0 };
+      const cur = modelBreakdown[event.model] ?? {
+        costCents: 0,
+        tokens: 0,
+        requests: 0,
+      };
       cur.costCents += event.costCents;
       cur.tokens += event.tokens;
       cur.requests += 1;
@@ -330,10 +383,10 @@ export class CursorUsageService {
         startDateEpochMillis: String(toEpochMillis(summary.billingCycleStart) ?? ''),
         endDateEpochMillis: String(toEpochMillis(summary.billingCycleEnd) ?? ''),
       },
-      includedAmountCents: toFiniteNumber(plan.limit) ?? 0,
-      includedAmountUsd: formatUsd(plan.limit),
-      includedLimitCents: toFiniteNumber(plan.limit) ?? 0,
-      includedLimitUsd: formatUsd(plan.limit),
+      includedAmountCents: includedLimitCents,
+      includedAmountUsd: formatUsd(includedLimitCents),
+      includedLimitCents,
+      includedLimitUsd: formatUsd(includedLimitCents),
       totalCostCents,
       totalCostUsd: formatUsd(totalCostCents),
       totalRequests: events.length,
@@ -350,14 +403,14 @@ export class CursorUsageService {
       totalPercentUsed: toFiniteNumber(plan.totalPercentUsed) ?? 0,
       includedBreakdown: {
         api: {
-          costCents: sum(includedApi, 'costCents'),
-          costUsd: formatUsd(sum(includedApi, 'costCents')),
+          costCents: includedApiCostCents,
+          costUsd: formatUsd(includedApiCostCents),
           percentUsed: toFiniteNumber(plan.apiPercentUsed) ?? 0,
           tokens: sum(allApi, 'meteredTokens'),
         },
         auto: {
-          costCents: sum(includedAuto, 'costCents'),
-          costUsd: formatUsd(sum(includedAuto, 'costCents')),
+          costCents: includedAutoCostCents,
+          costUsd: formatUsd(includedAutoCostCents),
           percentUsed: toFiniteNumber(plan.autoPercentUsed) ?? 0,
           tokens: sum(allAuto, 'meteredTokens'),
         },
@@ -365,7 +418,7 @@ export class CursorUsageService {
       modelBreakdown,
       planInfo: {
         planName: membershipType,
-        includedAmountCents: toFiniteNumber(plan.limit) ?? 0,
+        includedAmountCents: includedLimitCents,
         price: planPrice,
         billingCycleEnd: String(toEpochMillis(summary.billingCycleEnd) ?? ''),
       },
@@ -392,6 +445,12 @@ export class CursorUsageService {
         this.fetchJson(CURSOR_ME_URL, token, controller.signal).catch(() => ({})),
         this.fetchEvents(token, billingCycle, controller.signal),
       ]);
+      if (eventResult.truncated) {
+        throw new QuotaCheckError(
+          `账期用量超过 ${EVENT_PAGE_SIZE * MAX_EVENT_PAGES} 条，无法完整计算模型收益，请提高 CURSOR_USAGE_MAX_EVENT_PAGES 后重试`,
+          422,
+        );
+      }
       return this.buildReport(summary, me, eventResult.rows, {
         truncated: eventResult.truncated,
         upstreamTotal: eventResult.upstreamTotal,

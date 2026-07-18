@@ -5,7 +5,10 @@ import api from '@/api';
 import { membershipLabel } from '@/utils/cursor-membership';
 
 const props = defineProps<{ id: number | null; email?: string }>();
-const emit = defineEmits<{ (e: 'close'): void }>();
+const emit = defineEmits<{
+  (e: 'close'): void;
+  (e: 'refreshed'): void;
+}>();
 
 const open = ref(false);
 const loading = ref(false);
@@ -34,12 +37,12 @@ async function load(id: number) {
   report.value = null;
   loadError.value = '';
   try {
-    const [rep, snaps] = await Promise.all([
-      api.admin.cursorQuotaReport(id),
-      api.admin.cursorQuotaSnapshots(id).catch(() => []),
-    ]);
+    // 报告接口会先落一条最新快照，再查询趋势，避免抽屉缺少本次数据。
+    const rep = await api.admin.cursorQuotaReport(id);
+    const snaps = await api.admin.cursorQuotaSnapshots(id).catch(() => []);
     report.value = rep;
     snapshots.value = snaps as any[];
+    emit('refreshed');
   } catch (e: any) {
     loadError.value =
       e?.response?.data?.error || e?.message || '加载报告失败，请稍后重试';
@@ -60,7 +63,11 @@ function close() {
 const modelRows = computed(() => {
   if (!report.value?.modelBreakdown) return [];
   return Object.entries(report.value.modelBreakdown)
-    .map(([model, v]: [string, any]) => ({ model, ...v }))
+    .map(([model, v]: [string, any]) => ({
+      model,
+      category: report.value?.modelCategories?.[model] || 'PREMIUM',
+      ...v,
+    }))
     .sort((a, b) => b.costCents - a.costCents);
 });
 
@@ -111,7 +118,7 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-sm">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
           <div class="rounded-xl border border-ink-100 p-3 space-y-1">
             <div class="font-medium mb-2">套餐内 / 超额</div>
             <div class="flex justify-between"><span class="text-ink-500">套餐内</span><b>{{ report.includedCostUsd }}（{{ report.includedCount }} 次）</b></div>
@@ -121,6 +128,21 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
             <div class="font-medium mb-2">API / Auto</div>
             <div class="flex justify-between"><span class="text-ink-500">API</span><b>{{ report.includedBreakdown?.api?.costUsd }} · {{ pct(report.includedBreakdown?.api?.percentUsed) }}</b></div>
             <div class="flex justify-between"><span class="text-ink-500">Auto</span><b>{{ report.includedBreakdown?.auto?.costUsd }} · {{ pct(report.includedBreakdown?.auto?.percentUsed) }}</b></div>
+          </div>
+          <div class="rounded-xl border border-ink-100 p-3 space-y-1">
+            <div class="font-medium mb-2">分类收益</div>
+            <div class="flex justify-between gap-2">
+              <span class="text-ink-500">高级 ${{ Number(report.pricing?.premiumUsedUsd || 0).toFixed(2) }}</span>
+              <b>¥{{ Number(report.pricing?.premiumSoldAmount || 0).toFixed(2) }}</b>
+            </div>
+            <div class="flex justify-between gap-2">
+              <span class="text-ink-500">Auto ${{ Number(report.pricing?.autoUsedUsd || 0).toFixed(2) }}</span>
+              <b>¥{{ Number(report.pricing?.autoSoldAmount || 0).toFixed(2) }}</b>
+            </div>
+            <div class="flex justify-between gap-2 pt-1 border-t border-ink-100">
+              <span class="text-ink-500">合计</span>
+              <b class="text-emerald-600">¥{{ Number(report.pricing?.soldAmount || 0).toFixed(2) }}</b>
+            </div>
           </div>
         </div>
 
@@ -133,6 +155,9 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
         <div class="font-medium mb-2">模型消耗汇总</div>
         <el-table :data="modelRows" size="small" border class="mb-4">
           <el-table-column prop="model" label="模型" min-width="160" />
+          <el-table-column label="计价分类" width="95">
+            <template #default="{ row }">{{ row.category === 'AUTO' ? 'Auto' : '高级' }}</template>
+          </el-table-column>
           <el-table-column prop="requests" label="请求" width="80" align="right" />
           <el-table-column label="Tokens" width="120" align="right">
             <template #default="{ row }">{{ Number(row.tokens || 0).toLocaleString() }}</template>

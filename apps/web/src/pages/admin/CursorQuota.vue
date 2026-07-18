@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
@@ -76,6 +76,11 @@ function dateOnly(v: string | null | undefined) {
   return new Date(v).toLocaleDateString('zh-CN');
 }
 
+function numberOr(value: unknown, fallback: number) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 // ── 编辑 / 新增 ──
 const editing = ref<any | null>(null);
 const saving = ref(false);
@@ -95,6 +100,8 @@ function openCreate() {
     purchasedAt: toLocalInput(new Date()),
     purchasePrice: 0,
     pricePerUsd: 1,
+    autoPricePerUsd: 1,
+    autoPriceInherited: false,
     note: '',
   };
 }
@@ -111,6 +118,8 @@ function openEdit(row: any) {
     purchasedAt: row.purchasedAt ? toLocalInput(new Date(row.purchasedAt)) : '',
     purchasePrice: row.purchasePrice ?? 0,
     pricePerUsd: row.pricePerUsd ?? 1,
+    autoPricePerUsd: row.autoPricePerUsd ?? row.pricePerUsd ?? 1,
+    autoPriceInherited: !!row.autoPricePerUsdInherited,
     note: row.note || '',
   };
 }
@@ -126,7 +135,8 @@ async function saveEdit() {
       emailPassword: e.emailPassword || null,
       purchasedAt: e.purchasedAt || null,
       purchasePrice: Number(e.purchasePrice) || 0,
-      pricePerUsd: Number(e.pricePerUsd) || 0,
+      pricePerUsd: numberOr(e.pricePerUsd, 0),
+      autoPricePerUsd: e.id && e.autoPriceInherited ? null : numberOr(e.autoPricePerUsd, 0),
       note: e.note || null,
     };
     if (e.token?.trim()) body.token = e.token.trim();
@@ -148,7 +158,8 @@ async function saveEdit() {
 // ── 批量导入 ──
 const importing = ref(false);
 const importText = ref('');
-const importPrice = ref(1);
+const importPremiumPrice = ref(1);
+const importAutoPrice = ref(1);
 const importCost = ref(0);
 const importBusy = ref(false);
 
@@ -158,7 +169,8 @@ async function doImport() {
   try {
     const r: any = await api.admin.cursorQuotaBulkImport({
       text: importText.value,
-      pricePerUsd: Number(importPrice.value) || 1,
+      pricePerUsd: numberOr(importPremiumPrice.value, 1),
+      autoPricePerUsd: numberOr(importAutoPrice.value, 1),
       purchasePrice: Number(importCost.value) || 0,
     });
     ElMessage.success(`导入完成：新增 ${r.created}，跳过 ${r.skipped}，失败 ${r.errorCount}`);
@@ -169,6 +181,99 @@ async function doImport() {
     /* interceptor */
   } finally {
     importBusy.value = false;
+  }
+}
+
+// ── 全局模型分类 ──
+const modelSettingsOpen = ref(false);
+const modelSettingsLoading = ref(false);
+const modelSettingsSaving = ref(false);
+const modelSettingsReady = ref(false);
+const modelSettingsError = ref('');
+const premiumModelsText = ref('');
+const autoModelsText = ref('');
+const knownModels = ref<string[]>([]);
+
+function modelLines(text: string) {
+  const seen = new Set<string>();
+  return text
+    .split(/[\r\n,]+/)
+    .map((model) => model.trim())
+    .filter((model) => {
+      const key = model.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function categoryForModel(model: string): 'PREMIUM' | 'AUTO' {
+  const key = model.trim().toLowerCase();
+  if (modelLines(premiumModelsText.value).some((item) => item.toLowerCase() === key)) {
+    return 'PREMIUM';
+  }
+  if (modelLines(autoModelsText.value).some((item) => item.toLowerCase() === key)) {
+    return 'AUTO';
+  }
+  return key.includes('auto') || key.includes('composer') ? 'AUTO' : 'PREMIUM';
+}
+
+const knownModelRows = computed(() =>
+  knownModels.value.map((model) => ({ model, category: categoryForModel(model) })),
+);
+
+function assignModel(model: string, category: 'PREMIUM' | 'AUTO') {
+  const key = model.toLowerCase();
+  const premium = modelLines(premiumModelsText.value).filter((item) => item.toLowerCase() !== key);
+  const auto = modelLines(autoModelsText.value).filter((item) => item.toLowerCase() !== key);
+  (category === 'PREMIUM' ? premium : auto).push(model);
+  premiumModelsText.value = premium.join('\n');
+  autoModelsText.value = auto.join('\n');
+}
+
+function onModelCategoryChange(model: string, event: Event) {
+  assignModel(model, (event.target as HTMLSelectElement).value as 'PREMIUM' | 'AUTO');
+}
+
+async function openModelSettings() {
+  modelSettingsOpen.value = true;
+  modelSettingsLoading.value = true;
+  modelSettingsReady.value = false;
+  modelSettingsError.value = '';
+  premiumModelsText.value = '';
+  autoModelsText.value = '';
+  knownModels.value = [];
+  try {
+    const settings = await api.admin.cursorQuotaModelPricingSettings();
+    premiumModelsText.value = settings.premiumModels.join('\n');
+    autoModelsText.value = settings.autoModels.join('\n');
+    knownModels.value = settings.knownModels || [];
+    modelSettingsReady.value = true;
+  } catch {
+    modelSettingsError.value = '模型分类加载失败，请重试后再保存';
+  } finally {
+    modelSettingsLoading.value = false;
+  }
+}
+
+async function saveModelSettings() {
+  if (!modelSettingsReady.value) return;
+  const premiumModels = modelLines(premiumModelsText.value);
+  const autoModels = modelLines(autoModelsText.value);
+  const premiumNames = new Set(premiumModels.map((model) => model.toLowerCase()));
+  const overlap = autoModels.filter((model) => premiumNames.has(model.toLowerCase()));
+  if (overlap.length) {
+    return ElMessage.warning(`模型不能同时属于两类：${overlap.slice(0, 3).join('、')}`);
+  }
+
+  modelSettingsSaving.value = true;
+  try {
+    await api.admin.cursorQuotaUpdateModelPricingSettings({ premiumModels, autoModels });
+    ElMessage.success('模型分类已保存，收益已按新分类重算');
+    modelSettingsOpen.value = false;
+    await load();
+  } finally {
+    modelSettingsSaving.value = false;
   }
 }
 
@@ -220,7 +325,7 @@ async function remove(row: any) {
 </script>
 
 <template>
-  <AdminPageHeader title="额度号池" subtitle="按 Cursor 额度计价出售 · 实时已售 = 已用$ × 单价（元/$）">
+  <AdminPageHeader title="额度号池" subtitle="按模型分类计价 · 收益 = 高级模型消耗 × 高级价 + Auto 消耗 × Auto 价">
     <template #actions>
       <button
         class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
@@ -228,6 +333,12 @@ async function remove(row: any) {
         @click="refreshAll"
       >
         {{ refreshingAll ? '刷新中…' : '全量刷新额度' }}
+      </button>
+      <button
+        class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
+        @click="openModelSettings"
+      >
+        模型分类设置
       </button>
       <button
         class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
@@ -257,6 +368,10 @@ async function remove(row: any) {
     <div class="card p-4">
       <div class="text-xs text-ink-400">实时已售合计</div>
       <div class="text-2xl font-semibold mt-1 text-emerald-600">¥{{ Number(stats.soldTotal || 0).toFixed(2) }}</div>
+      <div class="text-[11px] text-ink-400 mt-1">
+        高级 ¥{{ Number(stats.soldPremiumTotal || 0).toFixed(2) }}
+        · Auto ¥{{ Number(stats.soldAutoTotal || 0).toFixed(2) }}
+      </div>
     </div>
     <div class="card p-4">
       <div class="text-xs text-ink-400">毛利合计</div>
@@ -299,7 +414,8 @@ async function remove(row: any) {
           <th class="py-2 px-3">状态</th>
           <th class="py-2 px-3">采购时间</th>
           <th class="py-2 px-3 text-right">采购价</th>
-          <th class="py-2 px-3 text-right">单价(元/$)</th>
+          <th class="py-2 px-3 text-right">高级价(元/$)</th>
+          <th class="py-2 px-3 text-right">Auto价(元/$)</th>
           <th class="py-2 px-3 text-right">实时已售</th>
           <th class="py-2 px-3 text-right">毛利</th>
           <th class="py-2 px-3">操作</th>
@@ -307,7 +423,7 @@ async function remove(row: any) {
       </thead>
       <tbody>
         <tr v-if="!list.length && !loading">
-          <td colspan="11" class="py-10 text-center text-ink-400">暂无数据</td>
+          <td colspan="12" class="py-10 text-center text-ink-400">暂无数据</td>
         </tr>
         <tr
           v-for="row in list"
@@ -331,7 +447,11 @@ async function remove(row: any) {
               <span class="text-ink-400">未查询</span>
             </template>
             <template v-else>
-              {{ usd(row.totalCostCents) }} / {{ usd(row.planLimitCents) }}
+              <div>{{ usd(row.totalCostCents) }} / {{ usd(row.planLimitCents) }}</div>
+              <div v-if="row.hasDetailedUsage" class="text-[11px] text-ink-400 whitespace-nowrap">
+                高级 ${{ Number(row.premiumUsedUsd || 0).toFixed(2) }}
+                · Auto ${{ Number(row.autoUsedUsd || 0).toFixed(2) }}
+              </div>
             </template>
           </td>
           <td class="py-2.5 px-3 whitespace-nowrap">{{ dateOnly(row.billingCycleEnd) }}</td>
@@ -343,8 +463,16 @@ async function remove(row: any) {
           <td class="py-2.5 px-3 whitespace-nowrap">{{ dt(row.purchasedAt) }}</td>
           <td class="py-2.5 px-3 text-right tabular-nums">¥{{ Number(row.purchasePrice || 0).toFixed(2) }}</td>
           <td class="py-2.5 px-3 text-right tabular-nums">{{ Number(row.pricePerUsd || 0).toFixed(2) }}</td>
+          <td class="py-2.5 px-3 text-right tabular-nums">{{ Number(row.autoPricePerUsd || 0).toFixed(2) }}</td>
           <td class="py-2.5 px-3 text-right tabular-nums font-medium text-emerald-600">
-            ¥{{ Number(row.soldAmount || 0).toFixed(2) }}
+            <div>¥{{ Number(row.soldAmount || 0).toFixed(2) }}</div>
+            <div v-if="row.hasDetailedUsage" class="text-[11px] font-normal text-ink-400 whitespace-nowrap">
+              高级 ¥{{ Number(row.premiumSoldAmount || 0).toFixed(2) }}
+              · Auto ¥{{ Number(row.autoSoldAmount || 0).toFixed(2) }}
+            </div>
+            <div v-else-if="Number(row.totalCostCents || 0) > 0" class="text-[11px] font-normal text-amber-600 whitespace-nowrap">
+              暂无模型明细，按高级价计算
+            </div>
           </td>
           <td
             class="py-2.5 px-3 text-right tabular-nums"
@@ -406,11 +534,37 @@ async function remove(row: any) {
           <input v-model.number="editing.purchasePrice" type="number" min="0" step="0.01" class="input w-full mt-1" />
         </label>
       </div>
-      <label class="block text-sm">
-        <span class="text-ink-500">单价（元 / $1 额度）</span>
-        <input v-model.number="editing.pricePerUsd" type="number" min="0" step="0.01" class="input w-full mt-1" />
-        <span class="text-xs text-ink-400 mt-1 block">实时已售 = 已用额度($) × 此单价</span>
-      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="text-ink-500">高级模型售价（元 / $1）</span>
+          <input v-model.number="editing.pricePerUsd" type="number" min="0" step="0.01" class="input w-full mt-1" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-ink-500">Auto 模型售价（元 / $1）</span>
+          <input
+            v-if="!editing.autoPriceInherited"
+            v-model.number="editing.autoPricePerUsd"
+            type="number"
+            min="0"
+            step="0.01"
+            class="input w-full mt-1"
+          />
+          <input
+            v-else
+            :value="numberOr(editing.pricePerUsd, 0)"
+            type="number"
+            class="input w-full mt-1 bg-ink-50"
+            disabled
+          />
+          <label v-if="editing.id" class="flex items-center gap-1.5 text-xs text-ink-500 mt-1">
+            <input v-model="editing.autoPriceInherited" type="checkbox" />
+            跟随高级模型售价
+          </label>
+        </label>
+      </div>
+      <p class="text-xs text-ink-400">
+        收益会按“模型分类设置”中的全局分类，分别乘以上面两种售价。
+      </p>
       <label class="block text-sm">
         <span class="text-ink-500">Cursor Token</span>
         <textarea
@@ -456,10 +610,14 @@ async function remove(row: any) {
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-xl p-5 space-y-3">
       <div class="text-lg font-semibold">批量导入</div>
       <p class="text-xs text-ink-400">每行：email----邮箱密码----登录密码----Token（后几段可缺省）</p>
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label class="block text-sm">
-          <span class="text-ink-500">默认单价（元/$）</span>
-          <input v-model.number="importPrice" type="number" min="0" step="0.01" class="input w-full mt-1" />
+          <span class="text-ink-500">高级模型售价（元/$）</span>
+          <input v-model.number="importPremiumPrice" type="number" min="0" step="0.01" class="input w-full mt-1" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-ink-500">Auto 模型售价（元/$）</span>
+          <input v-model.number="importAutoPrice" type="number" min="0" step="0.01" class="input w-full mt-1" />
         </label>
         <label class="block text-sm">
           <span class="text-ink-500">默认采购价（元）</span>
@@ -480,9 +638,90 @@ async function remove(row: any) {
     </div>
   </div>
 
+  <!-- 全局模型分类 -->
+  <div
+    v-if="modelSettingsOpen"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    @click.self="modelSettingsOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div>
+        <div class="text-lg font-semibold">模型分类设置</div>
+        <p class="text-xs text-ink-400 mt-1">
+          此设置对全部额度号生效；保存后会立即按每个账号的两种售价重算收益。未列出的模型默认按高级模型计价，
+          名称含 auto / composer 的模型默认按 Auto 计价。
+        </p>
+      </div>
+
+      <div v-if="modelSettingsLoading" class="py-12 text-center text-sm text-ink-400">加载中...</div>
+      <div v-else-if="modelSettingsError" class="py-10 text-center">
+        <div class="text-sm text-rose-500 mb-3">{{ modelSettingsError }}</div>
+        <button class="px-3 py-1.5 rounded-lg border text-sm" @click="openModelSettings">重新加载</button>
+      </div>
+      <template v-else>
+        <div>
+          <div class="text-sm font-medium mb-2">已识别模型</div>
+          <div v-if="knownModelRows.length" class="border border-ink-100 rounded-xl divide-y divide-ink-100 max-h-56 overflow-y-auto">
+            <div
+              v-for="row in knownModelRows"
+              :key="row.model"
+              class="flex items-center justify-between gap-4 px-3 py-2 text-sm"
+            >
+              <span class="font-mono text-xs break-all">{{ row.model }}</span>
+              <select
+                :value="row.category"
+                class="input w-32 shrink-0"
+                @change="onModelCategoryChange(row.model, $event)"
+              >
+                <option value="PREMIUM">高级模型</option>
+                <option value="AUTO">Auto 模型</option>
+              </select>
+            </div>
+          </div>
+          <p v-else class="text-xs text-ink-400 rounded-xl border border-dashed border-ink-200 p-4">
+            暂无已识别模型。先刷新一次带 Token 的账号，系统会从额度报告中收集模型名称；也可以直接在下方填写。
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="block text-sm">
+            <span class="font-medium">高级模型（每行一个完整模型名）</span>
+            <textarea
+              v-model="premiumModelsText"
+              rows="7"
+              class="input w-full mt-1 font-mono text-xs"
+              placeholder="claude-4-sonnet&#10;gpt-5"
+            />
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Auto 模型（每行一个完整模型名）</span>
+            <textarea
+              v-model="autoModelsText"
+              rows="7"
+              class="input w-full mt-1 font-mono text-xs"
+              placeholder="auto&#10;composer"
+            />
+          </label>
+        </div>
+      </template>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <button class="px-3 py-1.5 rounded-lg border text-sm" @click="modelSettingsOpen = false">取消</button>
+        <button
+          class="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-50"
+          :disabled="!modelSettingsReady || modelSettingsLoading || modelSettingsSaving"
+          @click="saveModelSettings"
+        >
+          {{ modelSettingsSaving ? '保存中...' : '保存并重算' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
   <CursorQuotaReportDrawer
     :id="reportId"
     :email="reportEmail"
     @close="reportId = null"
+    @refreshed="load"
   />
 </template>

@@ -1019,8 +1019,7 @@ enum CursorQuotaAccountStatus {
   TOKEN_INVALID
 }
 
-/// 额度号池账号：采购进来后按「每消耗 $1 额度」对外计价，
-/// 实时已售 = (totalCostCents/100) × pricePerUsd。
+/// 额度号池账号：采购进来后按模型分类和每消耗 $1 额度的售价对外计价。
 model CursorQuotaAccount {
   id            Int    @id @default(autoincrement())
   email         String @unique @db.VarChar(255)
@@ -1030,9 +1029,10 @@ model CursorQuotaAccount {
   tokenEnc      String? @db.Text
 
   // ── 采购 / 计价 ──
-  purchasedAt   DateTime?
-  purchasePrice Decimal  @default(0) @db.Decimal(12, 2) // 采购成本（元）
-  pricePerUsd   Decimal  @default(1) @db.Decimal(12, 4) // 每消耗 $1 额度的售价（元/$）
+  purchasedAt    DateTime?
+  purchasePrice  Decimal  @default(0) @db.Decimal(12, 2) // 采购成本（元）
+  pricePerUsd    Decimal  @default(1) @db.Decimal(12, 4) // 高级模型每消耗 $1 的售价（元/$），保留旧字段名以兼容历史数据
+  autoPricePerUsd Decimal? @db.Decimal(12, 4) // Auto 模型每消耗 $1 的售价（元/$）；历史账号为空时沿用高级模型售价
 
   // ── 额度用量快照 ──
   membershipType    String?  @db.VarChar(32)
@@ -1042,6 +1042,7 @@ model CursorQuotaAccount {
   planPercent       Float?
   onDemandCents     Int?
   totalCostCents    Int?
+  modelBreakdown    Json?    // 各模型的 costCents/tokens/requests，用于按全局模型分类动态重算收益
   billingCycleStart DateTime?
   billingCycleEnd   DateTime?
   accountStatus     CursorQuotaAccountStatus @default(UNKNOWN)

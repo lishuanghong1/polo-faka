@@ -441,6 +441,16 @@ export const api = {
 
     // 额度号池（按 Cursor 额度计价，不走商城）
     cursorQuotaStats: () => http.get('/admin/cursor-quota/stats'),
+    cursorQuotaModelPricingSettings: () =>
+      http.get<{
+        premiumModels: string[];
+        autoModels: string[];
+        knownModels: string[];
+      }>('/admin/cursor-quota/model-pricing-settings'),
+    cursorQuotaUpdateModelPricingSettings: (body: {
+      premiumModels: string[];
+      autoModels: string[];
+    }) => http.put('/admin/cursor-quota/model-pricing-settings', body),
     cursorQuotaList: (params: {
       page?: number;
       pageSize?: number;
@@ -456,6 +466,7 @@ export const api = {
     cursorQuotaBulkImport: (body: {
       text: string;
       pricePerUsd?: number;
+      autoPricePerUsd?: number;
       purchasePrice?: number;
     }) => http.post('/admin/cursor-quota/bulk-import', body),
     cursorQuotaRefresh: (id: number) =>

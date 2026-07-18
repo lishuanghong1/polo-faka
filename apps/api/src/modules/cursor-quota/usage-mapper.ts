@@ -15,7 +15,7 @@ export function deriveStatus(
 export function reportToAccountUpdate(
   report: QuotaReport,
 ): Prisma.CursorQuotaAccountUpdateInput {
-  const percent = report.totalPercentUsed || null;
+  const percent = report.totalPercentUsed ?? null;
   const start = report.billingCycle.startDateEpochMillis
     ? new Date(Number(report.billingCycle.startDateEpochMillis))
     : null;
@@ -39,7 +39,7 @@ export function reportToAccountUpdate(
   };
 }
 
-/** soldAmount = (totalCostCents/100) × pricePerUsd */
+/** 单个模型分类的销售额 = (costCents/100) × pricePerUsd。 */
 export function calcSoldAmount(
   totalCostCents: number | null | undefined,
   pricePerUsd: number | string | null | undefined,

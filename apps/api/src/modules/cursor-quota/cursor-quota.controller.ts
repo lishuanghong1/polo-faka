@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -17,6 +18,7 @@ import {
   UpdateCursorQuotaDto,
   BulkImportCursorQuotaDto,
   QueryCursorQuotaDto,
+  UpdateCursorQuotaModelSettingsDto,
 } from './dto';
 
 @ApiTags('admin-cursor-quota')
@@ -25,6 +27,16 @@ import {
 @Controller('admin/cursor-quota')
 export class CursorQuotaController {
   constructor(private readonly svc: CursorQuotaService) {}
+
+  @Get('model-pricing-settings')
+  modelPricingSettings() {
+    return this.svc.modelPricingSettings();
+  }
+
+  @Put('model-pricing-settings')
+  updateModelPricingSettings(@Body() dto: UpdateCursorQuotaModelSettingsDto) {
+    return this.svc.updateModelPricingSettings(dto);
+  }
 
   @Get('stats')
   stats() {
