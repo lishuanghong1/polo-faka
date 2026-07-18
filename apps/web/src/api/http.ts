@@ -56,6 +56,9 @@ export const http = {
   put<T = any>(url: string, body?: any, config?: AxiosRequestConfig) {
     return instance.put<any, { data: T }>(url, body, config).then((r) => r.data);
   },
+  patch<T = any>(url: string, body?: any, config?: AxiosRequestConfig) {
+    return instance.patch<any, { data: T }>(url, body, config).then((r) => r.data);
+  },
   delete<T = any>(url: string, config?: AxiosRequestConfig) {
     return instance.delete<any, { data: T }>(url, config).then((r) => r.data);
   },
