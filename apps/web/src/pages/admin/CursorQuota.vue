@@ -80,6 +80,11 @@ function dateOnly(v: string | null | undefined) {
 const editing = ref<any | null>(null);
 const saving = ref(false);
 
+/** Date → datetime-local 输入值（本地时区，非 UTC） */
+function toLocalInput(d: Date) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function openCreate() {
   editing.value = {
     id: null,
@@ -87,7 +92,7 @@ function openCreate() {
     password: '',
     emailPassword: '',
     token: '',
-    purchasedAt: new Date().toISOString().slice(0, 16),
+    purchasedAt: toLocalInput(new Date()),
     purchasePrice: 0,
     pricePerUsd: 1,
     note: '',
@@ -103,7 +108,7 @@ function openEdit(row: any) {
     token: '',
     hasToken: row.hasToken,
     tokenMask: row.tokenMask,
-    purchasedAt: row.purchasedAt ? new Date(row.purchasedAt).toISOString().slice(0, 16) : '',
+    purchasedAt: row.purchasedAt ? toLocalInput(new Date(row.purchasedAt)) : '',
     purchasePrice: row.purchasePrice ?? 0,
     pricePerUsd: row.pricePerUsd ?? 1,
     note: row.note || '',

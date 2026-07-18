@@ -14,10 +14,13 @@ declare module 'vue' {
     BackToTop: typeof import('./components/BackToTop.vue')['default']
     BrandButton: typeof import('./components/BrandButton.vue')['default']
     Captcha: typeof import('./components/Captcha.vue')['default']
+    CursorQuotaReportDrawer: typeof import('./components/admin/CursorQuotaReportDrawer.vue')['default']
     CursorSubDetailDrawer: typeof import('./components/admin/CursorSubDetailDrawer.vue')['default']
     DataTable: typeof import('./components/admin/DataTable.vue')['default']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDrawer: typeof import('element-plus/es')['ElDrawer']
+    ElTable: typeof import('element-plus/es')['ElTable']
+    ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     EmailCodeBox: typeof import('./components/EmailCodeBox.vue')['default']
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     ForgeOrderDetailDrawer: typeof import('./components/admin/ForgeOrderDetailDrawer.vue')['default']
@@ -34,5 +37,8 @@ declare module 'vue' {
     TopProgress: typeof import('./components/TopProgress.vue')['default']
     UserDetailDrawer: typeof import('./components/admin/UserDetailDrawer.vue')['default']
     WarehouseDetailDrawer: typeof import('./components/admin/WarehouseDetailDrawer.vue')['default']
+  }
+  export interface ComponentCustomProperties {
+    vLoading: typeof import('element-plus/es')['ElLoadingDirective']
   }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ElDrawer, ElMessage } from 'element-plus';
+import { ElDrawer } from 'element-plus';
 import api from '@/api';
 import { membershipLabel } from '@/utils/cursor-membership';
 
@@ -11,6 +11,7 @@ const open = ref(false);
 const loading = ref(false);
 const report = ref<any>(null);
 const snapshots = ref<any[]>([]);
+const loadError = ref('');
 
 watch(
   () => props.id,
@@ -22,6 +23,7 @@ watch(
       open.value = false;
       report.value = null;
       snapshots.value = [];
+      loadError.value = '';
     }
   },
   { immediate: true },
@@ -30,6 +32,7 @@ watch(
 async function load(id: number) {
   loading.value = true;
   report.value = null;
+  loadError.value = '';
   try {
     const [rep, snaps] = await Promise.all([
       api.admin.cursorQuotaReport(id),
@@ -38,10 +41,15 @@ async function load(id: number) {
     report.value = rep;
     snapshots.value = snaps as any[];
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载报告失败');
+    loadError.value =
+      e?.response?.data?.error || e?.message || '加载报告失败，请稍后重试';
   } finally {
     loading.value = false;
   }
+}
+
+function retry() {
+  if (props.id) load(props.id);
 }
 
 function close() {
@@ -168,6 +176,15 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
           </el-table>
         </div>
       </template>
+      <div v-else-if="!loading && loadError" class="text-center py-16">
+        <div class="text-rose-500 mb-3">{{ loadError }}</div>
+        <button
+          class="px-4 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
+          @click="retry"
+        >
+          重试
+        </button>
+      </div>
       <div v-else-if="!loading" class="text-center text-ink-400 py-16">暂无数据</div>
     </div>
   </ElDrawer>

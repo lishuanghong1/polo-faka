@@ -458,9 +458,12 @@ export const api = {
       pricePerUsd?: number;
       purchasePrice?: number;
     }) => http.post('/admin/cursor-quota/bulk-import', body),
-    cursorQuotaRefresh: (id: number) => http.post(`/admin/cursor-quota/${id}/refresh`),
-    cursorQuotaRefreshAll: () => http.post('/admin/cursor-quota/refresh-all'),
-    cursorQuotaReport: (id: number) => http.get(`/admin/cursor-quota/${id}/report`),
+    cursorQuotaRefresh: (id: number) =>
+      http.post(`/admin/cursor-quota/${id}/refresh`, undefined, { timeout: 60_000 }),
+    cursorQuotaRefreshAll: () =>
+      http.post('/admin/cursor-quota/refresh-all', undefined, { timeout: 10 * 60 * 1000 }),
+    cursorQuotaReport: (id: number) =>
+      http.get(`/admin/cursor-quota/${id}/report`, { timeout: 60_000, silent: true } as any),
     cursorQuotaSnapshots: (id: number) => http.get(`/admin/cursor-quota/${id}/snapshots`),
 
     // ??????? token?

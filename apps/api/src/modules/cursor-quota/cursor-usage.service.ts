@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 
 /**
  * Cursor 额度查询服务。
@@ -16,18 +16,22 @@ const CURSOR_ME_URL = process.env.CURSOR_ME_ENDPOINT || 'https://cursor.com/api/
 const CURSOR_EVENTS_URL =
   process.env.CURSOR_USAGE_EVENTS_ENDPOINT ||
   'https://cursor.com/api/dashboard/get-filtered-usage-events';
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = Number(process.env.CURSOR_QUOTA_TIMEOUT_MS || 45_000);
 const EVENT_PAGE_SIZE = 500;
 const MAX_EVENT_PAGES = 20;
 
 const WORKOS_TOKEN_PATTERN =
   /^user_[A-Za-z0-9_-]+::[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
-/** 带 HTTP 状态码的可控业务错误。 */
-export class QuotaCheckError extends Error {
+/**
+ * 带 HTTP 状态码的可控业务错误。
+ * 继承 HttpException：直接抛出时全局过滤器能按真实状态码返回错误信息，
+ * 而不是被当成未处理异常吞成 500 Internal server error。
+ */
+export class QuotaCheckError extends HttpException {
   statusCode: number;
   constructor(message: string, statusCode = 400) {
-    super(message);
+    super(message, statusCode);
     this.name = 'QuotaCheckError';
     this.statusCode = statusCode;
   }
