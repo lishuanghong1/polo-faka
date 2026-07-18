@@ -43,6 +43,7 @@ const groups = [
       { to: '/admin/pool', icon: 'M4 18l4-2 4 4 4-4 4 2M4 14l4-2 4 4 4-4 4 2M4 10l4-2 4 4 4-4 4 2', label: '号池' },
       { to: '/admin/warehouse', icon: 'M3 7v13h18V7M3 7l3-4h12l3 4M3 7h18M8 11h8', label: '仓库' },
       { to: '/admin/cursor-sub', icon: 'M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 20c0-3 4-5 8-5s8 2 8 5M12 7v0', label: '订阅号池' },
+      { to: '/admin/cursor-quota', icon: 'M12 8c-3.9 0-7 1.3-7 3v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2c0-1.7-3.1-3-7-3zM5 15v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2', label: '额度号池' },
       { to: '/admin/refund-whitelist', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '客户退款名单' },
       { to: '/admin/token-refunds', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.6L19 8.4V19a2 2 0 01-2 2z', label: 'Token 退款记录' },
       { to: '/admin/recycle', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '回收' },

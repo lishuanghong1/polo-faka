@@ -34,6 +34,7 @@ import { VipModule } from './modules/vip/vip.module';
 import { PointsModule } from './modules/points/points.module';
 import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
 import { CursorSubModule } from './modules/cursor-sub/cursor-sub.module';
+import { CursorQuotaModule } from './modules/cursor-quota/cursor-quota.module';
 import { CustomerRefundModule } from './modules/customer-refund/customer-refund.module';
 
 @Module({
@@ -74,6 +75,7 @@ import { CustomerRefundModule } from './modules/customer-refund/customer-refund.
     PointsModule,
     AizhpOpenModule,
     CursorSubModule,
+    CursorQuotaModule,
     CustomerRefundModule,
   ],
   providers: [

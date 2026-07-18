@@ -1008,3 +1008,69 @@ model TokenRefundLog {
   @@index([createdAt])
   @@map("token_refund_logs")
 }
+
+// ===================== 额度号池（按 Cursor 额度计价出售，不走商城） =====================
+
+enum CursorQuotaAccountStatus {
+  UNKNOWN
+  HEALTHY
+  LOW_QUOTA
+  EXHAUSTED
+  TOKEN_INVALID
+}
+
+/// 额度号池账号：采购进来后按「每消耗 $1 额度」对外计价，
+/// 实时已售 = (totalCostCents/100) × pricePerUsd。
+model CursorQuotaAccount {
+  id            Int    @id @default(autoincrement())
+  email         String @unique @db.VarChar(255)
+  password      String? @db.VarChar(255)
+  emailPassword String? @db.VarChar(255)
+  /// WorkosCursorSessionToken（AES-GCM 加密）
+  tokenEnc      String? @db.Text
+
+  // ── 采购 / 计价 ──
+  purchasedAt   DateTime?
+  purchasePrice Decimal  @default(0) @db.Decimal(12, 2) // 采购成本（元）
+  pricePerUsd   Decimal  @default(1) @db.Decimal(12, 4) // 每消耗 $1 额度的售价（元/$）
+
+  // ── 额度用量快照 ──
+  membershipType    String?  @db.VarChar(32)
+  isUnlimited       Boolean  @default(false)
+  planUsedCents     Int?
+  planLimitCents    Int?
+  planPercent       Float?
+  onDemandCents     Int?
+  totalCostCents    Int?
+  billingCycleStart DateTime?
+  billingCycleEnd   DateTime?
+  accountStatus     CursorQuotaAccountStatus @default(UNKNOWN)
+  lastCheckedAt     DateTime?
+  lastCheckError    String?  @db.VarChar(500)
+
+  note      String?  @db.VarChar(500)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  snapshots CursorQuotaSnapshot[]
+
+  @@index([accountStatus])
+  @@index([purchasedAt])
+  @@index([createdAt])
+  @@map("cursor_quota_accounts")
+}
+
+model CursorQuotaSnapshot {
+  id             Int      @id @default(autoincrement())
+  accountId      Int
+  usedCents      Int      @default(0)
+  totalCostCents Int      @default(0)
+  percent        Float?
+  membershipType String?  @db.VarChar(32)
+  checkedAt      DateTime @default(now())
+
+  account CursorQuotaAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, checkedAt])
+  @@map("cursor_quota_snapshots")
+}

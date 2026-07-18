@@ -439,6 +439,30 @@ export const api = {
         { silent: true } as any,
       ),
 
+    // 额度号池（按 Cursor 额度计价，不走商城）
+    cursorQuotaStats: () => http.get('/admin/cursor-quota/stats'),
+    cursorQuotaList: (params: {
+      page?: number;
+      pageSize?: number;
+      keyword?: string;
+      accountStatus?: string;
+      sortBy?: string;
+      sortOrder?: string;
+    }) => http.get('/admin/cursor-quota', { params }),
+    cursorQuotaGet: (id: number) => http.get(`/admin/cursor-quota/${id}`),
+    cursorQuotaCreate: (body: any) => http.post('/admin/cursor-quota', body),
+    cursorQuotaUpdate: (id: number, body: any) => http.patch(`/admin/cursor-quota/${id}`, body),
+    cursorQuotaRemove: (id: number) => http.delete(`/admin/cursor-quota/${id}`),
+    cursorQuotaBulkImport: (body: {
+      text: string;
+      pricePerUsd?: number;
+      purchasePrice?: number;
+    }) => http.post('/admin/cursor-quota/bulk-import', body),
+    cursorQuotaRefresh: (id: number) => http.post(`/admin/cursor-quota/${id}/refresh`),
+    cursorQuotaRefreshAll: () => http.post('/admin/cursor-quota/refresh-all'),
+    cursorQuotaReport: (id: number) => http.get(`/admin/cursor-quota/${id}/report`),
+    cursorQuotaSnapshots: (id: number) => http.get(`/admin/cursor-quota/${id}/snapshots`),
+
     // ??????? token?
     // ???????
     refundWlList: (params: { status?: string; keyword?: string; page?: number; pageSize?: number }) =>
