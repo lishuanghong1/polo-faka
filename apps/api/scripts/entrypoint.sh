@@ -3,7 +3,7 @@
 # 1. 等待 MySQL 就绪
 # 2. prisma db push（首次/有变更时同步表）
 # 3. 创建默认 admin（幂等）
-# 4. 启动 Nest
+# 4. 修正桌面安装包目录权限后，降权启动 Nest
 
 set -e
 
@@ -37,16 +37,24 @@ npx --no-install prisma db push --schema=prisma/schema.prisma --skip-generate --
 echo "[boot] seeding default admin…"
 node scripts/post-deploy.cjs || echo "[boot] seed failed (continuing)"
 
-# 桌面安装包目录：确保可写（挂载宿主机目录时若权限不对，上传会失败）
+# 桌面安装包目录：bind mount 常为 root 所有，需在降权前 chown，否则后台上传 500
 DESKTOP_DIR="${DESKTOP_STATIC_DIR:-/data/desktop-static}"
-mkdir -p "$DESKTOP_DIR" 2>/dev/null || true
-if [ -d "$DESKTOP_DIR" ] && [ ! -w "$DESKTOP_DIR" ]; then
-  echo "[boot] WARN: $DESKTOP_DIR 不可写，后台上传 polo.exe/polo.dmg 会失败。"
-  echo "[boot] HINT: 在宿主机执行 chmod 777 deploy/static/desktop 或 chown 到容器用户"
+mkdir -p "$DESKTOP_DIR"
+if [ "$(id -u)" = "0" ]; then
+  chown -R nodeapp:nodeapp "$DESKTOP_DIR" 2>/dev/null \
+    && echo "[boot] desktop dir ownership → nodeapp: $DESKTOP_DIR" \
+    || echo "[boot] WARN: chown $DESKTOP_DIR failed"
+  chmod 775 "$DESKTOP_DIR" 2>/dev/null || true
 fi
 
 echo "[boot] starting API…"
 if [ -f dist/main.js ]; then
-  exec node dist/main.js
+  MAIN_JS="dist/main.js"
+else
+  MAIN_JS="dist/src/main.js"
 fi
-exec node dist/src/main.js
+
+if [ "$(id -u)" = "0" ] && command -v su-exec >/dev/null 2>&1; then
+  exec su-exec nodeapp node "$MAIN_JS"
+fi
+exec node "$MAIN_JS"

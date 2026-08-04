@@ -4,12 +4,12 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createWriteStream, promises as fs } from 'fs';
+import { createReadStream, createWriteStream, promises as fs } from 'fs';
 import * as path from 'path';
 import { pipeline } from 'stream/promises';
-import { createReadStream } from 'fs';
 
 export type DesktopFileKind = 'exe' | 'dmg';
 
@@ -71,6 +71,34 @@ export class DesktopFilesService implements OnModuleInit {
     await fs.mkdir(this.dir, { recursive: true });
   }
 
+  private async assertWritable() {
+    await this.ensureDir();
+    const probe = path.join(this.dir, `.write-probe-${process.pid}`);
+    try {
+      await fs.writeFile(probe, 'ok');
+      await fs.unlink(probe);
+    } catch (e: any) {
+      this.logger.error(`desktop dir not writable: ${this.dir} (${e?.code || ''} ${e?.message || e})`);
+      throw new ServiceUnavailableException(
+        `桌面安装包目录不可写：${this.dir}。请重新部署 API（入口会自动 chown），或在服务器执行 chmod 777 deploy/static/desktop`,
+      );
+    }
+  }
+
+  private mapFsError(e: any, action: string): never {
+    const code = e?.code || '';
+    this.logger.error(`${action} failed: ${code} ${e?.message || e}`);
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new ServiceUnavailableException(
+        `桌面安装包目录无写权限：${this.dir}。请重新部署 API，或 chmod 777 deploy/static/desktop`,
+      );
+    }
+    if (e instanceof BadRequestException || e instanceof NotFoundException || e instanceof ServiceUnavailableException) {
+      throw e;
+    }
+    throw new ServiceUnavailableException(`保存安装包失败：${e?.message || code || '未知错误'}`);
+  }
+
   private async loadVersionFromManifest() {
     try {
       const raw = await fs.readFile(path.join(this.dir, 'latest.json'), 'utf8');
@@ -116,7 +144,11 @@ export class DesktopFilesService implements OnModuleInit {
   }
 
   async status(): Promise<DesktopFilesStatus> {
-    await this.ensureDir();
+    try {
+      await this.ensureDir();
+    } catch {
+      // 目录不可建时仍尽量返回空状态，避免管理页整页 500
+    }
     await this.loadVersionFromManifest();
     const { files, latestMs } = await this.listFiles();
 
@@ -136,7 +168,6 @@ export class DesktopFilesService implements OnModuleInit {
     opts?: { version?: string },
   ) {
     const kind = this.resolveKind(kindRaw);
-    const expected = DESKTOP_FILE_NAMES[kind];
     const lower = (originalName || '').toLowerCase();
     if (kind === 'exe' && !lower.endsWith('.exe')) {
       throw new BadRequestException('Windows 安装包请上传 .exe 文件');
@@ -145,27 +176,36 @@ export class DesktopFilesService implements OnModuleInit {
       throw new BadRequestException('macOS 安装包请上传 .dmg 文件');
     }
 
-    await this.ensureDir();
+    await this.assertWritable();
     const dest = this.filePath(kind);
     const tmpDest = `${dest}.uploading`;
 
     try {
-      // 跨盘符时 rename 可能失败，统一用 copy + unlink
-      await pipeline(createReadStream(tempPath), createWriteStream(tmpDest));
-      await fs.rename(tmpDest, dest).catch(async () => {
-        await fs.copyFile(tmpDest, dest);
-        await fs.unlink(tmpDest).catch(() => undefined);
-      });
+      try {
+        await pipeline(createReadStream(tempPath), createWriteStream(tmpDest));
+        try {
+          await fs.rename(tmpDest, dest);
+        } catch {
+          await fs.copyFile(tmpDest, dest);
+          await fs.unlink(tmpDest).catch(() => undefined);
+        }
+      } catch (e) {
+        this.mapFsError(e, `save ${DESKTOP_FILE_NAMES[kind]}`);
+      }
+
+      if (opts?.version?.trim()) {
+        this.version = opts.version.trim();
+      }
+      try {
+        await this.writeManifest();
+      } catch (e) {
+        this.mapFsError(e, 'write latest.json');
+      }
+      return this.status();
     } finally {
       await fs.unlink(tempPath).catch(() => undefined);
       await fs.unlink(tmpDest).catch(() => undefined);
     }
-
-    if (opts?.version?.trim()) {
-      this.version = opts.version.trim();
-    }
-    await this.writeManifest();
-    return this.status();
   }
 
   async remove(kindRaw: string) {

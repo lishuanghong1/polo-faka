@@ -11,7 +11,7 @@ WORKDIR /repo
 
 # build & runtime 依赖
 RUN sed -i 's#https://dl-cdn.alpinelinux.org/alpine#https://mirrors.cloud.tencent.com/alpine#g' /etc/apk/repositories \
- && apk add --no-cache python3 make g++ libc6-compat openssl tini \
+ && apk add --no-cache python3 make g++ libc6-compat openssl tini su-exec \
  && corepack enable && corepack prepare pnpm@10 --activate \
  && pnpm config set registry https://registry.npmmirror.com
 
@@ -32,13 +32,11 @@ RUN pnpm install --prod --frozen-lockfile --filter @polo/api... \
  && apk del python3 make g++ \
  && rm -rf /root/.local/share/pnpm/store /root/.cache
 
-# 桌面安装包目录（compose 会挂载到这里；预先建好并授权给运行用户）
-RUN mkdir -p /data/desktop-static
-
-# 切到非 root 用户运行
-RUN addgroup -S nodeapp && adduser -S nodeapp -G nodeapp \
+# 桌面安装包目录（compose 会挂载到这里）
+# 入口脚本以 root 启动：先 chown 挂载目录，再用 su-exec 降权到 nodeapp
+RUN mkdir -p /data/desktop-static \
+ && addgroup -S nodeapp && adduser -S nodeapp -G nodeapp \
  && chown -R nodeapp:nodeapp /repo /data/desktop-static
-USER nodeapp
 
 ENV NODE_ENV=production
 ENV TZ=Asia/Shanghai
