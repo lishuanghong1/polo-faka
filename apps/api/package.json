@@ -35,6 +35,7 @@
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "ioredis": "^5.4.1",
+    "multer": "2.0.2",
     "nanoid": "^3.3.8",
     "nodemailer": "^8.0.11",
     "passport": "^0.7.0",
