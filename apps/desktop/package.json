@@ -2,7 +2,7 @@
   "name": "@polo/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Polo Cockpit 桌面控制台 - Cursor 账号库、用量监控与号池调度",
+  "description": "Polo Ai 桌面工具 - Cursor 账号库、用量监控与号池调度",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",

@@ -1,7 +1,7 @@
 [package]
 name = "polo-cockpit"
 version = "0.1.0"
-description = "Polo Cockpit 桌面控制台 - Cursor 账号库、用量监控与号池调度"
+description = "Polo Ai 桌面工具 - Cursor 账号库、用量监控与号池调度"
 authors = ["Polo"]
 edition = "2021"
 rust-version = "1.77"

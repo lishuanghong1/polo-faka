@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Polo Cockpit",
+  "productName": "Polo Ai",
   "version": "0.1.0",
   "identifier": "com.polo.cockpit",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Polo Cockpit",
+        "title": "Polo Ai",
         "width": 900,
         "height": 720,
         "minWidth": 640,
@@ -39,8 +39,8 @@
       "icons/icon.ico"
     ],
     "category": "DeveloperTool",
-    "shortDescription": "Polo Cockpit 桌面控制台",
-    "longDescription": "面向 Cursor 账号库、用量监控、号池调度和本机状态管理的 Polo 桌面控制台。账号数据与 token 默认保存在本机。"
+    "shortDescription": "Polo Ai 桌面工具",
+    "longDescription": "面向 Cursor 账号库、用量监控、号池调度和本机状态管理的 Polo Ai 桌面工具。账号数据与 token 默认保存在本机。"
   },
   "plugins": {
     "deep-link": {
