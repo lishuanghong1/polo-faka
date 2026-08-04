@@ -226,7 +226,7 @@ onMounted(() => load(false));
     <AnnouncementBanner />
   </section>
 
-  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 / 账号退款 -->
+  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 / PoloAi工具 -->
   <section class="max-w-7xl mx-auto px-4 mt-4">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
       <button
@@ -270,14 +270,14 @@ onMounted(() => load(false));
 
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
-        @click="router.push('/refund')"
+        @click="router.push('/tools/desktop')"
       >
-        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </div>
         <div class="min-w-0">
-          <div class="font-semibold text-ink-900 text-sm md:text-base">账号退款</div>
-          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">输入账号邮箱即可申请退款</div>
+          <div class="font-semibold text-ink-900 text-sm md:text-base">PoloAi工具</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">下载 Windows / macOS 桌面工具</div>
         </div>
       </button>
     </div>

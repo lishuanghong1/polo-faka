@@ -32,9 +32,12 @@ RUN pnpm install --prod --frozen-lockfile --filter @polo/api... \
  && apk del python3 make g++ \
  && rm -rf /root/.local/share/pnpm/store /root/.cache
 
+# 桌面安装包目录（compose 会挂载到这里；预先建好并授权给运行用户）
+RUN mkdir -p /data/desktop-static
+
 # 切到非 root 用户运行
 RUN addgroup -S nodeapp && adduser -S nodeapp -G nodeapp \
- && chown -R nodeapp:nodeapp /repo
+ && chown -R nodeapp:nodeapp /repo /data/desktop-static
 USER nodeapp
 
 ENV NODE_ENV=production

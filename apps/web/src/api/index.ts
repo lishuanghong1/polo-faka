@@ -5,6 +5,8 @@ import http from './http';
  * 批量按数量叠加），默认 15s 会请求超时。给退款相关接口放宽到 5 分钟。
  */
 const REFUND_TIMEOUT = 5 * 60 * 1000;
+/** 桌面安装包上传（exe/dmg 可能较大） */
+const UPLOAD_TIMEOUT = 10 * 60 * 1000;
 
 export type AdminUserDetail = {
   user: {
@@ -220,6 +222,22 @@ export const api = {
       message: string;
       response: unknown;
     }>('/recycle', { email, invoiceNumber }),
+
+  /** 前台：桌面安装包状态（也可直接读 /static/desktop/latest.json） */
+  desktopFilesStatus: () =>
+    http.get<{
+      version: string;
+      releasedAt: string | null;
+      urlBase: string;
+      files: Array<{
+        kind: 'exe' | 'dmg';
+        name: string;
+        exists: boolean;
+        size: number;
+        updatedAt: string | null;
+        url: string;
+      }>;
+    }>('/desktop-files'),
 
   // ??
   poolQuery: (orderNo: string, silent = false) =>
@@ -516,6 +534,31 @@ export const api = {
         undefined,
         { silent: true } as any,
       ),
+
+    desktopFilesStatus: () =>
+      http.get<{
+        version: string;
+        releasedAt: string | null;
+        urlBase: string;
+        dir?: string;
+        files: Array<{
+          kind: 'exe' | 'dmg';
+          name: string;
+          exists: boolean;
+          size: number;
+          updatedAt: string | null;
+          url: string;
+        }>;
+      }>('/admin/desktop-files'),
+    desktopFilesUpload: (kind: 'exe' | 'dmg', file: File, version?: string) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (version?.trim()) fd.append('version', version.trim());
+      return http.post(`/admin/desktop-files/${kind}`, fd, {
+        timeout: UPLOAD_TIMEOUT,
+      });
+    },
+    desktopFilesRemove: (kind: 'exe' | 'dmg') => http.delete(`/admin/desktop-files/${kind}`),
 
     cursorRefundStatus: () =>
       http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),

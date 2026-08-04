@@ -23,3 +23,7 @@ terminals/
 backups/
 *.bak.sql
 *.bak.sql.gz
+# 后台上传的桌面安装包（体积大，不入库）
+apps/api/data/desktop-static/
+deploy/static/desktop/*
+!deploy/static/desktop/.gitkeep

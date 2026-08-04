@@ -37,6 +37,14 @@ npx --no-install prisma db push --schema=prisma/schema.prisma --skip-generate --
 echo "[boot] seeding default admin…"
 node scripts/post-deploy.cjs || echo "[boot] seed failed (continuing)"
 
+# 桌面安装包目录：确保可写（挂载宿主机目录时若权限不对，上传会失败）
+DESKTOP_DIR="${DESKTOP_STATIC_DIR:-/data/desktop-static}"
+mkdir -p "$DESKTOP_DIR" 2>/dev/null || true
+if [ -d "$DESKTOP_DIR" ] && [ ! -w "$DESKTOP_DIR" ]; then
+  echo "[boot] WARN: $DESKTOP_DIR 不可写，后台上传 polo.exe/polo.dmg 会失败。"
+  echo "[boot] HINT: 在宿主机执行 chmod 777 deploy/static/desktop 或 chown 到容器用户"
+fi
+
 echo "[boot] starting API…"
 if [ -f dist/main.js ]; then
   exec node dist/main.js

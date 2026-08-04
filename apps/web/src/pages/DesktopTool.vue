@@ -78,7 +78,7 @@ const platformGroups: PlatformGroup[] = [
     os: 'windows',
     title: 'Windows',
     hint: '64 位 · Win 10 / 11 自带 WebView2，无需额外安装',
-    picks: [{ label: '推荐：EXE 安装包', matchKind: ['nsis'], recommended: true }],
+    picks: [{ label: '推荐：EXE 安装包', matchKind: ['exe', 'nsis'], recommended: true }],
   },
   {
     os: 'macos-arm',

@@ -34,6 +34,11 @@ export default defineConfig(({ mode }) => {
           target: apiTarget,
           changeOrigin: true,
         },
+        // 桌面安装包：开发时由 API useStaticAssets 提供
+        '/static': {
+          target: apiTarget,
+          changeOrigin: true,
+        },
       },
     },
   };

@@ -36,6 +36,7 @@ import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
 import { CursorSubModule } from './modules/cursor-sub/cursor-sub.module';
 import { CursorQuotaModule } from './modules/cursor-quota/cursor-quota.module';
 import { CustomerRefundModule } from './modules/customer-refund/customer-refund.module';
+import { DesktopFilesModule } from './modules/desktop-files/desktop-files.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { CustomerRefundModule } from './modules/customer-refund/customer-refund.
     CursorSubModule,
     CursorQuotaModule,
     CustomerRefundModule,
+    DesktopFilesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

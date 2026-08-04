@@ -125,7 +125,11 @@ services:
       ALIPAY_SIGN_TYPE: ${ALIPAY_SIGN_TYPE:-}
       ALIPAY_SELLER_ID: ${ALIPAY_SELLER_ID:-}
       ALIPAY_NOTIFY_BASE_URL: ${ALIPAY_NOTIFY_BASE_URL:-}
+      # 后台上传的 polo.exe / polo.dmg 落盘目录（与 Caddy /static/desktop 共用）
+      DESKTOP_STATIC_DIR: /data/desktop-static
       TZ: Asia/Shanghai
+    volumes:
+      - ./deploy/static/desktop:/data/desktop-static
     deploy:
       resources:
         limits:

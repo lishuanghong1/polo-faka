@@ -6,6 +6,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { urlencoded, json } from 'express';
 import helmet from 'helmet';
+import { mkdirSync } from 'fs';
+import * as path from 'path';
 import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -94,6 +96,26 @@ async function bootstrap() {
       .build();
     const doc = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup(`${prefix.replace(/^\//, '')}/docs`, app, doc);
+  }
+
+  // 桌面安装包静态分发（开发环境由 Vite 反代 /static；生产由 Caddy 直接读同目录）
+  const desktopDir =
+    config.get<string>('DESKTOP_STATIC_DIR')?.trim() ||
+    path.resolve(process.cwd(), 'data', 'desktop-static');
+  try {
+    mkdirSync(desktopDir, { recursive: true });
+    app.useStaticAssets(desktopDir, {
+      prefix: '/static/desktop',
+      setHeaders: (res, filePath) => {
+        if (/\.(exe|dmg|msi)$/i.test(filePath)) {
+          res.setHeader('Content-Disposition', 'attachment');
+        }
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+      },
+    });
+    logger.log(`📦 Desktop static: ${desktopDir} → /static/desktop`);
+  } catch (e: any) {
+    logger.warn(`Desktop static dir unavailable: ${e?.message || e}`);
   }
 
   const port = Number(config.get('PORT') || 4000);
