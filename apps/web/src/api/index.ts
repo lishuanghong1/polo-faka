@@ -8,6 +8,47 @@ const REFUND_TIMEOUT = 5 * 60 * 1000;
 /** 桌面安装包上传（exe/dmg 可能较大） */
 const UPLOAD_TIMEOUT = 10 * 60 * 1000;
 
+export type TxtCategory = {
+  id: number;
+  name: string;
+  remark: string | null;
+  sort: number;
+  docCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** 列表项：只有摘要没有正文，正文要单独拉详情 */
+export type TxtDocListItem = {
+  id: number;
+  categoryId: number;
+  title: string;
+  preview: string;
+  filename: string | null;
+  size: number;
+  remark: string | null;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+  category: { id: number; name: string };
+};
+
+export type TxtDocDetail = Omit<TxtDocListItem, 'preview'> & { content: string };
+
+export type TxtUploadResult = {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: Array<{
+    filename: string;
+    ok: boolean;
+    id?: number;
+    encoding?: string;
+    size?: number;
+    error?: string;
+  }>;
+};
+
 export type AdminUserDetail = {
   user: {
     id: number;
@@ -559,6 +600,53 @@ export const api = {
       });
     },
     desktopFilesRemove: (kind: 'exe' | 'dmg') => http.delete(`/admin/desktop-files/${kind}`),
+
+    // ── TXT 文本库 ──
+    txtCategories: () => http.get<TxtCategory[]>('/txt/categories'),
+    txtCategoryCreate: (body: { name: string; remark?: string; sort?: number }) =>
+      http.post<TxtCategory>('/txt/categories', body),
+    txtCategoryUpdate: (id: number, body: { name?: string; remark?: string; sort?: number }) =>
+      http.put<TxtCategory>(`/txt/categories/${id}`, body),
+    txtCategoryRemove: (id: number) => http.delete(`/txt/categories/${id}`),
+
+    txtDocs: (params: {
+      categoryId?: number;
+      keyword?: string;
+      searchContent?: boolean;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      http.get<{ total: number; page: number; pageSize: number; items: TxtDocListItem[] }>(
+        '/txt/docs',
+        { params },
+      ),
+    txtDocDetail: (id: number) => http.get<TxtDocDetail>(`/txt/docs/${id}`),
+    // 正文可能有几 MB，写接口一律放宽超时
+    txtDocCreate: (body: {
+      categoryId: number;
+      title: string;
+      content: string;
+      remark?: string;
+      sort?: number;
+    }) => http.post<TxtDocListItem>('/txt/docs', body, { timeout: UPLOAD_TIMEOUT }),
+    txtDocUpdate: (
+      id: number,
+      body: { categoryId?: number; title?: string; content?: string; remark?: string; sort?: number },
+    ) => http.put<TxtDocListItem>(`/txt/docs/${id}`, body, { timeout: UPLOAD_TIMEOUT }),
+    txtDocRemove: (id: number) => http.delete(`/txt/docs/${id}`),
+    txtDocsBulkRemove: (ids: number[]) =>
+      http.post<{ removed: number }>('/txt/docs/bulk-remove', { ids }),
+    txtDocsMove: (ids: number[], categoryId: number) =>
+      http.post<{ moved: number }>('/txt/docs/move', { ids, categoryId }),
+    txtDocsUpload: (categoryId: number, files: File[]) => {
+      const fd = new FormData();
+      fd.append('categoryId', String(categoryId));
+      files.forEach((f) => fd.append('files', f));
+      return http.post<TxtUploadResult>('/txt/docs/upload', fd, { timeout: UPLOAD_TIMEOUT });
+    },
+    /** 下载走 blob：接口要带 Bearer，普通 <a href> 拿不到 token */
+    txtDocDownload: (id: number) =>
+      http.get<Blob>(`/txt/docs/${id}/download`, { responseType: 'blob' }),
 
     cursorRefundStatus: () =>
       http.post<{ ready: boolean; teamId: number; hasOwner: boolean }>('/admin/cursor-refund/status'),

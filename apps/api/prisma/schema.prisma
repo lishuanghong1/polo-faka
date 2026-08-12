@@ -1075,3 +1075,45 @@ model CursorQuotaSnapshot {
   @@index([accountId, checkedAt])
   @@map("cursor_quota_snapshots")
 }
+
+// ===================== TXT 文本库（后台内部资料） =====================
+
+/// 管理员自建的 TXT 分类。仅后台可见，与商品 Category 完全独立。
+model TxtCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(64)
+  remark    String?  @db.VarChar(255)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  docs TxtDocument[]
+
+  @@map("txt_categories")
+}
+
+/// 一条 TXT 文本。正文存 MEDIUMTEXT（上限 16MB），列表接口只查 preview 不查 content。
+model TxtDocument {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  title      String   @db.VarChar(128)
+  content    String   @db.MediumText
+  /// 正文前 200 字，写入时同步生成。列表页靠它避免触碰 MEDIUMTEXT 的溢出页，
+  /// 否则一页 20 条 × 几 MB 正文足以把接口拖垮。
+  preview    String   @default("") @db.VarChar(200)
+  /// 上传来源的原始文件名；后台手动新建的为 null
+  filename   String?  @db.VarChar(255)
+  /// 正文字节数（UTF-8），列表页直接展示，避免为了算大小把全文捞出来
+  size       Int      @default(0)
+  remark     String?  @db.VarChar(255)
+  sort       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // 必填关系在 MySQL 下默认 Restrict：分类底下还有文档时，数据库层就会拒绝删除
+  category TxtCategory @relation(fields: [categoryId], references: [id])
+
+  @@index([categoryId, sort])
+  @@index([categoryId, createdAt])
+  @@map("txt_documents")
+}

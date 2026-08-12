@@ -37,6 +37,7 @@ import { CursorSubModule } from './modules/cursor-sub/cursor-sub.module';
 import { CursorQuotaModule } from './modules/cursor-quota/cursor-quota.module';
 import { CustomerRefundModule } from './modules/customer-refund/customer-refund.module';
 import { DesktopFilesModule } from './modules/desktop-files/desktop-files.module';
+import { TxtDocsModule } from './modules/txt-docs/txt-docs.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { DesktopFilesModule } from './modules/desktop-files/desktop-files.module
     CursorQuotaModule,
     CustomerRefundModule,
     DesktopFilesModule,
+    TxtDocsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

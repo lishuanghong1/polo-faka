@@ -46,6 +46,11 @@ async function bootstrap() {
     }),
   );
 
+  // TXT 文本库单条正文可达数 MB，全局 1mb 限制会让保存直接 413。
+  // body-parser 发现 req._body 已置位就会跳过，所以下面的全局 json 不会重复解析。
+  const txtBodyPath = `/${prefix.replace(/^\//, '').replace(/\/$/, '')}/txt`;
+  app.use(txtBodyPath, json({ limit: '16mb' }));
+
   // 支付宝异步通知是 application/x-www-form-urlencoded
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));

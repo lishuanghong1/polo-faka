@@ -55,6 +55,7 @@ const groups = [
     label: '系统',
     items: [
       { to: '/admin/desktop-files', icon: 'M12 5v14M5 12l7 7 7-7', label: '桌面安装包' },
+      { to: '/admin/txt', icon: 'M9 13h6m-6 4h6M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2zm7 0v5h5', label: 'TXT 文本库' },
       { to: '/admin/settings', icon: 'M10 3v2a2 2 0 11-4 0V3M20 14v4a2 2 0 01-2 2h-4M4 4l4 4m12 8l-4-4m0 0l4-4M10 14l-4 4M12 15a3 3 0 100-6 3 3 0 000 6z', label: '站点设置' },
       { to: '/admin/audit', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', label: '审计日志' },
       { to: '/admin/abuse', icon: 'M12 9v2m0 4h.01M4.93 19h14.14a2 2 0 001.74-2.99l-7.07-12.25a2 2 0 00-3.48 0L3.19 16.01A2 2 0 004.93 19z', label: 'IP 黑名单' },

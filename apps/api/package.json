@@ -34,6 +34,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "helmet": "^8.1.0",
+    "iconv-lite": "^0.7.3",
     "ioredis": "^5.4.1",
     "multer": "2.0.2",
     "nanoid": "^3.3.8",

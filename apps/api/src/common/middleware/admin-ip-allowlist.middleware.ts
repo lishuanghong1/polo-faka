@@ -67,6 +67,7 @@ export class AdminIpAllowlistMiddleware implements NestMiddleware {
  *   - /categories POST/PUT/DELETE
  *   - /announcements POST/PUT/DELETE
  *   - /feedbacks GET     反馈列表
+ *   - /txt*              TXT 文本库（整个 controller 都是 @Roles('ADMIN')，无公开路由）
  * 为了简单，凡是匹配以下任一前缀都强制白名单。其它公开接口（/products GET, /orders POST 等）放行。
  */
 const ADMIN_PATH_PREFIXES = [
@@ -80,6 +81,8 @@ const ADMIN_PATH_PREFIXES = [
   '/api/users',
   '/admin/redeem-codes',
   '/api/admin/redeem-codes',
+  '/txt',
+  '/api/txt',
 ];
 
 function isAdminPath(path: string): boolean {
