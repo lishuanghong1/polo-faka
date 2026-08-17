@@ -5,6 +5,40 @@ import api, { type TxtCategory, type TxtDocListItem } from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import RichTextEditor from '@/components/RichTextEditor.vue';
+
+/** 与后端 toPlainText 同一套判断：wangEditor 块级标签才当富文本，避免把 `<email>` 当标签剥掉 */
+function looksLikeRichHtml(s: string) {
+  return /<(p|h[1-6]|ul|ol|li|blockquote|pre|table|div|span)(\s|\/|>)/i.test(s);
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 旧纯文本进编辑器前转成段落，否则换行会丢、尖括号会被当成 HTML */
+function toEditorHtml(content: string) {
+  if (!content) return '';
+  if (looksLikeRichHtml(content)) return content;
+  return content
+    .split(/\r?\n/)
+    .map((line) => `<p>${escapeHtml(line) || '<br>'}</p>`)
+    .join('');
+}
+
+function htmlTextLength(html: string) {
+  if (!html) return 0;
+  const text = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\n+$/g, '');
+  return text.trim() ? text.length : 0;
+}
 
 const pageSize = 20;
 
@@ -48,8 +82,8 @@ const activeCat = computed(() => cats.value.find((c) => c.id === activeCatId.val
 const allChecked = computed(
   () => list.value.length > 0 && selected.value.length === list.value.length,
 );
-/** 正文长度用 string.length 即可，逐字节统计在几 MB 的文本上会卡输入 */
-const contentChars = computed(() => docForm.value?.content.length ?? 0);
+/** 字数按可见文本计，不要把 `<span style="color">` 算进去 */
+const contentChars = computed(() => htmlTextLength(docForm.value?.content ?? ''));
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`;
@@ -191,7 +225,7 @@ async function openDoc(d: TxtDocListItem) {
   };
   try {
     const full = await api.admin.txtDocDetail(d.id);
-    if (docForm.value?.id === d.id) docForm.value.content = full.content;
+    if (docForm.value?.id === d.id) docForm.value.content = toEditorHtml(full.content);
   } catch {
     docForm.value = null;
   } finally {
@@ -504,7 +538,8 @@ async function download(d: TxtDocListItem) {
   <!-- 文本编辑弹窗 -->
   <el-dialog
     :model-value="!!docForm"
-    width="820px"
+    class="txt-doc-editor-dialog"
+    width="880px"
     top="6vh"
     :title="docForm?.id ? `编辑文本 #${docForm.id}` : '新建文本'"
     @update:model-value="(v: boolean) => !v && (docForm = null)"
@@ -537,17 +572,23 @@ async function download(d: TxtDocListItem) {
         <div class="flex items-center justify-between mb-1">
           <label class="text-xs text-ink-500">正文</label>
           <span class="text-[11px] text-ink-400">
-            {{ docLoading ? '正在载入正文…' : `${contentChars.toLocaleString()} 字` }}
+            {{ docLoading ? '正在载入正文…' : `${contentChars.toLocaleString()} 字 · 选中文字后点「颜色」` }}
           </span>
         </div>
-        <textarea
-          v-model="docForm.content"
-          rows="18"
-          spellcheck="false"
-          :disabled="docLoading"
-          class="w-full px-3 py-2 border border-ink-200 rounded-lg font-mono text-xs leading-relaxed resize-y disabled:bg-ink-50"
-          placeholder="粘贴或输入纯文本内容…"
-        />
+        <div class="relative">
+          <RichTextEditor
+            v-model="docForm.content"
+            preset="text"
+            height="380px"
+            placeholder="粘贴或输入文本，选中后可改字体颜色…"
+          />
+          <div
+            v-if="docLoading"
+            class="absolute inset-0 bg-white/70 rounded-lg flex items-center justify-center text-xs text-ink-400"
+          >
+            正在载入正文…
+          </div>
+        </div>
       </div>
     </div>
     <template #footer>
@@ -583,3 +624,10 @@ async function download(d: TxtDocListItem) {
     </template>
   </el-dialog>
 </template>
+
+<style>
+/* 弹窗挂到 body，颜色面板不能被 dialog body 裁切 */
+.txt-doc-editor-dialog .el-dialog__body {
+  overflow: visible;
+}
+</style>

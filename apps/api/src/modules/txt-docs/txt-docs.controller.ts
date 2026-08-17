@@ -32,7 +32,7 @@ import type { Response } from 'express';
 import { diskStorage } from 'multer';
 import * as os from 'os';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { fixMultipartFilename, MAX_CONTENT_BYTES, TxtDocsService } from './txt-docs.service';
+import { fixMultipartFilename, MAX_CONTENT_BYTES, toPlainText, TxtDocsService } from './txt-docs.service';
 
 /** 单次最多上传的文件数 */
 const MAX_UPLOAD_FILES = 20;
@@ -285,7 +285,8 @@ export class TxtDocsController {
       'Content-Disposition',
       `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
     );
-    // 带 BOM 输出，Windows 记事本才不会把中文认成 GBK
-    res.send(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(doc.content, 'utf8')]));
+    // 带 BOM 输出，Windows 记事本才不会把中文认成 GBK。富文本下载成可读纯文本。
+    const plain = toPlainText(doc.content);
+    res.send(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(plain, 'utf8')]));
   }
 }

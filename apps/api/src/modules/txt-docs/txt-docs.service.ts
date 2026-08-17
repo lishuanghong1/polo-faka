@@ -54,8 +54,34 @@ function stripBom(text: string) {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+/** wangEditor 保存后的正文会带块级标签；纯文本教程里偶发的 `<email>` 不能当 HTML 剥 */
+function looksLikeRichHtml(s: string) {
+  return /<(p|h[1-6]|ul|ol|li|blockquote|pre|table|div|span)(\s|\/|>)/i.test(s);
+}
+
+function decodeEntities(s: string) {
+  return s
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&');
+}
+
+/** 下载 / 摘要用：把富文本还原成可读纯文本，旧的纯文本原样返回 */
+export function toPlainText(content: string) {
+  if (!content || !looksLikeRichHtml(content)) return content ?? '';
+  const withBreaks = content
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  return decodeEntities(withBreaks).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+}
+
 function makePreview(content: string) {
-  const flat = content.replace(/\s+/g, ' ').trim();
+  const flat = toPlainText(content).replace(/\s+/g, ' ').trim();
   // 按码点切，避免把代理对切成孤立代理导致 MySQL 存入非法 UTF-8
   const chars = Array.from(flat);
   return chars.length <= PREVIEW_CHARS ? flat : chars.slice(0, PREVIEW_CHARS).join('');
@@ -325,13 +351,22 @@ export class TxtDocsService {
   // ───────────────────────── 内部 ─────────────────────────
 
   private normalizeContent(raw: string) {
-    const content = stripBom(raw ?? '');
+    const content = this.sanitizeRichHtml(stripBom(raw ?? ''));
     const bytes = Buffer.byteLength(content, 'utf8');
     if (bytes > MAX_CONTENT_BYTES) {
       const mb = (MAX_CONTENT_BYTES / 1024 / 1024).toFixed(0);
       throw new BadRequestException(`正文超过 ${mb}MB 上限（当前 ${(bytes / 1024 / 1024).toFixed(2)}MB）`);
     }
     return content;
+  }
+
+  /** 正文会进富文本编辑器，存库前去掉脚本和行内事件，避免以后误用 v-html 时被带进去 */
+  private sanitizeRichHtml(html: string) {
+    if (!looksLikeRichHtml(html)) return html;
+    return html
+      .replace(/<(script|iframe|object|embed)[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(script|iframe|object|embed)[^>]*\/?>/gi, '')
+      .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '');
   }
 
   private async getCategoryOrThrow(id: number) {

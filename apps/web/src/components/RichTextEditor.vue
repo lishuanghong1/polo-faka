@@ -9,8 +9,14 @@ const props = withDefaults(
     modelValue: string;
     placeholder?: string;
     height?: string;
+    /** full：商品详情完整工具栏；text：文本库，突出字体颜色 */
+    preset?: 'full' | 'text';
   }>(),
-  { placeholder: '请输入商品介绍，可设置标题、加粗、颜色、列表、插入图片/链接……', height: '320px' },
+  {
+    placeholder: '请输入商品介绍，可设置标题、加粗、颜色、列表、插入图片/链接……',
+    height: '320px',
+    preset: 'full',
+  },
 );
 
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>();
@@ -33,10 +39,28 @@ watch(valueHtml, (v) => {
   if (v !== props.modelValue) emit('update:modelValue', v);
 });
 
-const toolbarConfig: Partial<IToolbarConfig> = {
-  // 去掉需要后端 / 不常用的功能：视频、全屏
-  excludeKeys: ['group-video', 'insertVideo', 'uploadVideo', 'fullScreen'],
-};
+const toolbarConfig: Partial<IToolbarConfig> =
+  props.preset === 'text'
+    ? {
+        toolbarKeys: [
+          'color',
+          'bgColor',
+          '|',
+          'bold',
+          'italic',
+          'underline',
+          '|',
+          'fontSize',
+          '|',
+          'undo',
+          'redo',
+          'clearStyle',
+        ],
+      }
+    : {
+        // 去掉需要后端 / 不常用的功能：视频、全屏
+        excludeKeys: ['group-video', 'insertVideo', 'uploadVideo', 'fullScreen'],
+      };
 
 const editorConfig: Partial<IEditorConfig> = {
   placeholder: props.placeholder,
@@ -85,5 +109,13 @@ onBeforeUnmount(() => {
 }
 .rich-editor :deep(.w-e-bar) {
   flex-wrap: wrap;
+  overflow: visible;
+}
+.rich-editor :deep(.w-e-bar-item) {
+  position: relative;
+}
+.rich-editor :deep(.w-e-drop-panel),
+.rich-editor :deep(.w-e-select-list) {
+  z-index: 30;
 }
 </style>
