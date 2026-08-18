@@ -325,7 +325,7 @@ async function remove(row: any) {
 </script>
 
 <template>
-  <AdminPageHeader title="额度号池" subtitle="按模型分类计价 · 收益 = 高级模型消耗 × 高级价 + Auto 消耗 × Auto 价">
+  <AdminPageHeader title="额度号池" subtitle="用量 = 官网套餐聚合 + 按需 + 赠送金 · 收益 = 高级消耗 × 高级价 + Auto 消耗 × Auto 价">
     <template #actions>
       <button
         class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"

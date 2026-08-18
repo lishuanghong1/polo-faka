@@ -112,16 +112,19 @@ test('模型保留原始小数成本，分类后再计算不同售价', () => {
       {
         timestamp: 1,
         model: 'premium-a',
+        kind: 'USAGE_EVENT_KIND_INCLUDED_IN_PRO',
         tokenUsage: { totalCents: 0.3 },
       },
       {
         timestamp: 2,
         model: 'premium-b',
+        kind: 'USAGE_EVENT_KIND_INCLUDED_IN_PRO',
         tokenUsage: { totalCents: 0.3 },
       },
       {
         timestamp: 3,
         model: 'auto',
+        kind: 'USAGE_EVENT_KIND_INCLUDED_IN_PRO',
         tokenUsage: { totalCents: 0.4 },
       },
     ],
@@ -137,6 +140,80 @@ test('模型保留原始小数成本，分类后再计算不同售价', () => {
     autoSoldAmount: 0,
     soldAmount: 0.6,
   });
+});
+
+test('官方账单用聚合套餐加 usage-summary 按需，赠送金另计入号池', () => {
+  const report = new CursorUsageService().buildReport(
+    {
+      membershipType: 'enterprise',
+      individualUsage: {
+        plan: { used: 2000, limit: 2000, totalPercentUsed: 22.5, apiPercentUsed: 100 },
+        onDemand: { used: 11082 },
+      },
+    },
+    {},
+    [
+      {
+        timestamp: 1,
+        model: 'claude-opus-5',
+        kind: 'USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS',
+        tokenUsage: { totalCents: 50 },
+        chargedCents: 60,
+      },
+      {
+        timestamp: 2,
+        model: 'gpt-5.6-sol-medium',
+        kind: 'USAGE_EVENT_KIND_USAGE_BASED',
+        tokenUsage: { totalCents: 80 },
+        chargedCents: 100,
+      },
+      {
+        timestamp: 3,
+        model: 'composer-2',
+        kind: 'USAGE_EVENT_KIND_FREE_CREDIT',
+        tokenUsage: { totalCents: 12 },
+        chargedCents: 15,
+      },
+    ],
+    {
+      aggregated: {
+        totalCostCents: 20267.32882,
+        aggregations: [
+          { modelIntent: 'claude-opus-5', totalCents: 15000 },
+          { modelIntent: 'gpt-5.6-sol-medium', totalCents: 5267.32882 },
+        ],
+      },
+    },
+  );
+  assert.equal(report.officialPlanCents, 20267);
+  assert.equal(report.officialOnDemandCents, 11082);
+  assert.equal(report.officialTotalCents, 31349);
+  assert.equal(report.freeCreditCents, 15);
+  assert.equal(report.totalCostCents, 31364);
+  assert.equal(report.includedCostCents, 20267);
+  assert.equal(report.onDemandCostCents, 11082);
+  assert.equal(report.totalPercentUsed, 100);
+  assert.equal(report.events.find((event) => event.kind.includes('FREE_CREDIT'))?.typeName, '赠送金');
+  assert.ok(Math.abs(report.modelBreakdown['gpt-5.6-sol-medium'].costCents - (5267.32882 + 11082)) < 1e-6);
+  assert.ok(Math.abs(report.modelBreakdown['composer-2'].costCents - 15) < 1e-6);
+});
+
+test('没有聚合数据时回退到套餐内事件 totalCents', () => {
+  const report = new CursorUsageService().buildReport(
+    { individualUsage: { plan: { used: 0, limit: 2000 }, onDemand: { used: 0 } } },
+    {},
+    [
+      {
+        timestamp: 1,
+        model: 'claude-4',
+        kind: 'USAGE_EVENT_KIND_INCLUDED_IN_PRO',
+        tokenUsage: { totalCents: 125.5 },
+      },
+    ],
+  );
+  assert.equal(report.officialPlanCents, 126);
+  assert.equal(report.totalCostCents, 126);
+  assert.equal(report.modelBreakdown['claude-4'].costCents, 125.5);
 });
 
 test('零用量百分比保持为 0 并判定为正常账号', () => {

@@ -103,9 +103,9 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
             <div class="text-xs text-ink-400">{{ report.planInfo?.price || '-' }}</div>
           </div>
           <div class="rounded-xl border border-ink-100 bg-ink-50/60 p-3">
-            <div class="text-xs text-ink-400">账期总消费</div>
+            <div class="text-xs text-ink-400">号池计费</div>
             <div class="text-lg font-semibold mt-1">{{ report.totalCostUsd }}</div>
-            <div class="text-xs text-ink-400">上限 {{ report.includedLimitUsd }}</div>
+            <div class="text-xs text-ink-400">套餐上限 {{ report.includedLimitUsd }}</div>
           </div>
           <div class="rounded-xl border border-ink-100 bg-ink-50/60 p-3">
             <div class="text-xs text-ink-400">总请求</div>
@@ -120,9 +120,14 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
           <div class="rounded-xl border border-ink-100 p-3 space-y-1">
-            <div class="font-medium mb-2">套餐内 / 超额</div>
-            <div class="flex justify-between"><span class="text-ink-500">套餐内</span><b>{{ report.includedCostUsd }}（{{ report.includedCount }} 次）</b></div>
-            <div class="flex justify-between"><span class="text-ink-500">超额</span><b>{{ report.onDemandCostUsd }}（{{ report.onDemandCount }} 次）</b></div>
+            <div class="font-medium mb-2">官方账单 / 赠送金</div>
+            <div class="flex justify-between"><span class="text-ink-500">套餐+按需</span><b>{{ report.officialTotalUsd || report.totalCostUsd }}</b></div>
+            <div class="flex justify-between"><span class="text-ink-500">套餐聚合</span><b>{{ report.officialPlanUsd || report.includedCostUsd }}（{{ report.includedCount }} 次）</b></div>
+            <div class="flex justify-between"><span class="text-ink-500">按需</span><b>{{ report.officialOnDemandUsd || report.onDemandCostUsd }}（{{ report.onDemandCount }} 次）</b></div>
+            <div v-if="Number(report.freeCreditCents || 0) > 0" class="flex justify-between">
+              <span class="text-ink-500">赠送金</span>
+              <b>{{ report.freeCreditUsd }}（{{ report.freeCreditCount }} 次）</b>
+            </div>
           </div>
           <div class="rounded-xl border border-ink-100 p-3 space-y-1">
             <div class="font-medium mb-2">API / Auto</div>
@@ -177,7 +182,7 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
           <el-table-column prop="model" label="模型" min-width="140" show-overflow-tooltip />
           <el-table-column label="类型" width="80">
             <template #default="{ row }">
-              <span :class="row.isOnDemand ? 'text-amber-600' : 'text-emerald-600'">{{ row.typeName }}</span>
+              <span :class="row.typeName === '赠送金' ? 'text-sky-600' : row.isOnDemand ? 'text-amber-600' : 'text-emerald-600'">{{ row.typeName }}</span>
             </template>
           </el-table-column>
           <el-table-column label="Tokens" width="100" align="right">
