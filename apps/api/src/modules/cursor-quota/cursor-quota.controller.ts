@@ -19,6 +19,8 @@ import {
   BulkImportCursorQuotaDto,
   QueryCursorQuotaDto,
   UpdateCursorQuotaModelSettingsDto,
+  CreateCursorQuotaGroupDto,
+  UpdateCursorQuotaGroupDto,
 } from './dto';
 
 @ApiTags('admin-cursor-quota')
@@ -41,6 +43,26 @@ export class CursorQuotaController {
   @Get('stats')
   stats() {
     return this.svc.stats();
+  }
+
+  @Get('groups')
+  listGroups() {
+    return this.svc.listGroups();
+  }
+
+  @Post('groups')
+  createGroup(@Body() dto: CreateCursorQuotaGroupDto) {
+    return this.svc.createGroup(dto);
+  }
+
+  @Patch('groups/:id')
+  updateGroup(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCursorQuotaGroupDto) {
+    return this.svc.updateGroup(id, dto);
+  }
+
+  @Delete('groups/:id')
+  removeGroup(@Param('id', ParseIntPipe) id: number) {
+    return this.svc.removeGroup(id);
   }
 
   @Get()

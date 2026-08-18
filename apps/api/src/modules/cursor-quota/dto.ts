@@ -2,11 +2,13 @@ import {
   ArrayMaxSize,
   IsArray,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   MaxLength,
   Min,
+  MinLength,
   ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -53,6 +55,13 @@ export class CreateCursorQuotaDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined && v !== '')
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  groupId?: number | null;
 }
 
 export class UpdateCursorQuotaDto {
@@ -93,6 +102,13 @@ export class UpdateCursorQuotaDto {
   @IsString()
   @MaxLength(500)
   note?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined && v !== '')
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  groupId?: number | null;
 }
 
 export class BulkImportCursorQuotaDto {
@@ -113,6 +129,13 @@ export class BulkImportCursorQuotaDto {
   @IsNumber()
   @Min(0)
   purchasePrice?: number;
+
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined && v !== '')
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  groupId?: number | null;
 }
 
 export class QueryCursorQuotaDto {
@@ -128,6 +151,14 @@ export class QueryCursorQuotaDto {
   @IsString()
   keyword?: string;
 
+  /** 0 = 未分组，正整数 = 指定分组，不传 = 全部 */
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== '' && v !== undefined && v !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  groupId?: number;
+
   @ValidateIf((_o, v) => v !== '' && v !== undefined && v !== null)
   @IsIn(['UNKNOWN', 'HEALTHY', 'LOW_QUOTA', 'EXHAUSTED', 'TOKEN_INVALID'])
   accountStatus?: string;
@@ -139,6 +170,31 @@ export class QueryCursorQuotaDto {
   @ValidateIf((_o, v) => v !== '' && v !== undefined && v !== null)
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';
+}
+
+export class CreateCursorQuotaGroupDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  name: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sort?: number;
+}
+
+export class UpdateCursorQuotaGroupDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  name?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  sort?: number;
 }
 
 export class UpdateCursorQuotaModelSettingsDto {

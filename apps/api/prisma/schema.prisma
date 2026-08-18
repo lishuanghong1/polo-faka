@@ -1019,6 +1019,20 @@ enum CursorQuotaAccountStatus {
   TOKEN_INVALID
 }
 
+/// 额度号池自定义分组。删除分组时账号回到未分组，不删账号。
+model CursorQuotaGroup {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(64)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts CursorQuotaAccount[]
+
+  @@index([sort])
+  @@map("cursor_quota_groups")
+}
+
 /// 额度号池账号：采购进来后按模型分类和每消耗 $1 额度的售价对外计价。
 model CursorQuotaAccount {
   id            Int    @id @default(autoincrement())
@@ -1027,6 +1041,7 @@ model CursorQuotaAccount {
   emailPassword String? @db.VarChar(255)
   /// WorkosCursorSessionToken（AES-GCM 加密）
   tokenEnc      String? @db.Text
+  groupId       Int?
 
   // ── 采购 / 计价 ──
   purchasedAt    DateTime?
@@ -1053,11 +1068,13 @@ model CursorQuotaAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  group     CursorQuotaGroup?     @relation(fields: [groupId], references: [id], onDelete: SetNull)
   snapshots CursorQuotaSnapshot[]
 
   @@index([accountStatus])
   @@index([purchasedAt])
   @@index([createdAt])
+  @@index([groupId])
   @@map("cursor_quota_accounts")
 }
 

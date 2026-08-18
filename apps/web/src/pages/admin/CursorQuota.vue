@@ -18,7 +18,18 @@ const query = reactive({
   pageSize: 20,
   keyword: '',
   accountStatus: '',
+  groupId: '' as number | '',
 });
+
+const groups = ref<{ id: number; name: string; sort: number; accountCount: number }[]>([]);
+
+async function loadGroups() {
+  try {
+    groups.value = (await api.admin.cursorQuotaGroups()) as any;
+  } catch {
+    groups.value = [];
+  }
+}
 
 const statusMeta: Record<string, { text: string; cls: string }> = {
   UNKNOWN: { text: '未查询', cls: 'bg-ink-100 text-ink-500' },
@@ -37,6 +48,7 @@ async function load() {
         pageSize: query.pageSize,
         keyword: query.keyword || undefined,
         accountStatus: query.accountStatus || undefined,
+        groupId: query.groupId === '' ? undefined : Number(query.groupId),
       }),
       api.admin.cursorQuotaStats().catch(() => null),
     ]);
@@ -53,7 +65,10 @@ function reload() {
   load();
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  loadGroups();
+});
 
 function usd(cents: number | null | undefined) {
   if (cents === null || cents === undefined) return '-';
@@ -103,6 +118,7 @@ function openCreate() {
     autoPricePerUsd: 1,
     autoPriceInherited: false,
     note: '',
+    groupId: query.groupId === '' || query.groupId === 0 ? '' : query.groupId,
   };
 }
 
@@ -121,6 +137,7 @@ function openEdit(row: any) {
     autoPricePerUsd: row.autoPricePerUsd ?? row.pricePerUsd ?? 1,
     autoPriceInherited: !!row.autoPricePerUsdInherited,
     note: row.note || '',
+    groupId: row.groupId ?? '',
   };
 }
 
@@ -138,6 +155,7 @@ async function saveEdit() {
       pricePerUsd: numberOr(e.pricePerUsd, 0),
       autoPricePerUsd: e.id && e.autoPriceInherited ? null : numberOr(e.autoPricePerUsd, 0),
       note: e.note || null,
+      groupId: e.groupId ? Number(e.groupId) : null,
     };
     if (e.token?.trim()) body.token = e.token.trim();
     if (e.id) {
@@ -161,6 +179,7 @@ const importText = ref('');
 const importPremiumPrice = ref(1);
 const importAutoPrice = ref(1);
 const importCost = ref(0);
+const importGroupId = ref<number | ''>('');
 const importBusy = ref(false);
 
 async function doImport() {
@@ -172,6 +191,7 @@ async function doImport() {
       pricePerUsd: numberOr(importPremiumPrice.value, 1),
       autoPricePerUsd: numberOr(importAutoPrice.value, 1),
       purchasePrice: Number(importCost.value) || 0,
+      groupId: importGroupId.value === '' ? null : Number(importGroupId.value),
     });
     ElMessage.success(`导入完成：新增 ${r.created}，跳过 ${r.skipped}，失败 ${r.errorCount}`);
     importing.value = false;
@@ -322,6 +342,74 @@ async function remove(row: any) {
   ElMessage.success('已删除');
   load();
 }
+
+// ── 自定义分组 ──
+const groupsOpen = ref(false);
+const groupSaving = ref(false);
+const newGroupName = ref('');
+const renamingGroupId = ref<number | null>(null);
+const renamingGroupName = ref('');
+
+function openGroups() {
+  groupsOpen.value = true;
+  newGroupName.value = '';
+  renamingGroupId.value = null;
+  loadGroups();
+}
+
+async function createGroup() {
+  const name = newGroupName.value.trim();
+  if (!name) return ElMessage.warning('请填写分组名');
+  groupSaving.value = true;
+  try {
+    await api.admin.cursorQuotaCreateGroup({ name });
+    newGroupName.value = '';
+    ElMessage.success('已创建分组');
+    await loadGroups();
+  } catch {
+    /* interceptor */
+  } finally {
+    groupSaving.value = false;
+  }
+}
+
+function startRenameGroup(g: { id: number; name: string }) {
+  renamingGroupId.value = g.id;
+  renamingGroupName.value = g.name;
+}
+
+async function saveRenameGroup() {
+  if (!renamingGroupId.value) return;
+  const name = renamingGroupName.value.trim();
+  if (!name) return ElMessage.warning('请填写分组名');
+  groupSaving.value = true;
+  try {
+    await api.admin.cursorQuotaUpdateGroup(renamingGroupId.value, { name });
+    renamingGroupId.value = null;
+    ElMessage.success('已改名');
+    await loadGroups();
+    load();
+  } catch {
+    /* interceptor */
+  } finally {
+    groupSaving.value = false;
+  }
+}
+
+async function removeGroup(g: { id: number; name: string; accountCount: number }) {
+  await ElMessageBox.confirm(
+    g.accountCount
+      ? `删除分组「${g.name}」后，其中 ${g.accountCount} 个账号会回到未分组。确认删除？`
+      : `确认删除分组「${g.name}」？`,
+    '删除分组',
+    { type: 'warning' },
+  );
+  await api.admin.cursorQuotaRemoveGroup(g.id);
+  if (query.groupId === g.id) query.groupId = '';
+  ElMessage.success('已删除分组');
+  await loadGroups();
+  load();
+}
 </script>
 
 <template>
@@ -333,6 +421,12 @@ async function remove(row: any) {
         @click="refreshAll"
       >
         {{ refreshingAll ? '刷新中…' : '全量刷新额度' }}
+      </button>
+      <button
+        class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
+        @click="openGroups"
+      >
+        管理分组
       </button>
       <button
         class="px-3 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm text-ink-700"
@@ -400,6 +494,11 @@ async function remove(row: any) {
       <option value="TOKEN_INVALID">Token失效</option>
       <option value="UNKNOWN">未查询</option>
     </select>
+    <select v-model="query.groupId" class="input w-40" @change="reload">
+      <option value="">全部分组</option>
+      <option :value="0">未分组</option>
+      <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}（{{ g.accountCount }}）</option>
+    </select>
     <button class="px-3 py-1.5 rounded-lg border border-ink-200 text-sm" @click="reload">查询</button>
   </div>
 
@@ -408,6 +507,7 @@ async function remove(row: any) {
       <thead>
         <tr class="text-left text-ink-500 border-b border-ink-100">
           <th class="py-2 px-3">邮箱</th>
+          <th class="py-2 px-3">分组</th>
           <th class="py-2 px-3">套餐</th>
           <th class="py-2 px-3">额度用量</th>
           <th class="py-2 px-3">账期截止</th>
@@ -423,7 +523,7 @@ async function remove(row: any) {
       </thead>
       <tbody>
         <tr v-if="!list.length && !loading">
-          <td colspan="12" class="py-10 text-center text-ink-400">暂无数据</td>
+          <td colspan="13" class="py-10 text-center text-ink-400">暂无数据</td>
         </tr>
         <tr
           v-for="row in list"
@@ -435,6 +535,13 @@ async function remove(row: any) {
             <div v-if="row.lastCheckError" class="text-xs text-rose-500 truncate max-w-[180px]" :title="row.lastCheckError">
               {{ row.lastCheckError }}
             </div>
+          </td>
+          <td class="py-2.5 px-3">
+            <span
+              v-if="row.groupName"
+              class="px-1.5 py-0.5 rounded text-xs bg-ink-100 text-ink-600"
+            >{{ row.groupName }}</span>
+            <span v-else class="text-ink-300">未分组</span>
           </td>
           <td class="py-2.5 px-3">
             <span class="px-1.5 py-0.5 rounded text-xs" :class="membershipLabel(row.membershipType).cls">
@@ -523,6 +630,13 @@ async function remove(row: any) {
       <label v-if="!editing.id" class="block text-sm">
         <span class="text-ink-500">邮箱</span>
         <input v-model="editing.email" class="input w-full mt-1" />
+      </label>
+      <label class="block text-sm">
+        <span class="text-ink-500">分组</span>
+        <select v-model="editing.groupId" class="input w-full mt-1">
+          <option value="">未分组</option>
+          <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+        </select>
       </label>
       <div class="grid grid-cols-2 gap-3">
         <label class="block text-sm">
@@ -623,6 +737,13 @@ async function remove(row: any) {
           <span class="text-ink-500">默认采购价（元）</span>
           <input v-model.number="importCost" type="number" min="0" step="0.01" class="input w-full mt-1" />
         </label>
+        <label class="block text-sm sm:col-span-3">
+          <span class="text-ink-500">导入到分组</span>
+          <select v-model="importGroupId" class="input w-full mt-1">
+            <option value="">未分组</option>
+            <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
+          </select>
+        </label>
       </div>
       <textarea v-model="importText" class="input w-full" rows="10" placeholder="a@x.com----emailpwd----loginpwd----user_xxx::jwt" />
       <div class="flex justify-end gap-2">
@@ -634,6 +755,65 @@ async function remove(row: any) {
         >
           导入
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理分组 -->
+  <div
+    v-if="groupsOpen"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    @click.self="groupsOpen = false"
+  >
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div>
+        <div class="text-lg font-semibold">管理分组</div>
+        <p class="text-xs text-ink-400 mt-1">自定义分组名，给额度号归类。删除分组不会删除账号。</p>
+      </div>
+      <div class="flex gap-2">
+        <input
+          v-model="newGroupName"
+          class="input flex-1"
+          maxlength="64"
+          placeholder="新分组名称，例如 8 月采购"
+          @keyup.enter="createGroup"
+        />
+        <button
+          class="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-50"
+          :disabled="groupSaving"
+          @click="createGroup"
+        >
+          新建
+        </button>
+      </div>
+      <div v-if="!groups.length" class="text-sm text-ink-400 rounded-xl border border-dashed border-ink-200 p-6 text-center">
+        还没有分组，先在上面创建一个。
+      </div>
+      <div v-else class="border border-ink-100 rounded-xl divide-y divide-ink-100">
+        <div v-for="g in groups" :key="g.id" class="flex items-center gap-3 px-3 py-2.5">
+          <template v-if="renamingGroupId === g.id">
+            <input
+              v-model="renamingGroupName"
+              class="input flex-1"
+              maxlength="64"
+              @keyup.enter="saveRenameGroup"
+              @keyup.escape="renamingGroupId = null"
+            />
+            <button class="text-brand-600 text-sm hover:underline" :disabled="groupSaving" @click="saveRenameGroup">保存</button>
+            <button class="text-ink-400 text-sm hover:underline" @click="renamingGroupId = null">取消</button>
+          </template>
+          <template v-else>
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-ink-800 truncate">{{ g.name }}</div>
+              <div class="text-xs text-ink-400">{{ g.accountCount }} 个账号</div>
+            </div>
+            <button class="text-brand-600 text-sm hover:underline" @click="startRenameGroup(g)">改名</button>
+            <button class="text-rose-600 text-sm hover:underline" @click="removeGroup(g)">删除</button>
+          </template>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <button class="px-3 py-1.5 rounded-lg border text-sm" @click="groupsOpen = false">关闭</button>
       </div>
     </div>
   </div>

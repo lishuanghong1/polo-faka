@@ -510,11 +510,21 @@ export const api = {
       premiumModels: string[];
       autoModels: string[];
     }) => http.put('/admin/cursor-quota/model-pricing-settings', body),
+    cursorQuotaGroups: () =>
+      http.get<{ id: number; name: string; sort: number; accountCount: number }[]>(
+        '/admin/cursor-quota/groups',
+      ),
+    cursorQuotaCreateGroup: (body: { name: string; sort?: number }) =>
+      http.post('/admin/cursor-quota/groups', body),
+    cursorQuotaUpdateGroup: (id: number, body: { name?: string; sort?: number }) =>
+      http.patch(`/admin/cursor-quota/groups/${id}`, body),
+    cursorQuotaRemoveGroup: (id: number) => http.delete(`/admin/cursor-quota/groups/${id}`),
     cursorQuotaList: (params: {
       page?: number;
       pageSize?: number;
       keyword?: string;
       accountStatus?: string;
+      groupId?: number;
       sortBy?: string;
       sortOrder?: string;
     }) => http.get('/admin/cursor-quota', { params }),
@@ -527,6 +537,7 @@ export const api = {
       pricePerUsd?: number;
       autoPricePerUsd?: number;
       purchasePrice?: number;
+      groupId?: number | null;
     }) => http.post('/admin/cursor-quota/bulk-import', body),
     cursorQuotaRefresh: (id: number) =>
       http.post(`/admin/cursor-quota/${id}/refresh`, undefined, { timeout: 60_000 }),

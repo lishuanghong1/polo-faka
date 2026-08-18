@@ -10,6 +10,8 @@ import {
   BulkImportCursorQuotaDto,
   QueryCursorQuotaDto,
   UpdateCursorQuotaModelSettingsDto,
+  CreateCursorQuotaGroupDto,
+  UpdateCursorQuotaGroupDto,
 } from './dto';
 import {
   calculateModelRevenue,
@@ -119,9 +121,86 @@ export class CursorQuotaService {
       lastCheckedAt: a.lastCheckedAt,
       lastCheckError: a.lastCheckError,
       note: a.note,
+      groupId: a.groupId ?? null,
+      groupName: a.group?.name ?? null,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
     };
+  }
+
+  private normalizeGroupName(name: string) {
+    const value = String(name || '').trim().replace(/\s+/g, ' ');
+    if (!value) throw new BadRequestException('分组名不能为空');
+    if (value.length > 64) throw new BadRequestException('分组名不能超过 64 个字');
+    return value;
+  }
+
+  private toGroupDto(g: { id: number; name: string; sort: number; createdAt: Date; updatedAt: Date; _count?: { accounts: number } }) {
+    return {
+      id: g.id,
+      name: g.name,
+      sort: g.sort,
+      accountCount: g._count?.accounts ?? 0,
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+    };
+  }
+
+  private async assertGroup(id: number) {
+    const group = await this.prisma.cursorQuotaGroup.findUnique({ where: { id } });
+    if (!group) throw new BadRequestException('分组不存在');
+    return group;
+  }
+
+  async listGroups() {
+    const rows = await this.prisma.cursorQuotaGroup.findMany({
+      orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+      include: { _count: { select: { accounts: true } } },
+    });
+    return rows.map((g) => this.toGroupDto(g));
+  }
+
+  async createGroup(dto: CreateCursorQuotaGroupDto) {
+    const name = this.normalizeGroupName(dto.name);
+    const exists = await this.prisma.cursorQuotaGroup.findFirst({
+      where: { name },
+    });
+    if (exists) throw new BadRequestException(`分组「${name}」已存在`);
+    const maxSort = await this.prisma.cursorQuotaGroup.aggregate({ _max: { sort: true } });
+    const group = await this.prisma.cursorQuotaGroup.create({
+      data: {
+        name,
+        sort: dto.sort ?? (maxSort._max.sort ?? 0) + 1,
+      },
+      include: { _count: { select: { accounts: true } } },
+    });
+    return this.toGroupDto(group);
+  }
+
+  async updateGroup(id: number, dto: UpdateCursorQuotaGroupDto) {
+    await this.assertGroup(id);
+    const data: Prisma.CursorQuotaGroupUpdateInput = {};
+    if (dto.name !== undefined) {
+      const name = this.normalizeGroupName(dto.name);
+      const exists = await this.prisma.cursorQuotaGroup.findFirst({
+        where: { name, NOT: { id } },
+      });
+      if (exists) throw new BadRequestException(`分组「${name}」已存在`);
+      data.name = name;
+    }
+    if (dto.sort !== undefined) data.sort = dto.sort;
+    const group = await this.prisma.cursorQuotaGroup.update({
+      where: { id },
+      data,
+      include: { _count: { select: { accounts: true } } },
+    });
+    return this.toGroupDto(group);
+  }
+
+  async removeGroup(id: number) {
+    await this.assertGroup(id);
+    await this.prisma.cursorQuotaGroup.delete({ where: { id } });
+    return { ok: true };
   }
 
   async list(q: QueryCursorQuotaDto) {
@@ -134,6 +213,11 @@ export class CursorQuotaService {
     }
     if (q.accountStatus) {
       where.accountStatus = q.accountStatus as CursorQuotaAccountStatus;
+    }
+    if (q.groupId === 0) {
+      where.groupId = null;
+    } else if (q.groupId) {
+      where.groupId = q.groupId;
     }
 
     const allowed = new Set([
@@ -156,6 +240,7 @@ export class CursorQuotaService {
         orderBy: { [sortBy]: sortOrder },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: { group: { select: { id: true, name: true } } },
       }),
       this.prisma.cursorQuotaAccount.count({ where }),
       this.readModelPricingSettings(),
@@ -166,7 +251,10 @@ export class CursorQuotaService {
 
   async get(id: number) {
     const [a, settings] = await Promise.all([
-      this.prisma.cursorQuotaAccount.findUnique({ where: { id } }),
+      this.prisma.cursorQuotaAccount.findUnique({
+        where: { id },
+        include: { group: { select: { id: true, name: true } } },
+      }),
       this.readModelPricingSettings(),
     ]);
     if (!a) throw new NotFoundException('账号不存在');
@@ -177,6 +265,8 @@ export class CursorQuotaService {
     const email = dto.email.trim().toLowerCase();
     const exists = await this.prisma.cursorQuotaAccount.findUnique({ where: { email } });
     if (exists) throw new BadRequestException(`账号 ${email} 已存在`);
+
+    if (dto.groupId) await this.assertGroup(dto.groupId);
 
     const a = await this.prisma.cursorQuotaAccount.create({
       data: {
@@ -189,14 +279,19 @@ export class CursorQuotaService {
         pricePerUsd: dto.pricePerUsd ?? 1,
         autoPricePerUsd: dto.autoPricePerUsd ?? dto.pricePerUsd ?? 1,
         note: dto.note ?? null,
+        groupId: dto.groupId ?? null,
       },
+      include: { group: { select: { id: true, name: true } } },
     });
     return this.toDto(a, { premiumModels: [], autoModels: [] });
   }
 
   async update(id: number, dto: UpdateCursorQuotaDto) {
     const [a, settings] = await Promise.all([
-      this.prisma.cursorQuotaAccount.findUnique({ where: { id } }),
+      this.prisma.cursorQuotaAccount.findUnique({
+        where: { id },
+        include: { group: { select: { id: true, name: true } } },
+      }),
       this.readModelPricingSettings(),
     ]);
     if (!a) throw new NotFoundException('账号不存在');
@@ -214,8 +309,20 @@ export class CursorQuotaService {
     if (dto.pricePerUsd !== undefined) data.pricePerUsd = dto.pricePerUsd;
     if (dto.autoPricePerUsd !== undefined) data.autoPricePerUsd = dto.autoPricePerUsd;
     if (dto.note !== undefined) data.note = dto.note;
+    if (dto.groupId !== undefined) {
+      if (dto.groupId) {
+        await this.assertGroup(dto.groupId);
+        data.group = { connect: { id: dto.groupId } };
+      } else {
+        data.group = { disconnect: true };
+      }
+    }
 
-    const updated = await this.prisma.cursorQuotaAccount.update({ where: { id }, data });
+    const updated = await this.prisma.cursorQuotaAccount.update({
+      where: { id },
+      data,
+      include: { group: { select: { id: true, name: true } } },
+    });
     return this.toDto(updated, settings);
   }
 
@@ -239,6 +346,7 @@ export class CursorQuotaService {
     const pricePerUsd = dto.pricePerUsd ?? 1;
     const autoPricePerUsd = dto.autoPricePerUsd ?? pricePerUsd;
     const purchasePrice = dto.purchasePrice ?? 0;
+    if (dto.groupId) await this.assertGroup(dto.groupId);
 
     for (const line of lines) {
       const parts = line.split(SEP).map((p) => p.trim());
@@ -263,6 +371,7 @@ export class CursorQuotaService {
             purchasePrice,
             pricePerUsd,
             autoPricePerUsd,
+            groupId: dto.groupId ?? null,
           },
         });
         created += 1;
