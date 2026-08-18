@@ -105,7 +105,12 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
           <div class="rounded-xl border border-ink-100 bg-ink-50/60 p-3">
             <div class="text-xs text-ink-400">号池计费</div>
             <div class="text-lg font-semibold mt-1">{{ report.totalCostUsd }}</div>
-            <div class="text-xs text-ink-400">套餐上限 {{ report.includedLimitUsd }}</div>
+            <div class="text-xs text-ink-400">
+              套餐 {{ report.officialPlanUsd || report.includedCostUsd }}
+              <template v-if="Number(report.officialOnDemandCents || report.onDemandCostCents || 0) > 0">
+                · 按需 {{ report.officialOnDemandUsd || report.onDemandCostUsd }}
+              </template>
+            </div>
           </div>
           <div class="rounded-xl border border-ink-100 bg-ink-50/60 p-3">
             <div class="text-xs text-ink-400">总请求</div>
@@ -113,8 +118,9 @@ const mem = computed(() => membershipLabel(report.value?.membershipType));
             <div class="text-xs text-ink-400">{{ Number(report.totalTokens || 0).toLocaleString() }} tokens</div>
           </div>
           <div class="rounded-xl border border-ink-100 bg-ink-50/60 p-3">
-            <div class="text-xs text-ink-400">已用额度</div>
+            <div class="text-xs text-ink-400">included 占用</div>
             <div class="text-lg font-semibold mt-1">{{ pct(report.totalPercentUsed) }}</div>
+            <div class="text-xs text-ink-400">仅套餐内免费档，不含按需</div>
           </div>
         </div>
 

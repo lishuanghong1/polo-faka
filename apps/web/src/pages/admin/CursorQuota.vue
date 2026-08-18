@@ -550,11 +550,17 @@ async function removeGroup(g: { id: number; name: string; accountCount: number }
           </td>
           <td class="py-2.5 px-3 tabular-nums">
             <template v-if="row.isUnlimited">无限额度</template>
-            <template v-else-if="row.totalCostCents === null && row.planLimitCents === null">
+            <template v-else-if="row.totalCostCents === null && row.planUsedCents === null && row.onDemandCents === null">
               <span class="text-ink-400">未查询</span>
             </template>
             <template v-else>
-              <div>{{ usd(row.totalCostCents) }} / {{ usd(row.planLimitCents) }}</div>
+              <div>{{ usd(row.totalCostCents) }}</div>
+              <div class="text-[11px] text-ink-400 whitespace-nowrap">
+                套餐 {{ usd(row.planUsedCents) }}
+                <template v-if="Number(row.onDemandCents || 0) > 0">
+                  · 按需 {{ usd(row.onDemandCents) }}
+                </template>
+              </div>
               <div v-if="row.hasDetailedUsage" class="text-[11px] text-ink-400 whitespace-nowrap">
                 高级 ${{ Number(row.premiumUsedUsd || 0).toFixed(2) }}
                 · Auto ${{ Number(row.autoUsedUsd || 0).toFixed(2) }}
