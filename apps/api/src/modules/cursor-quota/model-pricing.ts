@@ -63,7 +63,8 @@ export function parseModelList(raw: unknown): string[] {
 }
 
 /**
- * 显式配置优先；未配置时沿用 Cursor 的 Auto/Composer 命名规则，
+ * 显式配置优先；未配置时沿用 Cursor 的 Auto/Composer/cursor-grok 命名规则
+ * （cursor-grok 系列是 Auto 模式路由的自家模型，官方口径计入 Auto），
  * 其余模型默认按高级模型计价，保证旧账号收益不会突然归零。
  */
 export function classifyCursorModel(
@@ -76,7 +77,9 @@ export function classifyCursorModel(
 
   if (premium.has(name)) return 'PREMIUM';
   if (auto.has(name)) return 'AUTO';
-  if (name.includes('auto') || name.includes('composer')) return 'AUTO';
+  if (name.includes('auto') || name.includes('composer') || name.includes('cursor-grok')) {
+    return 'AUTO';
+  }
   return 'PREMIUM';
 }
 

@@ -22,6 +22,7 @@ import {
   CreateVaultGroupDto,
   ExportVaultDto,
   QueryVaultDto,
+  QueryVaultEventsDto,
   UpdateVaultAccountDto,
   UpdateVaultGroupDto,
 } from './dto';
@@ -108,12 +109,8 @@ export class AccountVaultController {
   }
 
   @Get(':id/events')
-  events(
-    @Param('id', ParseIntPipe) id: number,
-    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
-    @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize?: number,
-  ) {
-    return this.svc.events(id, page, pageSize);
+  events(@Param('id', ParseIntPipe) id: number, @Query() q: QueryVaultEventsDto) {
+    return this.svc.events(id, q.page, q.pageSize);
   }
 
   @Patch(':id')

@@ -501,10 +501,10 @@ export class CursorUsageService {
   }
 }
 
-/** normalizeEvent 后的对象用 model/kind 再判定 auto。 */
+/** normalizeEvent 后的对象用 model/kind 再判定 auto（cursor-grok 系列官方口径计入 Auto）。 */
 function isAutoEventFromNormalized(e: NormalizedEvent): boolean {
   const marker = `${e.model} ${e.kind}`.toLowerCase();
-  return marker.includes('auto') || marker.includes('composer');
+  return marker.includes('auto') || marker.includes('composer') || marker.includes('cursor-grok');
 }
 
 function emptyModelRow() {

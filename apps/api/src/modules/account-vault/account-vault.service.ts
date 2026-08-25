@@ -5,6 +5,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { decryptString, encryptString, maskSecret } from '../../common/crypto.util';
 import { CursorUsageService } from '../cursor-quota/cursor-usage.service';
+import {
+  CURSOR_QUOTA_AUTO_MODELS_KEY,
+  CURSOR_QUOTA_PREMIUM_MODELS_KEY,
+  ModelPricingSettings,
+  calculateModelUsage,
+  parseModelList,
+} from '../cursor-quota/model-pricing';
 import { checkCursorToken } from './vault-checker';
 import {
   BulkActionVaultDto,
@@ -759,6 +766,20 @@ export class AccountVaultService {
 
   // ─────────────────────── 详细用量报告 ───────────────────────
 
+  /** 模型分类配置与额度号池共用（显式配置优先，未配置按 Auto/Composer 命名规则）。 */
+  private async readModelPricingSettings(): Promise<ModelPricingSettings> {
+    const rows = await this.prisma.siteSetting.findMany({
+      where: {
+        key: { in: [CURSOR_QUOTA_PREMIUM_MODELS_KEY, CURSOR_QUOTA_AUTO_MODELS_KEY] },
+      },
+    });
+    const values = new Map(rows.map((r) => [r.key, r.value]));
+    return {
+      premiumModels: parseModelList(values.get(CURSOR_QUOTA_PREMIUM_MODELS_KEY)),
+      autoModels: parseModelList(values.get(CURSOR_QUOTA_AUTO_MODELS_KEY)),
+    };
+  }
+
   /**
    * 拉取账号的完整 Cursor 用量报告（会员、账期、套餐/按需消费、模型分布、逐条明细）。
    * 复用额度号池的 CursorUsageService，但账号库不涉及计价，只展示用量本身。
@@ -791,6 +812,31 @@ export class AccountVaultService {
 
     await this.logEvent(id, 'USAGE', report.membershipType || null, req);
     await this.audit.fromReq(req, 'VAULT_USAGE', { target: row.email });
-    return report;
+
+    // 高级模型 / Auto 消费拆分，分类口径与额度号池一致。
+    const settings = await this.readModelPricingSettings();
+    const usage = calculateModelUsage(report.modelBreakdown, report.totalCostCents, settings);
+    const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    const premiumUsage = {
+      costCents: Math.round(usage.premiumCostCents),
+      costUsd: usd(usage.premiumCostCents),
+      requests: 0,
+      tokens: 0,
+    };
+    const autoUsage = {
+      costCents: Math.round(usage.autoCostCents),
+      costUsd: usd(usage.autoCostCents),
+      requests: 0,
+      tokens: 0,
+    };
+    for (const [model, value] of Object.entries(report.modelBreakdown || {})) {
+      const target = usage.modelCategories[model] === 'AUTO' ? autoUsage : premiumUsage;
+      target.requests += Number(value?.requests) || 0;
+      target.tokens += Number(value?.tokens) || 0;
+    }
+
+    // `success` 是全局响应信封的保留字段，直接返回会被前端误拆成 undefined（同额度号池 report）。
+    const { success: _success, ...data } = report;
+    return { ...data, modelCategories: usage.modelCategories, premiumUsage, autoUsage };
   }
 }

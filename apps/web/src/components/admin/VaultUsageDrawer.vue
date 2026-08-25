@@ -54,8 +54,13 @@ function close() {
 
 const modelRows = computed(() => {
   if (!report.value?.modelBreakdown) return [];
+  const categories = report.value.modelCategories || {};
   return Object.entries(report.value.modelBreakdown)
-    .map(([model, v]: [string, any]) => ({ model, ...v }))
+    .map(([model, v]: [string, any]) => ({
+      model,
+      category: categories[model] === 'AUTO' ? 'AUTO' : 'PREMIUM',
+      ...v,
+    }))
     .sort((a, b) => b.costCents - a.costCents);
 });
 
@@ -125,9 +130,23 @@ function pct(v: number | null | undefined) {
             </div>
           </div>
           <div class="rounded-xl border border-ink-100 p-3 space-y-1">
-            <div class="font-medium mb-2">API / Auto</div>
-            <div class="flex justify-between"><span class="text-ink-500">API</span><b>{{ report.includedBreakdown?.api?.costUsd }} · {{ pct(report.includedBreakdown?.api?.percentUsed) }}</b></div>
-            <div class="flex justify-between"><span class="text-ink-500">Auto</span><b>{{ report.includedBreakdown?.auto?.costUsd }} · {{ pct(report.includedBreakdown?.auto?.percentUsed) }}</b></div>
+            <div class="font-medium mb-2">高级模型 / Auto</div>
+            <div class="flex justify-between">
+              <span class="text-violet-600">高级模型</span>
+              <b :title="`${Number(report.premiumUsage?.tokens || 0).toLocaleString()} tokens`">
+                {{ report.premiumUsage?.costUsd || '-' }} · {{ report.premiumUsage?.requests ?? 0 }} 次
+              </b>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-sky-600">Auto</span>
+              <b :title="`${Number(report.autoUsage?.tokens || 0).toLocaleString()} tokens`">
+                {{ report.autoUsage?.costUsd || '-' }} · {{ report.autoUsage?.requests ?? 0 }} 次
+              </b>
+            </div>
+            <div class="flex justify-between text-xs text-ink-400 pt-1 border-t border-ink-50">
+              <span>套餐内占用</span>
+              <span>API {{ pct(report.includedBreakdown?.api?.percentUsed) }} · Auto {{ pct(report.includedBreakdown?.auto?.percentUsed) }}</span>
+            </div>
           </div>
         </div>
 
@@ -141,6 +160,13 @@ function pct(v: number | null | undefined) {
         <div class="font-medium mb-2">模型消耗汇总</div>
         <el-table :data="modelRows" size="small" border class="mb-4">
           <el-table-column prop="model" label="模型" min-width="160" show-overflow-tooltip />
+          <el-table-column label="类别" width="70" align="center">
+            <template #default="{ row }">
+              <span :class="row.category === 'AUTO' ? 'text-sky-600' : 'text-violet-600'">
+                {{ row.category === 'AUTO' ? 'Auto' : '高级' }}
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column prop="requests" label="请求" width="80" align="right" />
           <el-table-column label="Tokens" width="120" align="right">
             <template #default="{ row }">{{ Number(row.tokens || 0).toLocaleString() }}</template>

@@ -72,6 +72,16 @@ export class QueryVaultDto {
   recycled?: string;
 }
 
+export class QueryVaultEventsDto {
+  @IsOptional()
+  @Type(() => Number)
+  page?: number = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  pageSize?: number = 20;
+}
+
 export class CreateVaultAccountDto {
   @IsString()
   @MinLength(3)
