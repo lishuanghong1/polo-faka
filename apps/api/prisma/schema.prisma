@@ -1093,6 +1093,80 @@ model CursorQuotaSnapshot {
   @@map("cursor_quota_snapshots")
 }
 
+// ===================== 账号库（纯账号管理，不绑定销售业务） =====================
+
+/// 账号库分组（按用途 / 渠道自定义，如：未使用 / 已发货 / 自用）
+model VaultGroup {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(64)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts VaultAccount[]
+
+  @@index([sort])
+  @@map("vault_groups")
+}
+
+/// 账号库账号。密码 / Token 走 AES-GCM 加密存储；deletedAt 非空表示在回收站。
+model VaultAccount {
+  id               Int       @id @default(autoincrement())
+  email            String    @unique @db.VarChar(255)
+  passwordEnc      String?   @db.Text
+  emailPasswordEnc String?   @db.Text
+  tokenEnc         String?   @db.Text
+  groupId          Int?
+  /// AVAILABLE / USED / DISABLED
+  status           String    @default("AVAILABLE") @db.VarChar(16)
+  /// 逗号分隔的标签
+  tags             String?   @db.VarChar(255)
+  note             String?   @db.VarChar(500)
+  /// 导入批次号（每次批量导入自动生成）
+  batchTag         String?   @db.VarChar(64)
+  expiresAt        DateTime?
+
+  // ── 有效性检测快照 ──
+  /// VALID / INVALID / ERROR
+  checkResult    String?   @db.VarChar(16)
+  checkMessage   String?   @db.VarChar(255)
+  membershipType String?   @db.VarChar(32)
+  planUsedCents  Int?
+  planLimitCents Int?
+  planPercent    Float?
+  lastCheckAt    DateTime?
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  group  VaultGroup?         @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  events VaultAccountEvent[]
+
+  @@index([status])
+  @@index([groupId])
+  @@index([batchTag])
+  @@index([deletedAt])
+  @@index([expiresAt])
+  @@map("vault_accounts")
+}
+
+/// 账号操作历史（查看明文 / 导出 / 状态变更 / 检测等）
+model VaultAccountEvent {
+  id        Int      @id @default(autoincrement())
+  accountId Int
+  action    String   @db.VarChar(32)
+  detail    String?  @db.VarChar(255)
+  actorId   Int?
+  actor     String?  @db.VarChar(64)
+  createdAt DateTime @default(now())
+
+  account VaultAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@map("vault_account_events")
+}
+
 // ===================== TXT 文本库（后台内部资料） =====================
 
 /// 管理员自建的 TXT 分类。仅后台可见，与商品 Category 完全独立。
