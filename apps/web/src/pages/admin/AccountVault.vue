@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
+import VaultUsageDrawer from '@/components/admin/VaultUsageDrawer.vue';
 
 type VaultAccount = {
   id: number;
@@ -486,12 +487,25 @@ const EVENT_LABELS: Record<string, string> = {
   REVEAL: '查看明文',
   EXPORT: '导出',
   CHECK: '有效性检测',
+  USAGE: '查询用量',
   STATUS: '改状态',
   MOVE_GROUP: '移动分组',
 };
 async function openEvents(row: VaultAccount) {
   const r = await api.admin.vaultEvents(row.id, { pageSize: 50 });
   eventPanel.value = { row, items: r.items };
+}
+
+// ─────────── 详细用量 ───────────
+const usageId = ref<number | null>(null);
+const usageEmail = ref('');
+function openUsage(row: VaultAccount) {
+  if (!row.hasToken) {
+    ElMessage.warning('该账号未录入 Token，无法查询用量');
+    return;
+  }
+  usageId.value = row.id;
+  usageEmail.value = row.email;
 }
 
 function fmtDate(s: string | null, withTime = false) {
@@ -685,6 +699,7 @@ function isExpiringSoon(s: string | null) {
             <button class="admin-link" :disabled="checkingId === row.id" @click="checkOne(row)">
               {{ checkingId === row.id ? '检测中' : '检测' }}
             </button>
+            <button v-if="row.hasToken" class="admin-link" @click="openUsage(row)">用量</button>
             <button class="admin-link" @click="openEvents(row)">历史</button>
             <button class="admin-link !text-rose-500" @click="del(row)">删除</button>
           </template>
@@ -976,6 +991,9 @@ function isExpiringSoon(s: string | null) {
       </div>
     </div>
   </el-dialog>
+
+  <!-- 详细用量 -->
+  <VaultUsageDrawer :id="usageId" :email="usageEmail" @close="usageId = null" @refreshed="load" />
 </template>
 
 <style scoped>

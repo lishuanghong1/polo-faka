@@ -783,6 +783,8 @@ export const api = {
         undefined,
         { silent: true, timeout: 30_000 } as any,
       ),
+    vaultUsage: (id: number) =>
+      http.get<any>(`/admin/account-vault/${id}/usage`, { silent: true, timeout: 60_000 } as any),
     vaultCheckBatch: (ids: number[]) =>
       http.post<{
         total: number;

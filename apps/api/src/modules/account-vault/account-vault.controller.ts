@@ -144,4 +144,9 @@ export class AccountVaultController {
   check(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     return this.svc.checkOne(id, req);
   }
+
+  @Get(':id/usage')
+  usage(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+    return this.svc.usageReport(id, req);
+  }
 }

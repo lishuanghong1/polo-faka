@@ -4,6 +4,7 @@ import { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { decryptString, encryptString, maskSecret } from '../../common/crypto.util';
+import { CursorUsageService } from '../cursor-quota/cursor-usage.service';
 import { checkCursorToken } from './vault-checker';
 import {
   BulkActionVaultDto,
@@ -67,6 +68,7 @@ export class AccountVaultService {
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
+    private usage: CursorUsageService,
   ) {}
 
   private async logEvent(
@@ -753,5 +755,42 @@ export class AccountVaultService {
       detail: { total: ids.length, ok, invalid, error },
     });
     return { total: ids.length, ok, invalid, error, results };
+  }
+
+  // ─────────────────────── 详细用量报告 ───────────────────────
+
+  /**
+   * 拉取账号的完整 Cursor 用量报告（会员、账期、套餐/按需消费、模型分布、逐条明细）。
+   * 复用额度号池的 CursorUsageService，但账号库不涉及计价，只展示用量本身。
+   * 顺带把关键快照写回账号，让列表的检测列同步刷新。
+   */
+  async usageReport(id: number, req: Request) {
+    const row = await this.prisma.vaultAccount.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('账号不存在');
+    if (!row.tokenEnc) throw new BadRequestException('该账号未录入 Token，无法查询用量');
+
+    const report = await this.usage.queryReport(decryptString(row.tokenEnc));
+
+    // 写回快照（失败不影响返回报告）
+    try {
+      await this.prisma.vaultAccount.update({
+        where: { id },
+        data: {
+          checkResult: 'VALID',
+          checkMessage: '用量查询成功',
+          membershipType: report.membershipType,
+          planUsedCents: report.includedCostCents,
+          planLimitCents: report.includedLimitCents,
+          planPercent: report.totalPercentUsed ?? null,
+          lastCheckAt: new Date(),
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`vault usage snapshot write failed: ${(e as Error).message}`);
+    }
+
+    await this.logEvent(id, 'USAGE', report.membershipType || null, req);
+    await this.audit.fromReq(req, 'VAULT_USAGE', { target: row.email });
+    return report;
   }
 }
