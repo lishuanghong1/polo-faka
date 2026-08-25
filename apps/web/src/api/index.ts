@@ -687,6 +687,110 @@ export const api = {
       http.post('/admin/redeem-codes/batch-status', { ids, status }),
     redeemRemove: (id: number) => http.delete(`/admin/redeem-codes/${id}`),
     redeemBatchRemove: (ids: number[]) => http.post('/admin/redeem-codes/batch-remove', { ids }),
+
+    // ── 账号库（纯账号管理） ──
+    vaultStats: () =>
+      http.get<{
+        total: number;
+        AVAILABLE: number;
+        USED: number;
+        DISABLED: number;
+        recycled: number;
+        expiring: number;
+        invalid: number;
+      }>('/admin/account-vault/stats'),
+    vaultBatches: () =>
+      http.get<Array<{ batchTag: string; count: number }>>('/admin/account-vault/batches'),
+    vaultGroups: () =>
+      http.get<Array<{ id: number; name: string; sort: number; accountCount: number }>>(
+        '/admin/account-vault/groups',
+      ),
+    vaultCreateGroup: (body: { name: string; sort?: number }) =>
+      http.post('/admin/account-vault/groups', body),
+    vaultUpdateGroup: (id: number, body: { name?: string; sort?: number }) =>
+      http.patch(`/admin/account-vault/groups/${id}`, body),
+    vaultRemoveGroup: (id: number) => http.delete(`/admin/account-vault/groups/${id}`),
+    vaultList: (params: {
+      page?: number;
+      pageSize?: number;
+      keyword?: string;
+      status?: string;
+      groupId?: number;
+      batchTag?: string;
+      checkResult?: string;
+      expiring?: string;
+      recycled?: string;
+    }) =>
+      http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
+        '/admin/account-vault',
+        { params },
+      ),
+    vaultGet: (id: number) => http.get(`/admin/account-vault/${id}`),
+    vaultReveal: (id: number) =>
+      http.get<{
+        id: number;
+        email: string;
+        password: string | null;
+        emailPassword: string | null;
+        token: string | null;
+      }>(`/admin/account-vault/${id}/reveal`, { silent: true } as any),
+    vaultEvents: (id: number, params?: { page?: number; pageSize?: number }) =>
+      http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
+        `/admin/account-vault/${id}/events`,
+        { params },
+      ),
+    vaultCreate: (body: any) => http.post('/admin/account-vault', body),
+    vaultUpdate: (id: number, body: any) => http.patch(`/admin/account-vault/${id}`, body),
+    vaultRemove: (id: number) => http.delete(`/admin/account-vault/${id}`),
+    vaultRestore: (id: number) => http.post(`/admin/account-vault/${id}/restore`),
+    vaultPurge: (id: number) => http.delete(`/admin/account-vault/${id}/purge`),
+    vaultBulkImport: (body: {
+      text: string;
+      separator?: string;
+      fields?: string[];
+      groupId?: number | null;
+      status?: string;
+      tags?: string;
+    }) =>
+      http.post<{
+        total: number;
+        created: number;
+        duplicated: string[];
+        duplicatedCount?: number;
+        invalid: Array<{ line: string; reason: string }>;
+        invalidCount?: number;
+        batchTag: string | null;
+      }>('/admin/account-vault/bulk-import', body),
+    vaultBulkAction: (body: {
+      ids: number[];
+      action: 'delete' | 'restore' | 'purge' | 'status' | 'move';
+      status?: string;
+      groupId?: number | null;
+    }) => http.post<{ ok: boolean; affected: number }>('/admin/account-vault/bulk', body),
+    vaultExport: (body: {
+      ids?: number[];
+      fields: string[];
+      separator?: string;
+      keyword?: string;
+      status?: string;
+      groupId?: number;
+      batchTag?: string;
+      recycled?: string;
+    }) => http.post<{ count: number; text: string }>('/admin/account-vault/export', body),
+    vaultCheck: (id: number) =>
+      http.post<{ id: number; email: string; result: string; message: string; account: any }>(
+        `/admin/account-vault/${id}/check`,
+        undefined,
+        { silent: true, timeout: 30_000 } as any,
+      ),
+    vaultCheckBatch: (ids: number[]) =>
+      http.post<{
+        total: number;
+        ok: number;
+        invalid: number;
+        error: number;
+        results: Array<{ id: number; email: string; result: string; message: string }>;
+      }>('/admin/account-vault/check-batch', { ids }, { silent: true, timeout: 5 * 60 * 1000 } as any),
   },
 
   redeem: {
