@@ -11,6 +11,9 @@ export const AuditActions = {
   POOL_ACCOUNT_UPDATE: 'POOL_ACCOUNT_UPDATE',
   POOL_ACCOUNT_DELETE: 'POOL_ACCOUNT_DELETE',
 
+  // Team 兑换（前台把充值卡码交给上游售号 API 兑换）
+  TEAM_REDEEM: 'TEAM_REDEEM',
+
   // 订单
   ORDER_MARK_PAID: 'ORDER_MARK_PAID',
   ORDER_REDELIVER: 'ORDER_REDELIVER',
@@ -83,6 +86,7 @@ export const AuditActionLabels: Record<string, string> = {
   POOL_ACCOUNT_CREATE: '新建号池账号',
   POOL_ACCOUNT_UPDATE: '编辑号池账号',
   POOL_ACCOUNT_DELETE: '删除号池账号',
+  TEAM_REDEEM: 'Team 兑换',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',

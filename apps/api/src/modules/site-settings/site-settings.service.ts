@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AlipayService } from '../alipay/alipay.service';
 import { ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
 import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
+import { CursorSellService } from '../cursor-sell/cursor-sell.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 
 /**
@@ -16,6 +17,7 @@ const SECRET_KEYS = new Set<string>([
   'email_code_agent_secret',
   'aizhp_open_api_key',
   'cursor_refund_owner_token',
+  'cursor_sell_api_key',
 ]);
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */
@@ -28,6 +30,7 @@ export class SiteSettingsService {
     @Optional() @Inject(forwardRef(() => AlipayService)) private alipay?: AlipayService,
     @Optional() @Inject(forwardRef(() => ForgeOpenapiService)) private forge?: ForgeOpenapiService,
     @Optional() @Inject(forwardRef(() => AizhpOpenService)) private aizhpOpen?: AizhpOpenService,
+    @Optional() @Inject(forwardRef(() => CursorSellService)) private cursorSell?: CursorSellService,
   ) {}
 
   async getPublic() {
@@ -123,6 +126,9 @@ export class SiteSettingsService {
     }
     if (keys.some((k) => k.startsWith('aizhp_open_'))) {
       this.aizhpOpen?.invalidate();
+    }
+    if (keys.some((k) => k.startsWith('cursor_sell_'))) {
+      this.cursorSell?.invalidate();
     }
     return { updated: ops.length };
   }

@@ -56,6 +56,12 @@ const aizhpFields: Field[] = [
   { key: 'aizhp_open_api_key', label: 'API Key', placeholder: '你的 X-User-API-Key', isPublic: false, type: 'textarea', mono: true, hint: '在 aizhp 平台获取，加密存储。' },
 ];
 
+const cursorSellFields: Field[] = [
+  { key: 'cursor_sell_enabled', label: '启用 Team 兑换', isPublic: false, type: 'switch', hint: '开启后前台「兑换码」页出现「Team 兑换」选项，用户输入的充值卡码会交给上游售号 API 兑换' },
+  { key: 'cursor_sell_api_base', label: 'API Base URL', placeholder: 'https://cursor.zhangyuwang.cn/api/open/sell', isPublic: false, type: 'text', mono: true, hint: '留空使用默认地址。不带尾部斜杠。' },
+  { key: 'cursor_sell_api_key', label: 'API Key', placeholder: '售号平台签发的 API Key（Authorization: Bearer）', isPublic: false, type: 'textarea', mono: true, hint: '需已绑定用户；加密存储，保存后不再回显。' },
+];
+
 const wecomFields: Field[] = [
   { key: 'wecom_notify_enabled', label: '启用企业微信通知', isPublic: false, type: 'switch', hint: '关闭后不再推送任何企微提醒' },
   { key: 'wecom_webhook_url', label: '群机器人 Webhook', placeholder: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx', isPublic: false, type: 'text', mono: true, hint: '企业微信群 → 添加群机器人 → 复制 Webhook 地址' },
@@ -68,7 +74,7 @@ const cursorRefundFields: Field[] = [
   { key: 'cursor_refund_owner_token', label: '团队 owner token', placeholder: 'user_xxx::eyJ...', isPublic: false, type: 'textarea', mono: true, hint: '常驻退款团队 owner 的 WorkosCursorSessionToken，加密存储；退款链用它发邀请/踢人' },
 ];
 
-const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key', 'cursor_refund_owner_token']);
+const SECRET_KEYS = new Set(['alipay_private_key', 'alipay_public_key', 'email_code_agent_secret', 'aizhp_open_api_key', 'cursor_refund_owner_token', 'cursor_sell_api_key']);
 const SECRET_PLACEHOLDER = '__keep__';
 
 const values = ref<Record<string, string>>({});
@@ -78,7 +84,24 @@ const hasValueMap = ref<Record<string, boolean>>({});
 const secretEdited = ref<Record<string, boolean>>({});
 const loading = ref(false);
 const saving = ref(false);
-const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp' | 'wecom' | 'cursor_refund'>('site');
+const activeTab = ref<'site' | 'alipay' | 'email_code' | 'aizhp' | 'cursor_sell' | 'wecom' | 'cursor_refund'>('site');
+
+/** Team 售号渠道：用「查余额」验证已保存的 API Key 是否可用 */
+const cursorSellTesting = ref(false);
+const cursorSellBalance = ref<number | null>(null);
+async function testCursorSell() {
+  cursorSellTesting.value = true;
+  cursorSellBalance.value = null;
+  try {
+    const r = await api.admin.cursorSellWallet();
+    cursorSellBalance.value = r.balance;
+    ElMessage.success(`连接成功，售号钱包余额 ¥${r.balance.toFixed(2)}`);
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.error || e?.message || '连接失败');
+  } finally {
+    cursorSellTesting.value = false;
+  }
+}
 
 async function load() {
   loading.value = true;
@@ -102,6 +125,8 @@ async function load() {
     if (!values.value.email_code_timeout_ms) values.value.email_code_timeout_ms = '15000';
     if (values.value.aizhp_open_enabled === undefined) values.value.aizhp_open_enabled = 'false';
     if (!values.value.aizhp_open_api_base) values.value.aizhp_open_api_base = 'https://account.aizhp.site';
+    if (values.value.cursor_sell_enabled === undefined) values.value.cursor_sell_enabled = 'false';
+    if (!values.value.cursor_sell_api_base) values.value.cursor_sell_api_base = 'https://cursor.zhangyuwang.cn/api/open/sell';
     if (values.value.wecom_notify_enabled === undefined) values.value.wecom_notify_enabled = 'false';
     if (!values.value.refund_delay_hours) values.value.refund_delay_hours = '24';
     if (values.value.cursor_refund_enabled === undefined) values.value.cursor_refund_enabled = 'false';
@@ -114,7 +139,7 @@ async function save() {
   saving.value = true;
   try {
     const payload: Record<string, { value: string; isPublic?: boolean }> = {};
-    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields, ...wecomFields, ...cursorRefundFields]) {
+    for (const f of [...siteFields, ...alipayFields, ...emailCodeFields, ...aizhpFields, ...cursorSellFields, ...wecomFields, ...cursorRefundFields]) {
       if (SECRET_KEYS.has(f.key)) {
         if (!secretEdited.value[f.key]) {
           // 没改过 → 发占位符，让后端跳过
@@ -179,6 +204,11 @@ onMounted(load);
           activeTab === 'aizhp' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'aizhp'"
       >Aizhp 渠道</button>
+      <button
+        :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
+          activeTab === 'cursor_sell' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
+        @click="activeTab = 'cursor_sell'"
+      >Team 兑换</button>
       <button
         :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
           activeTab === 'wecom' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
@@ -424,6 +454,80 @@ onMounted(load);
 
             <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Team 兑换（上游售号 API） -->
+    <div v-show="activeTab === 'cursor_sell'" class="space-y-4">
+      <div class="card p-4 bg-sky-50/40 border-sky-200 text-sky-900 text-xs flex gap-3">
+        <span class="text-base">ℹ</span>
+        <div class="space-y-1.5 leading-relaxed">
+          <p>对接 <b>Cursor 成品号购买 API</b>（<code class="font-mono">/api/open/sell/*</code>）。鉴权方式：<code class="font-mono">Authorization: Bearer API_KEY</code>。</p>
+          <p><b>功能</b>：前台「兑换码」页新增「Team 兑换」选项；用户输入的充值卡码（<code class="font-mono">SC-…</code>）由本站后端调用 <code class="font-mono">POST /wallet/redeem</code> 兑换，并把到账金额展示给用户。每次兑换成功 / 失败都会写入审计日志（动作 <code class="font-mono">TEAM_REDEEM</code>）。</p>
+          <p><b>安全</b>：API Key 会被 AES-GCM 加密入库，保存后不再回显，永远不发给浏览器；售号钱包余额只对管理员登录态展示。</p>
+        </div>
+      </div>
+
+      <div class="card p-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+          <div
+            v-for="f in cursorSellFields"
+            :key="f.key"
+            :class="f.type === 'textarea' ? 'md:col-span-2' : ''"
+          >
+            <label class="block text-sm font-medium text-ink-800 mb-1">{{ f.label }}</label>
+            <p class="text-[11px] text-ink-400 mb-1.5 font-mono">key: {{ f.key }}</p>
+
+            <label v-if="f.type === 'switch'" class="inline-flex items-center cursor-pointer">
+              <input type="checkbox"
+                :checked="values[f.key] === 'true'"
+                @change="values[f.key] = ($event.target as HTMLInputElement).checked ? 'true' : 'false'"
+              />
+              <span class="ml-2 text-sm text-ink-700">
+                {{ values[f.key] === 'true' ? '开启' : '关闭' }}
+              </span>
+            </label>
+
+            <div v-else-if="f.type === 'textarea'">
+              <textarea
+                v-model="values[f.key]"
+                rows="3"
+                :placeholder="SECRET_KEYS.has(f.key) && hasValueMap[f.key] && !secretEdited[f.key] ? '已设置（留空保持不变；输入新值覆盖）' : f.placeholder"
+                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm font-mono break-all"
+                @input="SECRET_KEYS.has(f.key) && markSecretEdit(f.key)"
+              />
+              <p v-if="SECRET_KEYS.has(f.key) && hasValueMap[f.key]" class="text-[11px] text-brand-700 mt-1">
+                ✓ 已设置且加密保存于数据库
+              </p>
+              <p v-else-if="SECRET_KEYS.has(f.key)" class="text-[11px] text-ink-400 mt-1">
+                ✗ 尚未设置
+              </p>
+            </div>
+
+            <input
+              v-else
+              v-model="values[f.key]"
+              :placeholder="f.placeholder"
+              :class="['w-full px-3 py-2 border border-ink-200 rounded-lg text-sm', f.mono ? 'font-mono text-xs' : '']"
+            />
+
+            <p v-if="f.hint" class="text-[11px] text-ink-400 mt-1">{{ f.hint }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-ink-100 flex items-center gap-3 flex-wrap">
+          <button
+            class="px-4 py-1.5 rounded-lg border border-ink-200 hover:bg-ink-50 text-sm disabled:opacity-50"
+            :disabled="cursorSellTesting"
+            @click="testCursorSell"
+          >
+            {{ cursorSellTesting ? '连接中…' : '测试连接（查售号钱包余额）' }}
+          </button>
+          <span v-if="cursorSellBalance !== null" class="text-sm text-emerald-700">
+            售号钱包余额：¥{{ cursorSellBalance.toFixed(2) }}
+          </span>
+          <span class="text-xs text-ink-400">先「保存所有更改」再测试；测试使用的是数据库里已保存的配置。</span>
         </div>
       </div>
     </div>

@@ -401,6 +401,10 @@ export const api = {
       http.get('/aizhp-open/refunds', { params }),
     aizhpRefundDetail: (id: number) => http.get(`/aizhp-open/refunds/${id}`),
 
+    // Team 售号渠道：查售号钱包余额（校验 API Key 是否配置正确）
+    cursorSellWallet: () =>
+      http.get<{ balanceCents: number; balance: number }>('/cursor-sell/wallet', { silent: true } as any),
+
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
 
@@ -799,6 +803,27 @@ export const api = {
     info: (code: string) =>
       http.get(`/redeem/${encodeURIComponent(code)}`, { silent: true } as any),
     use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
+  },
+
+  /** Team 兑换：本站后端代理上游售号 API 的「兑换充值卡」接口 */
+  cursorSell: {
+    enabled: () => http.get<{ enabled: boolean }>('/cursor-sell/enabled', { silent: true } as any),
+    redeem: (code: string) =>
+      http.post<{
+        code: string;
+        amountCents: number;
+        amount: number;
+        redeemedAt: string;
+        /** 仅管理员登录态可见 */
+        balanceCents?: number;
+        balance?: number;
+        /** 上游若额外返回凭据字段会原样带回 */
+        email?: string;
+        password?: string;
+        token?: string;
+        rawLine?: string;
+        [key: string]: unknown;
+      }>('/cursor-sell/redeem', { code }, { silent: true } as any),
   },
 
   pay: {

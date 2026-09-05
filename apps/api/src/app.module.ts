@@ -39,6 +39,7 @@ import { CustomerRefundModule } from './modules/customer-refund/customer-refund.
 import { DesktopFilesModule } from './modules/desktop-files/desktop-files.module';
 import { TxtDocsModule } from './modules/txt-docs/txt-docs.module';
 import { AccountVaultModule } from './modules/account-vault/account-vault.module';
+import { CursorSellModule } from './modules/cursor-sell/cursor-sell.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { AccountVaultModule } from './modules/account-vault/account-vault.module
     DesktopFilesModule,
     TxtDocsModule,
     AccountVaultModule,
+    CursorSellModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

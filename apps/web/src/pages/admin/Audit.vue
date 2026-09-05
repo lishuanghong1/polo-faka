@@ -12,6 +12,7 @@ const labelMap: Record<string, string> = {
   POOL_ACCOUNT_CREATE: '新建号池账号',
   POOL_ACCOUNT_UPDATE: '编辑号池账号',
   POOL_ACCOUNT_DELETE: '删除号池账号',
+  TEAM_REDEEM: 'Team 兑换',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',
