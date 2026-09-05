@@ -1,92 +1,125 @@
-import { BadRequestException, Body, Controller, Get, Post, Req } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Request } from 'express';
-import { CursorSellService } from './cursor-sell.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { Public } from '../../common/decorators/public.decorator';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../audit/audit.constants';
-import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '../../common/decorators/current-user.decorator';
+import { CursorSellFulfilService } from './cursor-sell-fulfil.service';
 
-class TeamRedeemDto {
+class OrderAccessDto {
   @IsString()
-  @IsNotEmpty({ message: '请填写兑换码' })
-  @MaxLength(128, { message: '兑换码过长' })
-  code!: string;
+  @IsNotEmpty()
+  @MaxLength(64)
+  orderNo!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  contact?: string;
 }
 
+class LoginApproveDto extends OrderAccessDto {
+  @IsString()
+  @IsNotEmpty({ message: '请粘贴登录链接' })
+  @MaxLength(4000)
+  loginUrl!: string;
+}
+
+/**
+ * 前台订单页用的 Team 成交操作（公开接口）。
+ * 鉴权沿用订单查询规则：订单号 + （下单时填过联系方式则必须匹配）。
+ */
 @ApiTags('cursor-sell')
 @Controller('cursor-sell')
 export class CursorSellController {
   constructor(
-    private svc: CursorSellService,
+    private prisma: PrismaService,
+    private fulfil: CursorSellFulfilService,
     private audit: AuditService,
   ) {}
 
-  /** 前台据此决定是否展示「Team 兑换」选项 */
-  @Public()
-  @Get('enabled')
-  async enabled() {
-    return { enabled: await this.svc.isEnabled() };
+  /** 校验：订单可访问 + 该成交属于该订单 */
+  private async assertAccess(saleLocalId: number, orderNo: string, contact?: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo: orderNo.trim() },
+      select: { orderNo: true, contact: true },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.contact && (contact?.trim() || '') !== order.contact) {
+      throw new NotFoundException('订单不存在');
+    }
+    const sale = await this.prisma.cursorSellSale.findUnique({ where: { id: saleLocalId } });
+    if (!sale) throw new NotFoundException('成交记录不存在');
+    let belongs = sale.orderNo === order.orderNo;
+    if (!belongs && sale.cardKeyId) {
+      const ck = await this.prisma.cardKey.findUnique({
+        where: { id: sale.cardKeyId },
+        select: { orderNo: true },
+      });
+      belongs = ck?.orderNo === order.orderNo;
+    }
+    if (!belongs) throw new NotFoundException('成交记录不存在');
+    return sale;
   }
 
-  /**
-   * Team 兑换：把用户输入的充值卡码交给上游「兑换充值卡」接口。
-   * 公开接口 + 限流；成功/失败都写审计，便于排查与发现撞库。
-   */
+  /** 用户提交 Cursor 客户端的 loginDeepControl 链接，完成授权登录 */
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post('redeem')
-  async redeem(
-    @Body() body: TeamRedeemDto,
-    @Req() req: Request,
-    @CurrentUser() user?: JwtPayload,
-  ) {
-    const code = body.code.trim();
-    try {
-      const data = await this.svc.redeemWalletCard(code);
-      const { balanceCents, ...rest } = data;
-      const amountCents = Number(rest.amountCents ?? 0);
-      void this.audit.fromReq(req, AuditActions.TEAM_REDEEM, {
-        target: code,
-        detail: { ok: true, amountCents, balanceCents },
-      });
-      // 渠道钱包余额是本站的经营数据，只回给管理员
-      const isAdmin = user?.role === 'ADMIN';
-      return {
-        ...rest,
-        code,
-        amountCents,
-        amount: amountCents / 100,
-        redeemedAt: new Date().toISOString(),
-        ...(isAdmin && typeof balanceCents === 'number'
-          ? { balanceCents, balance: balanceCents / 100 }
-          : {}),
-      };
-    } catch (e) {
-      const err = e as { errorCode?: string; message?: string };
-      void this.audit.fromReq(req, AuditActions.TEAM_REDEEM, {
-        target: code,
-        detail: { ok: false, errorCode: err.errorCode, error: err.message },
-      });
-      throw e;
-    }
+  @Post('sales/:id/login-approve')
+  async loginApprove(@Param('id') id: string, @Body() body: LoginApproveDto, @Req() req: Request) {
+    const sale = await this.assertAccess(Number(id), body.orderNo, body.contact);
+    const r = await this.fulfil.loginApprove(sale.id, body.loginUrl);
+    void this.audit.fromReq(req, AuditActions.CURSOR_SELL_LOGIN_APPROVE, {
+      target: `sale:${sale.id}`,
+      detail: { approved: r.approved, orderNo: body.orderNo, by: 'customer' },
+    });
+    return r;
   }
 
-  /** 后台：查售号钱包余额，用于校验 API Key 配置是否正确 */
-  @Roles('ADMIN')
-  @ApiBearerAuth()
-  @Get('wallet')
-  async wallet() {
-    if (!(await this.svc.isEnabled())) {
-      throw new BadRequestException('Team 兑换未启用，请先打开开关并保存');
-    }
-    if (!(await this.svc.hasApiKey())) {
-      throw new BadRequestException('未配置 API Key，无法查询钱包余额；兑换接口本身可不带 Key 使用');
-    }
-    const { balanceCents } = await this.svc.getWallet();
-    return { balanceCents, balance: balanceCents / 100 };
+  /** 只读额度（邮箱 / 会员 / 用量） */
+  @Public()
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  @Get('sales/:id/usage')
+  async usage(
+    @Param('id') id: string,
+    @Query('orderNo') orderNo: string,
+    @Query('contact') contact?: string,
+  ) {
+    const sale = await this.assertAccess(Number(id), orderNo || '', contact);
+    return this.fulfil.usage(sale.id);
+  }
+
+  /** 授权登录教程正文 */
+  @Public()
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  @Get('sales/:id/login-tutorial')
+  async loginTutorial(
+    @Param('id') id: string,
+    @Query('orderNo') orderNo: string,
+    @Query('contact') contact?: string,
+  ) {
+    const sale = await this.assertAccess(Number(id), orderNo || '', contact);
+    return this.fulfil.loginTutorial(sale.id);
+  }
+
+  /** 重取凭据 / 刷新开通状态 */
+  @Public()
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  @Post('sales/:id/refresh')
+  async refresh(@Param('id') id: string, @Body() body: OrderAccessDto) {
+    const sale = await this.assertAccess(Number(id), body.orderNo, body.contact);
+    return this.fulfil.refreshSaleById(sale.id);
   }
 }

@@ -35,6 +35,7 @@ const vipOverrides = ref<Record<string, number>>({}); // tier -> discount
 const currentSku = computed(() => product.value?.skus?.find((s: any) => s.id === skuId.value));
 const isPoolQuotaProduct = computed(() => product.value?.deliveryType === 'POOL_QUOTA');
 const isAizhpProduct = computed(() => product.value?.deliveryType === 'AIZHP');
+const isCursorSellProduct = computed(() => product.value?.deliveryType === 'CURSOR_SELL');
 // 商品级积分开关（后端没下发时默认开启返积分、禁用积分支付以保守为先）
 const pointsAwardEnabled = computed(() => product.value?.pointsAwardEnabled !== false);
 const pointsPayEnabled = computed(() => product.value?.pointsPayEnabled === true);
@@ -274,10 +275,18 @@ async function buy() {
       </div>
 
       <div
-        v-if="currentSku && currentSku.stock <= 0 && !isPoolQuotaProduct && !isAizhpProduct"
+        v-if="currentSku && currentSku.stock <= 0 && !isPoolQuotaProduct && !isAizhpProduct && !isCursorSellProduct"
         class="mt-3 px-3 py-2 rounded-lg bg-amber-50/70 border border-amber-200 text-xs text-amber-800 leading-relaxed"
       >
         当前规格暂无库存，可正常下单并完成支付，付款后我们会人工尽快为您发货；如急需可在订单页联系客服。
+      </div>
+
+      <div
+        v-if="isCursorSellProduct"
+        class="mt-3 px-3 py-2 rounded-lg bg-sky-50/70 border border-sky-200 text-xs text-sky-900 leading-relaxed"
+      >
+        付款后系统自动从渠道为您采购并发到订单页，通常数秒内到账。
+        <template v-if="currentSku && currentSku.stock <= 0">渠道当前显示缺货，下单后会自动重试，长时间未发货可在订单页联系客服。</template>
       </div>
 
       <div

@@ -49,6 +49,71 @@ export type TxtUploadResult = {
   }>;
 };
 
+/** Team 售号渠道：上游商品缓存 */
+export type CursorSellProduct = {
+  code: string;
+  title: string;
+  tier: string;
+  priceCents: number;
+  price: number;
+  warrantyHours: number | null;
+  deliveryFields: string[];
+  /** account 凭据直发 / login 授权登录 / card 池卡密 / extract 次数票 */
+  deliveryMode: 'account' | 'login' | 'card' | 'extract';
+  stock: number;
+  extractOnly: boolean;
+  ondemandTeam: boolean;
+  active: boolean;
+  lastSyncAt: string | null;
+};
+
+/** Team 售号渠道：一次 buy-account 调用 */
+export type CursorSellPurchase = {
+  id: number;
+  idempotencyKey: string;
+  source: 'ORDER' | 'MANUAL';
+  orderNo: string | null;
+  productCode: string;
+  productTitle: string;
+  qty: number;
+  extractSplit: boolean;
+  status: 'PENDING' | 'DONE' | 'MAKING' | 'FAILED';
+  kind: string | null;
+  costCents: number | null;
+  cost: number | null;
+  errorCode: string | null;
+  failReason: string | null;
+  attempts: number;
+  lastAttemptAt: string | null;
+  operatorId: number | null;
+  saleCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Team 售号渠道：上游每个成交 / 提取卡 */
+export type CursorSellSale = {
+  id: number;
+  purchaseId: number;
+  orderNo: string | null;
+  cardKeyId: number | null;
+  saleId: number | null;
+  extractCardId: number | null;
+  kind: 'account' | 'login' | 'card' | 'extract' | string;
+  productCode: string;
+  tier: string | null;
+  email: string | null;
+  making: boolean;
+  loginApprove: boolean;
+  loginApprovedAt: string | null;
+  warrantyUntil: string | null;
+  soldAt: string | null;
+  credentials: Record<string, string>;
+  usage: unknown;
+  usageAt: string | null;
+  createdAt: string;
+};
+
 export type AdminUserDetail = {
   user: {
     id: number;
@@ -401,9 +466,89 @@ export const api = {
       http.get('/aizhp-open/refunds', { params }),
     aizhpRefundDetail: (id: number) => http.get(`/aizhp-open/refunds/${id}`),
 
-    // Team 售号渠道：查售号钱包余额（校验 API Key 是否配置正确）
-    cursorSellWallet: () =>
-      http.get<{ balanceCents: number; balance: number }>('/cursor-sell/wallet', { silent: true } as any),
+    // ── Team 售号渠道（cursor.zhangyuwang.cn 成品号购买 API） ──
+    cursorSell: {
+      overview: () =>
+        http.get<{
+          enabled: boolean;
+          hasApiKey: boolean;
+          balanceCents: number | null;
+          balance: number | null;
+          walletError: string | null;
+          lowBalanceCents: number;
+          pending: number;
+          making: number;
+          failed: number;
+          todayPurchases: number;
+          todayCostCents: number;
+          productCount: number;
+          activeProductCount: number;
+          lastSyncAt: string | null;
+        }>('/admin/cursor-sell/overview', { silent: true } as any),
+      walletRedeem: (code: string) =>
+        http.post<{ amountCents: number; balanceCents: number; amount: number; balance: number }>(
+          '/admin/cursor-sell/wallet/redeem',
+          { code },
+          { silent: true } as any,
+        ),
+      products: (activeOnly = false) =>
+        http.get<CursorSellProduct[]>('/admin/cursor-sell/products', { params: activeOnly ? { activeOnly: 1 } : {} }),
+      syncProducts: () =>
+        http.post<{ upserted: number; deactivated: number; syncedAt: string }>(
+          '/admin/cursor-sell/products/sync',
+          undefined,
+          { silent: true, timeout: 60_000 } as any,
+        ),
+      purchases: (params: { page?: number; pageSize?: number; status?: string; source?: string; keyword?: string }) =>
+        http.get<{ total: number; page: number; pageSize: number; items: CursorSellPurchase[] }>(
+          '/admin/cursor-sell/purchases',
+          { params },
+        ),
+      purchase: (id: number) =>
+        http.get<CursorSellPurchase & { sales: CursorSellSale[]; rawResponse: unknown }>(
+          `/admin/cursor-sell/purchases/${id}`,
+        ),
+      manualPurchase: (body: {
+        code: string;
+        qty: number;
+        extractSplit?: boolean;
+        destination?: 'NONE' | 'CARD_POOL' | 'WAREHOUSE';
+        skuId?: number;
+      }) =>
+        http.post<CursorSellPurchase & { sales: CursorSellSale[] }>(
+          '/admin/cursor-sell/purchases/manual',
+          body,
+          { silent: true, timeout: 90_000 } as any,
+        ),
+      retryPurchase: (id: number) =>
+        http.post<CursorSellPurchase>(`/admin/cursor-sell/purchases/${id}/retry`, undefined, {
+          silent: true,
+          timeout: 90_000,
+        } as any),
+      pushPurchase: (id: number, body: { destination: 'CARD_POOL' | 'WAREHOUSE'; skuId?: number }) =>
+        http.post<{ pushed: number }>(`/admin/cursor-sell/purchases/${id}/push`, body, { silent: true } as any),
+      sale: (id: number) => http.get<CursorSellSale>(`/admin/cursor-sell/sales/${id}`),
+      refreshSale: (id: number) =>
+        http.post<CursorSellSale>(`/admin/cursor-sell/sales/${id}/refresh`, undefined, { silent: true } as any),
+      pushSale: (id: number, body: { destination: 'CARD_POOL' | 'WAREHOUSE'; skuId?: number }) =>
+        http.post(`/admin/cursor-sell/sales/${id}/push`, body, { silent: true } as any),
+      saleUsage: (id: number) =>
+        http.get<Record<string, unknown>>(`/admin/cursor-sell/sales/${id}/usage`, { silent: true } as any),
+      saleTutorial: (id: number) =>
+        http.get<unknown>(`/admin/cursor-sell/sales/${id}/login-tutorial`, { silent: true } as any),
+      saleLoginApprove: (id: number, loginUrl: string) =>
+        http.post<{ approved: boolean }>(
+          `/admin/cursor-sell/sales/${id}/login-approve`,
+          { loginUrl },
+          { silent: true } as any,
+        ),
+      upstreamOrders: () => http.get<any[]>('/admin/cursor-sell/upstream/orders', { silent: true } as any),
+      extractCards: (paymentOrderNo?: string) =>
+        http.get<Array<{ id: number; code: string; masked: string; totalCredits: number; remainingCredits: number }>>(
+          '/admin/cursor-sell/upstream/extract-cards',
+          { params: paymentOrderNo ? { paymentOrderNo } : {}, silent: true } as any,
+        ),
+    },
 
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
@@ -805,25 +950,22 @@ export const api = {
     use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
   },
 
-  /** Team 兑换：本站后端代理上游售号 API 的「兑换充值卡」接口 */
+  /** Team 售号渠道：订单页上的成交操作（订单号 + 联系方式鉴权） */
   cursorSell: {
-    enabled: () => http.get<{ enabled: boolean }>('/cursor-sell/enabled', { silent: true } as any),
-    redeem: (code: string) =>
-      http.post<{
-        code: string;
-        amountCents: number;
-        amount: number;
-        redeemedAt: string;
-        /** 仅管理员登录态可见 */
-        balanceCents?: number;
-        balance?: number;
-        /** 上游若额外返回凭据字段会原样带回 */
-        email?: string;
-        password?: string;
-        token?: string;
-        rawLine?: string;
-        [key: string]: unknown;
-      }>('/cursor-sell/redeem', { code }, { silent: true } as any),
+    loginApprove: (saleId: number, body: { orderNo: string; contact?: string; loginUrl: string }) =>
+      http.post<{ approved: boolean }>(`/cursor-sell/sales/${saleId}/login-approve`, body, {
+        silent: true,
+        timeout: 60_000,
+      } as any),
+    usage: (saleId: number, params: { orderNo: string; contact?: string }) =>
+      http.get<Record<string, unknown>>(`/cursor-sell/sales/${saleId}/usage`, {
+        params,
+        silent: true,
+      } as any),
+    loginTutorial: (saleId: number, params: { orderNo: string; contact?: string }) =>
+      http.get<unknown>(`/cursor-sell/sales/${saleId}/login-tutorial`, { params, silent: true } as any),
+    refresh: (saleId: number, body: { orderNo: string; contact?: string }) =>
+      http.post<CursorSellSale>(`/cursor-sell/sales/${saleId}/refresh`, body, { silent: true } as any),
   },
 
   pay: {

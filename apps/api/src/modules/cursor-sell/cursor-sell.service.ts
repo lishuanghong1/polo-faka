@@ -8,39 +8,47 @@ import {
 import axios, { AxiosInstance } from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { decryptString, isEncrypted, maskSecret } from '../../common/crypto.util';
+import {
+  UpstreamAccountSale,
+  UpstreamBuyResult,
+  UpstreamExtractCard,
+  UpstreamOrderSummary,
+  UpstreamProduct,
+} from './cursor-sell.types';
 
 /**
- * Cursor 成品号购买 API（cursor.zhangyuwang.cn/api/open/sell）客户端。
+ * Cursor 成品号购买 API（cursor.zhangyuwang.cn/api/open/sell）HTTP 客户端。
  *
- * 鉴权：请求头 `Authorization: Bearer <API_KEY>`。API Key 可选：
- * 站点设置里没填时请求不带 Authorization 头（兑换充值卡接口允许匿名调用），
- * 只有查余额这类必须鉴权的接口才要求配置 Key。
- * 响应统一为 `{ ok: true, data }` / `{ ok: false, error_code, error }`；
- * 金额单位一律「人民币分」。
+ * - 鉴权：`Authorization: Bearer <API_KEY>`。Key 可选：未配置时不带该头（兑换充值卡允许匿名），
+ *   其余接口上游会返回 NO_KEY。
+ * - 响应统一 `{ ok: true, data }` / `{ ok: false, error_code, error }`；金额单位「分」。
+ * - 买号必须带 Idempotency-Key：同一 Key + 同一商品重试返回同一笔成交，绝不重复扣费。
  *
- * 目前只用到「兑换充值卡」（前台 Team 兑换）与「查余额」（后台校验配置）。
- * API Key 用 AES-GCM 加密存于 site_settings，永远不下发到浏览器。
+ * 这里只负责「发请求 + 错误翻译」，采购/发货/落库逻辑在 CursorSellFulfilService。
  */
 
-const SETTING_KEYS = ['cursor_sell_enabled', 'cursor_sell_api_base', 'cursor_sell_api_key'];
+const SETTING_KEYS = [
+  'cursor_sell_enabled',
+  'cursor_sell_api_base',
+  'cursor_sell_api_key',
+  'cursor_sell_low_balance_yuan',
+];
 
-const DEFAULT_API_BASE = 'https://cursor.zhangyuwang.cn/api/open/sell';
+export const CURSOR_SELL_DEFAULT_API_BASE = 'https://cursor.zhangyuwang.cn/api/open/sell';
 
 export interface CursorSellConfig {
   baseUrl: string;
   /** 可为空串：表示匿名调用 */
   apiKey: string;
+  /** 低余额提醒阈值（分），0 = 关闭 */
+  lowBalanceCents: number;
 }
 
-export interface WalletRedeemResult {
-  amountCents: number;
-  balanceCents: number;
-  /** 上游若按商品配置额外返回了字段（如凭据），原样保留 */
-  [key: string]: unknown;
-}
-
-/** 这些错误码说明是本站的渠道凭证/配置有问题，不应把上游原文直接暴露给终端用户 */
+/** 本站渠道凭证/配置问题：不把上游原文暴露给终端用户 */
 const CONFIG_ERROR_CODES = new Set(['NO_KEY', 'INVALID_KEY', 'FORBIDDEN', 'KEY_NOT_BOUND']);
+
+/** 上游明确说「未扣费，可用同一幂等键重试」的错误，以及库存类可稍后再试的错误 */
+export const RETRYABLE_ERROR_CODES = new Set(['UPSTREAM_UNAVAILABLE', 'OUT_OF_STOCK']);
 
 export class CursorSellApiError extends HttpException {
   constructor(
@@ -54,13 +62,30 @@ export class CursorSellApiError extends HttpException {
     );
   }
 
-  private static friendlyMessage(code: string, message: string): string {
+  get isConfigError() {
+    return CONFIG_ERROR_CODES.has(this.errorCode);
+  }
+
+  get isRetryable() {
+    return RETRYABLE_ERROR_CODES.has(this.errorCode);
+  }
+
+  static friendlyMessage(code: string, message: string): string {
     if (CONFIG_ERROR_CODES.has(code)) {
-      return 'Team 兑换渠道暂不可用（渠道凭证无效或无权限），请联系客服';
+      return 'Team 渠道暂不可用（渠道凭证无效或无权限），请联系客服';
     }
-    if (code === 'UPSTREAM_UNAVAILABLE') return '上游暂时无法确认状态，请稍后重试';
-    // 上游的 error 本身就是中文说明（如「充值卡不存在」），优先透传
-    return message || code || '请求失败';
+    const map: Record<string, string> = {
+      IDEMPOTENCY_REQUIRED: '渠道请求缺少幂等键（程序错误）',
+      IDEMPOTENCY_CONFLICT: '幂等键已用于其它商品（程序错误）',
+      NO_SALES_WALLET: '渠道尚无售号钱包，请先兑换充值卡',
+      INSUFFICIENT_BALANCE: '渠道余额不足，请先充值',
+      PRODUCT_NOT_FOUND: '渠道商品不存在，请重新同步商品',
+      PRODUCT_DISABLED: '渠道商品已下架',
+      OUT_OF_STOCK: '渠道暂无可售库存，请稍后再试',
+      UPSTREAM_UNAVAILABLE: '账号状态暂无法确认，未扣费，请稍后重试',
+      ORDER_NOT_FOUND: '渠道订单不存在',
+    };
+    return map[code] || message || code || '请求失败';
   }
 
   private static mapStatus(code: string, upstreamStatus: number): number {
@@ -83,7 +108,7 @@ export class CursorSellService {
     this.snapshot = null;
   }
 
-  private async loadConfig(): Promise<CursorSellConfig | null> {
+  async loadConfig(): Promise<CursorSellConfig | null> {
     const rows = await this.prisma.siteSetting.findMany({
       where: { key: { in: SETTING_KEYS } },
     });
@@ -104,9 +129,11 @@ export class CursorSellService {
     const enabledRaw = (map.cursor_sell_enabled ?? '').trim();
     if (enabledRaw !== 'true' && enabledRaw !== '1') return null;
 
-    const baseUrl = ((map.cursor_sell_api_base ?? '').trim() || DEFAULT_API_BASE).replace(/\/+$/, '');
+    const baseUrl = ((map.cursor_sell_api_base ?? '').trim() || CURSOR_SELL_DEFAULT_API_BASE).replace(/\/+$/, '');
     const apiKey = (map.cursor_sell_api_key ?? '').trim();
-    return { baseUrl, apiKey };
+    const lowYuan = Number((map.cursor_sell_low_balance_yuan ?? '').trim());
+    const lowBalanceCents = Number.isFinite(lowYuan) && lowYuan > 0 ? Math.round(lowYuan * 100) : 0;
+    return { baseUrl, apiKey, lowBalanceCents };
   }
 
   private async getClient(): Promise<{ client: AxiosInstance; cfg: CursorSellConfig } | null> {
@@ -119,7 +146,7 @@ export class CursorSellService {
     if (!this.client || JSON.stringify(this.snapshot) !== JSON.stringify(cfg)) {
       this.client = axios.create({
         baseURL: cfg.baseUrl,
-        timeout: 30_000,
+        timeout: 45_000,
         headers: {
           'Content-Type': 'application/json',
           ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
@@ -139,7 +166,7 @@ export class CursorSellService {
     return !!(await this.getClient());
   }
 
-  /** 是否配置了 API Key（查余额等必须鉴权的接口需要） */
+  /** 是否配置了 API Key（除兑换充值卡外的接口都需要） */
   async hasApiKey(): Promise<boolean> {
     const cfg = await this.loadConfig();
     return !!cfg?.apiKey;
@@ -149,13 +176,14 @@ export class CursorSellService {
     method: 'GET' | 'POST',
     path: string,
     body?: Record<string, unknown>,
+    extraHeaders?: Record<string, string>,
   ): Promise<T> {
     const ctx = await this.getClient();
     if (!ctx) {
-      throw new ServiceUnavailableException('Team 兑换渠道未启用或配置不完整');
+      throw new ServiceUnavailableException('Team 渠道未启用或配置不完整');
     }
     try {
-      const resp = await ctx.client.request({ method, url: path, data: body });
+      const resp = await ctx.client.request({ method, url: path, data: body, headers: extraHeaders });
       const payload = (resp.data ?? {}) as {
         ok?: boolean;
         data?: T;
@@ -176,19 +204,78 @@ export class CursorSellService {
       const err = e as { code?: string; message?: string; response?: { status?: number } };
       const detail = `${err.code || (err.response?.status ? `HTTP_${err.response.status}` : 'UNKNOWN')} ${err.message || ''}`.trim();
       this.logger.error(`cursor-sell ${method} ${path} network error: ${detail}`);
-      throw new ServiceUnavailableException('Team 兑换渠道暂时不可用，请稍后重试');
+      throw new CursorSellNetworkError(detail);
     }
   }
 
-  // ====== 业务方法 ======
-
-  /** 接口 3：兑换充值卡到售号钱包 */
-  async redeemWalletCard(code: string): Promise<WalletRedeemResult> {
-    return this.request<WalletRedeemResult>('POST', '/wallet/redeem', { code });
+  // ====== 接口 1：列商品 ======
+  async listProducts(): Promise<UpstreamProduct[]> {
+    const data = await this.request<UpstreamProduct[]>('GET', '/products');
+    return Array.isArray(data) ? data : [];
   }
 
-  /** 接口 2：查售号钱包余额（后台校验 API Key 用） */
+  // ====== 接口 2：查余额 ======
   async getWallet(): Promise<{ balanceCents: number }> {
     return this.request<{ balanceCents: number }>('GET', '/wallet');
+  }
+
+  // ====== 接口 3：兑换充值卡 ======
+  async redeemWalletCard(code: string): Promise<{ amountCents: number; balanceCents: number }> {
+    return this.request('POST', '/wallet/redeem', { code });
+  }
+
+  // ====== 接口 4：买号（必须带 Idempotency-Key） ======
+  async buyAccount(
+    input: { code: string; qty?: number; extractSplit?: boolean },
+    idempotencyKey: string,
+  ): Promise<UpstreamBuyResult> {
+    const body: Record<string, unknown> = { code: input.code };
+    if (input.qty && input.qty > 1) body.qty = input.qty;
+    if (typeof input.extractSplit === 'boolean') body.extractSplit = input.extractSplit;
+    return this.request<UpstreamBuyResult>('POST', '/buy-account', body, {
+      'Idempotency-Key': idempotencyKey,
+    });
+  }
+
+  // ====== 接口 5：订单查询 ======
+  async listOrders(): Promise<UpstreamOrderSummary[]> {
+    const data = await this.request<UpstreamOrderSummary[] | { items?: UpstreamOrderSummary[] }>('GET', '/orders');
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  async getOrder(saleId: number): Promise<UpstreamAccountSale> {
+    return this.request<UpstreamAccountSale>('GET', `/orders/${saleId}`);
+  }
+
+  // ====== 接口 6：我的提取卡密（完整明文） ======
+  async listExtractCards(paymentOrderNo?: string): Promise<UpstreamExtractCard[]> {
+    const qs = paymentOrderNo ? `?paymentOrderNo=${encodeURIComponent(paymentOrderNo)}` : '';
+    const data = await this.request<UpstreamExtractCard[] | { items?: UpstreamExtractCard[] }>(
+      'GET',
+      `/extract-cards${qs}`,
+    );
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data?.items) ? data.items : [];
+  }
+
+  // ====== 接口 7：授权登录 / 额度 / 教程 ======
+  async loginApprove(saleId: number, loginUrl: string): Promise<{ approved: boolean }> {
+    return this.request('POST', `/orders/${saleId}/login-approve`, { loginUrl });
+  }
+
+  async getUsage(saleId: number): Promise<Record<string, unknown>> {
+    return this.request('GET', `/orders/${saleId}/usage`);
+  }
+
+  async getLoginTutorial(saleId: number): Promise<Record<string, unknown> | string> {
+    return this.request('GET', `/orders/${saleId}/login-tutorial`);
+  }
+}
+
+/** 网络层错误（DNS / 超时 / 5xx）：对用户固定文案，detail 留给日志和采购单 failReason */
+export class CursorSellNetworkError extends ServiceUnavailableException {
+  constructor(public readonly detail: string) {
+    super('Team 渠道暂时不可用，请稍后重试');
   }
 }

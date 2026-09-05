@@ -7,9 +7,17 @@ import { VipModule } from '../vip/vip.module';
 import { PoolModule } from '../pool/pool.module';
 import { PointsModule } from '../points/points.module';
 import { AizhpOpenModule } from '../aizhp-open/aizhp-open.module';
+import { CursorSellModule } from '../cursor-sell/cursor-sell.module';
 
 @Module({
-  imports: [forwardRef(() => AlipayModule), VipModule, PoolModule, PointsModule, AizhpOpenModule],
+  imports: [
+    forwardRef(() => AlipayModule),
+    VipModule,
+    PoolModule,
+    PointsModule,
+    AizhpOpenModule,
+    CursorSellModule,
+  ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersExpireCron],
   exports: [OrdersService],

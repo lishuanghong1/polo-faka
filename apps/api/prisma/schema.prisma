@@ -231,6 +231,7 @@ enum DeliveryType {
   POOL_QUOTA    // 号池额度包（push token 后查询）
   MANUAL        // 人工发货
   AIZHP         // Aizhp 渠道获取账号
+  CURSOR_SELL   // Team 售号渠道：支付后实时向上游 buy-account 采购发货
 }
 
 model Product {
@@ -1207,4 +1208,132 @@ model TxtDocument {
   @@index([categoryId, sort])
   @@index([categoryId, createdAt])
   @@map("txt_documents")
+}
+
+// ===================== Team 售号渠道（cursor.zhangyuwang.cn 成品号购买 API） =====================
+//
+// 流程：
+//   1. 后台同步上游商品到 cursor_sell_products（成本价 / 库存 / 交付字段）
+//   2. 本站商品选「CURSOR_SELL」交付类型，SKU attrs.cursorSellCode 绑定上游商品
+//   3. 订单支付后 buy-account 实时采购：一次调用 = 一条 cursor_sell_purchases，
+//      幂等键由订单号派生，重试永不重复扣费
+//   4. 上游每个 saleId / 每张提取卡落一条 cursor_sell_sales，并写入 card_keys（复用订单页展示）
+//   5. 现做 Team（making）由 cron 轮询 GET /orders/:id 直到就绪；授权登录发货由用户在订单页提交链接
+
+/// 上游商品缓存（GET /products 同步）
+model CursorSellProduct {
+  code           String    @id @db.VarChar(64)
+  title          String    @db.VarChar(128)
+  tier           String    @db.VarChar(32)
+  priceCents     Int
+  warrantyHours  Int?
+  /// 成交返回的凭据字段子集：["email","password","token","rawLine"]，含 "login" 为授权登录发货，含 "card" 为池卡密发货
+  deliveryFields Json?
+  /// 上游预估库存（静态估算）
+  stock          Int       @default(0)
+  /// 只卖次数票（XB- 提取卡密），不返回账号
+  extractOnly    Boolean   @default(false)
+  /// 现做 Team：成交可能带 making，需轮询
+  ondemandTeam   Boolean   @default(false)
+  /// 最近一次同步上游是否仍返回该商品；下架的保留记录但置 false
+  active         Boolean   @default(true)
+  /// 上游原始行，方便对照新字段
+  raw            Json?
+  lastSyncAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  purchases CursorSellPurchase[]
+
+  @@index([active, tier])
+  @@map("cursor_sell_products")
+}
+
+enum CursorSellPurchaseStatus {
+  PENDING   // 已建单 / 上游暂时失败，可重试（同一幂等键）
+  DONE      // 上游成交，凭据已落库
+  MAKING    // 现做 Team 开通中，等待轮询
+  FAILED    // 明确失败（余额不足 / 商品下架 / 超过重试上限），需人工介入
+}
+
+enum CursorSellPurchaseSource {
+  ORDER     // 本站订单自动发货
+  MANUAL    // 后台手动采购
+}
+
+/// 每次调用 buy-account 一条
+model CursorSellPurchase {
+  id             Int                      @id @default(autoincrement())
+  /// 上游 Idempotency-Key。订单发货为 polo:<orderNo>:<code>，手动采购为 polo:manual:<random>
+  idempotencyKey String                   @unique @db.VarChar(128)
+  source         CursorSellPurchaseSource @default(ORDER)
+  orderNo        String?                  @db.VarChar(64)
+  productCode    String                   @db.VarChar(64)
+  productTitle   String                   @db.VarChar(128)
+  qty            Int                      @default(1)
+  extractSplit   Boolean                  @default(false)
+  status         CursorSellPurchaseStatus @default(PENDING)
+  /// 上游 data.kind：account / accounts / extract
+  kind           String?                  @db.VarChar(16)
+  /// 成本快照：同步缓存里的 priceCents × qty（上游成交响应不含金额）
+  costCents      Int?
+  /// 上游成交响应（AES-GCM 加密 JSON），用于排障与重放落库
+  responseEnc    String?                  @db.Text
+  errorCode      String?                  @db.VarChar(64)
+  failReason     String?                  @db.VarChar(500)
+  attempts       Int                      @default(0)
+  lastAttemptAt  DateTime?
+  /// 手动采购的管理员
+  operatorId     Int?
+  /// 已推送过企微失败提醒的时间（避免重复刷屏）
+  notifiedAt     DateTime?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  product CursorSellProduct @relation(fields: [productCode], references: [code])
+  sales   CursorSellSale[]
+
+  @@index([orderNo])
+  @@index([status, createdAt])
+  @@index([source, createdAt])
+  @@map("cursor_sell_purchases")
+}
+
+/// 上游每个 saleId（账号）/ 每张提取卡 一条；与 card_keys 一一对应
+model CursorSellSale {
+  id              Int       @id @default(autoincrement())
+  purchaseId      Int
+  /// 直发订单时填；手动采购入卡密池后由 card_keys.orderNo 反查
+  orderNo         String?   @db.VarChar(64)
+  cardKeyId       Int?      @unique
+  /// 上游成交单 id（账号类），用于 GET /orders/:id、login-approve、usage
+  saleId          Int?
+  /// 上游提取卡 id（extract 类）
+  extractCardId   Int?
+  /// account（凭据直发）/ login（授权登录发货，无 token）/ card（池卡密）/ extract（XB- 次数票）
+  kind            String    @db.VarChar(16)
+  productCode     String    @db.VarChar(64)
+  tier            String?   @db.VarChar(32)
+  email           String?   @db.VarChar(255)
+  /// 现做 Team 开通中：凭据为空，等待轮询
+  making          Boolean   @default(false)
+  loginApprove    Boolean   @default(false)
+  loginApprovedAt DateTime?
+  warrantyUntil   DateTime?
+  soldAt          DateTime?
+  /// 结构化凭据（AES-GCM 加密 JSON）：{ email, password, token, rawLine, card, cardNote, extractCode, ... }
+  credentialsEnc  String?   @db.Text
+  /// 最近一次 GET /orders/:id/usage 的结果
+  usageJson       Json?
+  usageAt         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  purchase CursorSellPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@index([orderNo])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@index([making])
+  @@map("cursor_sell_sales")
 }

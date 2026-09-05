@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import api from '@/api';
+import api, { type CursorSellProduct } from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
@@ -12,6 +12,28 @@ const cats = ref<any[]>([]);
 const editing = ref<any | null>(null);
 const loading = ref(false);
 const filter = ref<{ status: string; keyword: string }>({ status: '', keyword: '' });
+
+/** Team 售号渠道商品缓存（CURSOR_SELL 交付类型下给规格绑定用） */
+const cursorSellProducts = ref<CursorSellProduct[]>([]);
+const cursorSellLoaded = ref(false);
+async function loadCursorSellProducts() {
+  if (cursorSellLoaded.value) return;
+  try {
+    cursorSellProducts.value = await api.admin.cursorSell.products(false);
+    cursorSellLoaded.value = true;
+  } catch {
+    cursorSellProducts.value = [];
+  }
+}
+function cursorSellProductOf(code: string) {
+  return cursorSellProducts.value.find((p) => p.code === code) || null;
+}
+watch(
+  () => editing.value?.deliveryType,
+  (t) => {
+    if (t === 'CURSOR_SELL') loadCursorSellProducts();
+  },
+);
 
 const statusOptions = [
   { value: '', label: '全部状态' },
@@ -54,6 +76,8 @@ function startEdit(p: any) {
   for (const s of editing.value.skus || []) {
     const attrs = s.attrs && typeof s.attrs === 'object' ? s.attrs : {};
     s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
+    s._cursorSellCode = attrs.cursorSellCode ?? '';
+    s._cursorSellExtractSplit = !!attrs.cursorSellExtractSplit;
   }
   // AIZHP 档位：从第一个 SKU 的 attrs.aizhpPlan 读取
   const firstSkuAttrs = editing.value.skus?.[0]?.attrs;
@@ -72,7 +96,7 @@ function newProduct() {
     _tagsStr: '',
     _bulkStr: '',
     warranty: '',
-    skus: [{ name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '' }],
+    skus: [{ name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '', _cursorSellCode: '', _cursorSellExtractSplit: false }],
     status: 'ON_SALE',
     deliveryType: 'CARD_KEY',
     pointsAwardEnabled: true,
@@ -102,9 +126,28 @@ async function save() {
   }
   delete payload._tagsStr;
   delete payload._bulkStr;
+  if (payload.deliveryType === 'CURSOR_SELL') {
+    const missing = (payload.skus || []).find((s: any) => !String(s._cursorSellCode || '').trim());
+    if (missing) {
+      ElMessage.warning(`规格「${missing.name || '未命名'}」还没绑定渠道商品`);
+      return;
+    }
+  }
   payload.skus = (payload.skus || []).map((raw: any) => {
     const s = { ...raw };
     const attrs = s.attrs && typeof s.attrs === 'object' && !Array.isArray(s.attrs) ? { ...s.attrs } : {};
+    // 渠道绑定字段只在 CURSOR_SELL 下保留，切换交付类型时清掉，避免残留误导
+    if (payload.deliveryType === 'CURSOR_SELL') {
+      attrs.cursorSellCode = String(s._cursorSellCode || '').trim();
+      const cp = cursorSellProductOf(attrs.cursorSellCode);
+      if (cp?.extractOnly && s._cursorSellExtractSplit) attrs.cursorSellExtractSplit = true;
+      else delete attrs.cursorSellExtractSplit;
+    } else {
+      delete attrs.cursorSellCode;
+      delete attrs.cursorSellExtractSplit;
+    }
+    delete s._cursorSellCode;
+    delete s._cursorSellExtractSplit;
     if (payload.deliveryType === 'POOL_QUOTA') {
       const validityDays = Number(s._poolValidityDays);
       delete attrs.poolQuota;
@@ -362,6 +405,7 @@ function removeSku(i: number) {
             <option value="POOL_QUOTA">号池额度包</option>
             <option value="MANUAL">人工发货</option>
             <option value="AIZHP">Aizhp 渠道</option>
+            <option value="CURSOR_SELL">Team 售号渠道（付款后实时向上游采购）</option>
           </select>
         </div>
         <div v-if="editing.deliveryType === 'AIZHP'">
@@ -530,6 +574,50 @@ function removeSku(i: number) {
           </div>
           <p class="text-[11px] text-brand-800 leading-relaxed">
             额度按订单实付金额和环境变量 POOL_QUOTA_PER_CNY 自动计算，无需单独设置总额度。
+          </p>
+        </div>
+        <div v-if="editing.deliveryType === 'CURSOR_SELL'" class="space-y-2">
+          <div
+            v-for="(s, i) in editing.skus"
+            :key="`cs-${i}`"
+            class="rounded-lg bg-sky-50/50 border border-sky-100 p-3 space-y-2"
+          >
+            <div class="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr] gap-2 items-end">
+              <div class="min-w-0">
+                <div class="text-xs text-ink-500 mb-1">规格</div>
+                <div class="text-sm text-ink-800 truncate">{{ s.name || `规格 ${i + 1}` }}</div>
+              </div>
+              <div>
+                <label class="block text-xs text-ink-500 mb-1">绑定渠道商品</label>
+                <select v-model="s._cursorSellCode" class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm bg-white">
+                  <option value="" disabled>请选择</option>
+                  <option v-for="cp in cursorSellProducts" :key="cp.code" :value="cp.code" :disabled="!cp.active">
+                    {{ cp.title }} · {{ cp.tier.toUpperCase() }} · 成本 ¥{{ cp.price.toFixed(2) }} · 库存 {{ cp.stock }}{{ cp.active ? '' : '（已下架）' }}
+                  </option>
+                </select>
+              </div>
+            </div>
+            <template v-if="cursorSellProductOf(s._cursorSellCode)">
+              <div class="text-[11px] text-ink-600 flex flex-wrap gap-x-3 gap-y-1">
+                <span>交付：<b>{{ { account: '凭据直发', login: '授权登录', card: '池卡密', extract: '次数票' }[cursorSellProductOf(s._cursorSellCode)!.deliveryMode] }}</b></span>
+                <span>字段：<span class="font-mono">{{ cursorSellProductOf(s._cursorSellCode)!.deliveryFields.join(', ') || '—' }}</span></span>
+                <span v-if="cursorSellProductOf(s._cursorSellCode)!.warrantyHours">质保 {{ cursorSellProductOf(s._cursorSellCode)!.warrantyHours }}h</span>
+                <span v-if="cursorSellProductOf(s._cursorSellCode)!.ondemandTeam" class="text-rose-700">现做（单次 ≤5，付款后先显示开通中）</span>
+                <span v-if="Number(s.price) > 0 && Number(s.price) < cursorSellProductOf(s._cursorSellCode)!.price" class="text-rose-700 font-medium">
+                  ⚠ 售价低于成本 ¥{{ cursorSellProductOf(s._cursorSellCode)!.price.toFixed(2) }}
+                </span>
+              </div>
+              <label v-if="cursorSellProductOf(s._cursorSellCode)!.extractOnly" class="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
+                <input v-model="s._cursorSellExtractSplit" type="checkbox" />
+                多件购买时拆成多张各 1 次的提取卡（不勾则 1 张 N 次）
+              </label>
+            </template>
+          </div>
+          <p v-if="!cursorSellProducts.length" class="text-[11px] text-amber-700">
+            还没有渠道商品缓存，请先到「Team 渠道 → 渠道商品」同步。
+          </p>
+          <p class="text-[11px] text-sky-800 leading-relaxed">
+            前台库存显示为渠道预估库存；付款后自动向上游采购，失败会停在「已支付」并企微提醒。授权登录类商品的买家需在订单页粘贴登录链接完成授权。
           </p>
         </div>
         <p v-if="editing.id" class="text-[11px] text-ink-400 mt-1">

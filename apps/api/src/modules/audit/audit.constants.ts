@@ -11,8 +11,13 @@ export const AuditActions = {
   POOL_ACCOUNT_UPDATE: 'POOL_ACCOUNT_UPDATE',
   POOL_ACCOUNT_DELETE: 'POOL_ACCOUNT_DELETE',
 
-  // Team 兑换（前台把充值卡码交给上游售号 API 兑换）
-  TEAM_REDEEM: 'TEAM_REDEEM',
+  // Team 售号渠道（cursor.zhangyuwang.cn 成品号购买 API）
+  CURSOR_SELL_WALLET_REDEEM: 'CURSOR_SELL_WALLET_REDEEM',     // 兑换充值卡到售号钱包
+  CURSOR_SELL_PRODUCT_SYNC: 'CURSOR_SELL_PRODUCT_SYNC',       // 同步上游商品
+  CURSOR_SELL_MANUAL_PURCHASE: 'CURSOR_SELL_MANUAL_PURCHASE', // 后台手动采购
+  CURSOR_SELL_PURCHASE_RETRY: 'CURSOR_SELL_PURCHASE_RETRY',   // 重试采购单
+  CURSOR_SELL_PUSH_STOCK: 'CURSOR_SELL_PUSH_STOCK',           // 采购结果入卡密池 / 仓库
+  CURSOR_SELL_LOGIN_APPROVE: 'CURSOR_SELL_LOGIN_APPROVE',     // 授权登录确认（用户 / 后台）
 
   // 订单
   ORDER_MARK_PAID: 'ORDER_MARK_PAID',
@@ -86,7 +91,12 @@ export const AuditActionLabels: Record<string, string> = {
   POOL_ACCOUNT_CREATE: '新建号池账号',
   POOL_ACCOUNT_UPDATE: '编辑号池账号',
   POOL_ACCOUNT_DELETE: '删除号池账号',
-  TEAM_REDEEM: 'Team 兑换',
+  CURSOR_SELL_WALLET_REDEEM: 'Team 渠道充值卡兑换',
+  CURSOR_SELL_PRODUCT_SYNC: 'Team 渠道同步商品',
+  CURSOR_SELL_MANUAL_PURCHASE: 'Team 渠道手动采购',
+  CURSOR_SELL_PURCHASE_RETRY: 'Team 渠道重试采购',
+  CURSOR_SELL_PUSH_STOCK: 'Team 渠道采购入库',
+  CURSOR_SELL_LOGIN_APPROVE: 'Team 授权登录确认',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',

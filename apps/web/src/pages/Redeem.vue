@@ -1,13 +1,11 @@
 <script setup lang="ts">
 /**
- * 统一兑换码入口：
- *   - 普通兑换（前缀自动路由）
- *     - 普通兑换码：直接发对应卡密商品（一码一商品）
- *     - 余额型兑换码：码内是一笔余额，可在码内挑选商品下单（多商品共享一笔余额）
- *   - Team 兑换：把充值卡码（SC-…）交给上游售号 API 的「兑换充值卡」接口，展示兑换结果
+ * 统一兑换码入口（前缀自动路由）：
+ *   - 普通兑换码：直接发对应卡密商品（一码一商品）
+ *   - 余额型兑换码：码内是一笔余额，可在码内挑选商品下单（多商品共享一笔余额）
  * 对终端用户呈现完全一致的文案，不区分内部来源。
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import api from '@/api';
@@ -21,8 +19,6 @@ import {
 } from '@/utils/card-key';
 
 type CodeKind = 'card' | 'balance';
-type RedeemMode = 'normal' | 'team';
-type TeamRedeemResult = Awaited<ReturnType<typeof api.cursorSell.redeem>>;
 
 const router = useRouter();
 const route = useRoute();
@@ -31,30 +27,6 @@ const code = ref<string>((route.query.code as string) || '');
 const contact = ref('');
 const loading = ref(false);
 const checking = ref(false);
-
-// 兑换方式：普通（本站兑换码） / Team（上游充值卡码）。Team 选项仅在后台启用渠道后展示
-const mode = ref<RedeemMode>(route.query.mode === 'team' ? 'team' : 'normal');
-const teamEnabled = ref(false);
-const teamResult = ref<TeamRedeemResult | null>(null);
-
-const TEAM_ACCOUNT_FIELDS: Array<{ key: 'email' | 'password' | 'token' | 'rawLine'; label: string }> = [
-  { key: 'email', label: '邮箱' },
-  { key: 'password', label: '密码' },
-  { key: 'token', label: 'Token' },
-  { key: 'rawLine', label: '原始行' },
-];
-
-const teamAccountFields = computed(() => {
-  const r = teamResult.value;
-  if (!r) return [];
-  return TEAM_ACCOUNT_FIELDS
-    .map((f) => ({ ...f, value: typeof r[f.key] === 'string' ? (r[f.key] as string) : '' }))
-    .filter((f) => f.value);
-});
-
-function looksLikeTeamCode(value: string) {
-  return /^SC-/i.test(value.trim());
-}
 
 // 模式 1：直发卡密（一码一商品）
 const cardInfo = ref<any>(null);
@@ -128,28 +100,11 @@ function reset() {
   cardInfo.value = null;
   cardResult.value = null;
   balanceInfo.value = null;
-  teamResult.value = null;
   selectedTypeKey.value = '';
   quantity.value = 1;
 }
 
-function switchMode(next: RedeemMode) {
-  if (mode.value === next) return;
-  mode.value = next;
-  reset();
-}
-
-onMounted(async () => {
-  try {
-    teamEnabled.value = !!(await api.cursorSell.enabled()).enabled;
-  } catch {
-    teamEnabled.value = false;
-  }
-  if (!teamEnabled.value && mode.value === 'team') mode.value = 'normal';
-});
-
 async function checkInfo() {
-  if (mode.value !== 'normal') return;
   const c = code.value.trim();
   if (!c) return;
   checking.value = true;
@@ -179,39 +134,11 @@ async function checkInfo() {
     }
     if (lastError) throw lastError;
   } catch (e: any) {
-    // 本站查不到、又长得像充值卡码：大概率是用户没切换兑换方式
-    if (teamEnabled.value && looksLikeTeamCode(c)) {
-      mode.value = 'team';
-      ElMessage.info('已识别为 Team 兑换码，已切换到「Team 兑换」，点击「立即兑换」继续');
-      return;
-    }
     const msg = e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换码不存在';
     ElMessage.error(msg);
   } finally {
     checking.value = false;
   }
-}
-
-async function doRedeemTeam() {
-  const c = code.value.trim();
-  if (!c) {
-    ElMessage.warning('请填写兑换码');
-    return;
-  }
-  loading.value = true;
-  try {
-    teamResult.value = await api.cursorSell.redeem(c);
-    ElMessage.success('兑换成功');
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换失败');
-  } finally {
-    loading.value = false;
-  }
-}
-
-function copyTeamAccount() {
-  const text = teamAccountFields.value.map((f) => `${f.label}: ${f.value}`).join('\n');
-  copyTextContent(text, '账号信息已复制');
 }
 
 async function doRedeemCard() {
@@ -282,108 +209,11 @@ function goCardOrder() {
   <div class="max-w-2xl mx-auto py-10 px-4">
     <div class="text-center mb-8">
       <h1 class="text-2xl font-semibold text-ink-900">兑换码</h1>
-      <p class="text-sm text-ink-500 mt-2">
-        {{ mode === 'team' ? '输入您的 Team 兑换码，通过渠道接口立即兑换' : '输入您的兑换码，立即获取对应商品' }}
-      </p>
-    </div>
-
-    <!-- 兑换方式切换（仅在后台启用 Team 渠道后展示） -->
-    <div v-if="teamEnabled" class="flex justify-center mb-6">
-      <div class="inline-flex p-1 bg-ink-100 rounded-lg">
-        <button
-          :class="[
-            'px-4 py-1.5 rounded-md text-sm transition-colors',
-            mode === 'normal' ? 'bg-white text-ink-900 shadow-sm font-medium' : 'text-ink-500 hover:text-ink-800',
-          ]"
-          @click="switchMode('normal')"
-        >普通兑换</button>
-        <button
-          :class="[
-            'px-4 py-1.5 rounded-md text-sm transition-colors',
-            mode === 'team' ? 'bg-white text-ink-900 shadow-sm font-medium' : 'text-ink-500 hover:text-ink-800',
-          ]"
-          @click="switchMode('team')"
-        >Team 兑换</button>
-      </div>
-    </div>
-
-    <!-- Team 兑换：成功结果 -->
-    <div v-if="mode === 'team' && teamResult" class="card p-6">
-      <div class="flex items-center gap-2 text-emerald-600 mb-4">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span class="text-lg font-semibold">兑换成功</span>
-      </div>
-      <div class="space-y-2 text-sm mb-4">
-        <div class="flex justify-between gap-4 text-ink-500">
-          <span class="shrink-0">兑换码</span>
-          <span class="font-mono text-ink-800 break-all text-right">{{ teamResult.code }}</span>
-        </div>
-        <div class="flex justify-between text-ink-500">
-          <span>到账金额</span>
-          <span class="text-emerald-700 font-semibold">¥{{ teamResult.amount.toFixed(2) }}</span>
-        </div>
-        <div v-if="typeof teamResult.balance === 'number'" class="flex justify-between text-ink-500">
-          <span>渠道余额（仅管理员可见）</span>
-          <span class="text-ink-800 font-semibold">¥{{ teamResult.balance.toFixed(2) }}</span>
-        </div>
-        <div class="flex justify-between text-ink-500">
-          <span>兑换时间</span>
-          <span class="text-ink-800">{{ new Date(teamResult.redeemedAt).toLocaleString() }}</span>
-        </div>
-      </div>
-
-      <div v-if="teamAccountFields.length" class="border-t border-ink-100 pt-4">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-semibold text-ink-800">账号信息</div>
-          <button class="text-xs text-brand-600 hover:underline" @click="copyTeamAccount">复制全部</button>
-        </div>
-        <div class="bg-ink-50 border border-ink-200 rounded-lg p-3 space-y-2">
-          <div v-for="f in teamAccountFields" :key="f.key" class="flex items-start gap-2">
-            <span class="text-xs text-ink-500 w-12 shrink-0 mt-1">{{ f.label }}</span>
-            <code class="font-mono text-xs text-ink-800 break-all flex-1 leading-relaxed">{{ f.value }}</code>
-            <button
-              class="text-xs text-brand-600 hover:underline shrink-0 mt-0.5"
-              @click="copyTextContent(f.value, `${f.label}已复制`)"
-            >复制</button>
-          </div>
-        </div>
-      </div>
-
-      <p class="mt-4 text-xs text-ink-400">建议截图保存本页结果；如有疑问请凭兑换码联系客服。</p>
-      <div class="mt-5 flex gap-2">
-        <button class="flex-1 py-2 border border-ink-200 rounded-lg text-sm hover:bg-ink-50" @click="reset(); code = ''">
-          再兑一个
-        </button>
-      </div>
-    </div>
-
-    <!-- Team 兑换：输入 -->
-    <div v-else-if="mode === 'team'" class="card p-6 space-y-4">
-      <div>
-        <label class="text-sm font-medium text-ink-700 block mb-1">Team 兑换码</label>
-        <input
-          v-model="code"
-          placeholder="请输入 Team 兑换码，例如 SC-XXXX-XXXX-XXXX"
-          class="w-full px-4 py-2.5 border border-ink-200 rounded-lg text-sm font-mono uppercase tracking-wider focus:border-brand-400 focus:ring-1 focus:ring-brand-200 outline-none"
-          @keydown.enter.prevent="doRedeemTeam"
-        />
-      </div>
-      <div class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-        兑换码将通过渠道接口即时兑换，兑换后立即生效且不可撤销，请确认兑换码无误后再提交。
-      </div>
-      <button
-        class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium shadow-sm disabled:opacity-50"
-        :disabled="loading || !code.trim()"
-        @click="doRedeemTeam"
-      >
-        {{ loading ? '兑换中…' : '立即兑换' }}
-      </button>
+      <p class="text-sm text-ink-500 mt-2">输入您的兑换码，立即获取对应商品</p>
     </div>
 
     <!-- 卡密模式：兑换成功结果 -->
-    <div v-else-if="cardResult" class="card p-6">
+    <div v-if="cardResult" class="card p-6">
       <div class="flex items-center gap-2 text-emerald-600 mb-4">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

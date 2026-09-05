@@ -42,10 +42,13 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
             ? {}
             : await this.computeStockBySku(p.id);
-        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看号池账号数；AIZHP 无限（从 API 实时获取）
+        const cursorSellStock =
+          p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
+        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看号池账号数；AIZHP 无限（从 API 实时获取）；
+        // CURSOR_SELL 看上游商品缓存的预估库存
         const skus = p.skus.map((s) => ({
           ...s,
           stock:
@@ -53,7 +56,9 @@ export class ProductsService {
               ? poolStock
               : p.deliveryType === 'AIZHP'
                 ? 9999
-                : stockBySku[s.id] ?? 0,
+                : p.deliveryType === 'CURSOR_SELL'
+                  ? cursorSellStock[s.id] ?? 0
+                  : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -85,9 +90,11 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
             ? {}
             : await this.computeStockBySku(p.id);
+        const cursorSellStock =
+          p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
         const skus = p.skus.map((s) => ({
           ...s,
           stock:
@@ -95,7 +102,9 @@ export class ProductsService {
               ? poolStock
               : p.deliveryType === 'AIZHP'
                 ? 9999
-                : stockBySku[s.id] ?? 0,
+                : p.deliveryType === 'CURSOR_SELL'
+                  ? cursorSellStock[s.id] ?? 0
+                  : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -117,9 +126,11 @@ export class ProductsService {
     const poolStock =
       p.deliveryType === 'POOL_QUOTA' ? await this.computePoolAvailableAccounts() : 0;
     const stockBySku =
-      p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP'
+      p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
         ? {}
         : await this.computeStockBySku(p.id);
+    const cursorSellStock =
+      p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
     return {
       ...p,
       skus: p.skus.map((s) => ({
@@ -129,9 +140,35 @@ export class ProductsService {
             ? poolStock
             : p.deliveryType === 'AIZHP'
               ? 9999
-              : stockBySku[s.id] ?? 0,
+              : p.deliveryType === 'CURSOR_SELL'
+                ? cursorSellStock[s.id] ?? 0
+                : stockBySku[s.id] ?? 0,
       })),
     };
+  }
+
+  /**
+   * CURSOR_SELL 规格库存 = 绑定的上游商品缓存里的预估库存（cron 每 10 分钟同步）。
+   * 未绑定 / 上游已下架 → 0。
+   */
+  async computeCursorSellStock(
+    skus: Array<{ id: number; attrs: unknown }>,
+  ): Promise<Record<number, number>> {
+    const codeBySku = new Map<number, string>();
+    for (const s of skus) {
+      const attrs = s.attrs && typeof s.attrs === 'object' ? (s.attrs as Record<string, unknown>) : {};
+      const code = String(attrs.cursorSellCode || '').trim();
+      if (code) codeBySku.set(s.id, code);
+    }
+    if (!codeBySku.size) return {};
+    const rows = await this.prisma.cursorSellProduct.findMany({
+      where: { code: { in: Array.from(new Set(codeBySku.values())) } },
+      select: { code: true, stock: true, active: true },
+    });
+    const stockByCode = new Map(rows.map((r) => [r.code, r.active ? r.stock : 0]));
+    const result: Record<number, number> = {};
+    for (const [skuId, code] of codeBySku) result[skuId] = stockByCode.get(code) ?? 0;
+    return result;
   }
 
   /** 按 SKU 统计 AVAILABLE 的卡密数作为真实库存 */

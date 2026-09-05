@@ -57,9 +57,10 @@ const aizhpFields: Field[] = [
 ];
 
 const cursorSellFields: Field[] = [
-  { key: 'cursor_sell_enabled', label: '启用 Team 兑换', isPublic: false, type: 'switch', hint: '开启后前台「兑换码」页出现「Team 兑换」选项，用户输入的充值卡码会交给上游售号 API 兑换。不填 API Key 也可启用。' },
+  { key: 'cursor_sell_enabled', label: '启用 Team 渠道', isPublic: false, type: 'switch', hint: '开启后可创建「Team 售号渠道」交付类型的商品，付款后自动向上游采购发货；后台「Team 渠道」页可同步商品、充值、手动采购。' },
   { key: 'cursor_sell_api_base', label: 'API Base URL', placeholder: 'https://cursor.zhangyuwang.cn/api/open/sell', isPublic: false, type: 'text', mono: true, hint: '留空使用默认地址。不带尾部斜杠。' },
-  { key: 'cursor_sell_api_key', label: 'API Key（可选）', placeholder: '售号平台签发的 API Key（Authorization: Bearer）；可留空', isPublic: false, type: 'textarea', mono: true, hint: '留空则兑换请求不带 Authorization 头；填写后所有请求带 Bearer 鉴权，并可用下方「测试连接」查余额。加密存储，保存后不再回显。' },
+  { key: 'cursor_sell_api_key', label: 'API Key', placeholder: '售号平台签发的 API Key（Authorization: Bearer），需有 buy_account 权限并已绑定用户', isPublic: false, type: 'textarea', mono: true, hint: '买号 / 查余额 / 同步商品都需要 Key；只有「兑换充值卡」允许不带 Key。加密存储，保存后不再回显。' },
+  { key: 'cursor_sell_low_balance_yuan', label: '低余额提醒阈值（元）', placeholder: '如 200；留空不提醒', isPublic: false, type: 'text', hint: '每小时检查一次售号钱包余额，低于该值推企业微信提醒（同一天只提醒一次）。余额不足时订单会卡在「已支付待发货」。' },
 ];
 
 const wecomFields: Field[] = [
@@ -93,9 +94,12 @@ async function testCursorSell() {
   cursorSellTesting.value = true;
   cursorSellBalance.value = null;
   try {
-    const r = await api.admin.cursorSellWallet();
+    const r = await api.admin.cursorSell.overview();
+    if (!r.enabled) throw new Error('渠道未启用，请先打开开关并保存');
+    if (!r.hasApiKey) throw new Error('未配置 API Key（查余额接口必须鉴权）');
+    if (r.walletError) throw new Error(r.walletError);
     cursorSellBalance.value = r.balance;
-    ElMessage.success(`连接成功，售号钱包余额 ¥${r.balance.toFixed(2)}`);
+    ElMessage.success(`连接成功，售号钱包余额 ¥${(r.balance ?? 0).toFixed(2)}，在售商品 ${r.activeProductCount} 个`);
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error || e?.message || '连接失败');
   } finally {
@@ -224,7 +228,7 @@ onMounted(load);
         :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
           activeTab === 'cursor_sell' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
         @click="activeTab = 'cursor_sell'"
-      >Team 兑换</button>
+      >Team 渠道</button>
       <button
         :class="['px-4 py-1.5 rounded-md text-sm transition-colors ml-1',
           activeTab === 'wecom' ? 'bg-brand-600 text-white' : 'text-ink-700 hover:bg-ink-50']"
@@ -474,14 +478,15 @@ onMounted(load);
       </div>
     </div>
 
-    <!-- Team 兑换（上游售号 API） -->
+    <!-- Team 渠道（上游售号 API） -->
     <div v-show="activeTab === 'cursor_sell'" class="space-y-4">
       <div class="card p-4 bg-sky-50/40 border-sky-200 text-sky-900 text-xs flex gap-3">
         <span class="text-base">ℹ</span>
         <div class="space-y-1.5 leading-relaxed">
-          <p>对接 <b>Cursor 成品号购买 API</b>（<code class="font-mono">/api/open/sell/*</code>）。<b>API Key 可选</b>：兑换充值卡接口允许不带 Key 调用，只打开开关即可使用；填写 Key 后请求会带 <code class="font-mono">Authorization: Bearer API_KEY</code>，并可用「测试连接」查售号钱包余额。</p>
-          <p><b>功能</b>：前台「兑换码」页新增「Team 兑换」选项；用户输入的充值卡码（<code class="font-mono">SC-…</code>）由本站后端调用 <code class="font-mono">POST /wallet/redeem</code> 兑换，并把到账金额展示给用户。每次兑换成功 / 失败都会写入审计日志（动作 <code class="font-mono">TEAM_REDEEM</code>）。</p>
-          <p><b>安全</b>：API Key 会被 AES-GCM 加密入库，保存后不再回显，永远不发给浏览器；售号钱包余额只对管理员登录态展示。</p>
+          <p>对接 <b>Cursor 成品号购买 API</b>（<code class="font-mono">cursor.zhangyuwang.cn/api/open/sell</code>），鉴权 <code class="font-mono">Authorization: Bearer API_KEY</code>。</p>
+          <p><b>用法</b>：保存 Key 后到后台「Team 渠道」同步商品 → 在「商品」里把规格的交付类型设为「Team 售号渠道」并绑定渠道商品 → 用户付款后系统自动向上游 <code class="font-mono">buy-account</code> 采购并发到订单页（支持凭据直发 / 授权登录 / 池卡密 / 次数票 / 现做 Team）。兑换码、余额、积分、支付宝、VIP 折扣全部复用。</p>
+          <p><b>可靠性</b>：每次采购带幂等键并落库，网络异常或上游暂不可用时同键自动重试，绝不重复扣费；余额不足 / 无货会企微提醒并把订单留在「已支付」等人工处理。</p>
+          <p><b>安全</b>：API Key 会被 AES-GCM 加密入库，保存后不再回显，永远不发给浏览器；成交凭据加密保存，订单页凭订单号（+联系方式）查看。</p>
         </div>
       </div>
 
@@ -551,7 +556,7 @@ onMounted(load);
           <span v-if="cursorSellBalance !== null" class="text-sm text-emerald-700">
             售号钱包余额：¥{{ cursorSellBalance.toFixed(2) }}
           </span>
-          <span class="text-xs text-ink-400">测试需要已保存 API Key（查余额接口必须鉴权）；先「保存所有更改」再测试。</span>
+          <span class="text-xs text-ink-400">先「保存所有更改」再测试；测试使用数据库里已保存的配置。充值、同步商品、采购请到「Team 渠道」页操作。</span>
         </div>
       </div>
     </div>

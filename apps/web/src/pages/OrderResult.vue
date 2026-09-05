@@ -17,6 +17,8 @@ import OrderStatusBadge from '@/components/OrderStatusBadge.vue';
 import EmailCodeBox from '@/components/EmailCodeBox.vue';
 import BrandButton from '@/components/BrandButton.vue';
 import Skeleton from '@/components/Skeleton.vue';
+import TeamDeliveryPanel from '@/components/TeamDeliveryPanel.vue';
+import type { CursorSellSale } from '@/api';
 import { formatDateTime, formatMoneyRaw, copyText } from '@/utils/format';
 
 const route = useRoute();
@@ -64,8 +66,24 @@ const aizhpRefundLabel = computed(() => {
   return map[s || ''] || { text: s || '未知', cls: 'text-ink-600 bg-ink-50 border-ink-200' };
 });
 
+// Team 售号渠道：结构化成交信息（凭据 / 开通中 / 授权登录）；这些卡密改由 TeamDeliveryPanel 展示
+const teamSales = computed<CursorSellSale[]>(() => order.value?.cursorSell?.sales || []);
+const teamCardKeyIds = computed(() => new Set(teamSales.value.map((s) => s.cardKeyId).filter((v) => v != null)));
+const isTeamOrder = computed(() => order.value?.product?.deliveryType === 'CURSOR_SELL' || teamSales.value.length > 0);
+const teamMaking = computed(() => teamSales.value.some((s) => s.making));
+
+function onTeamSaleUpdated(s: CursorSellSale) {
+  if (!order.value?.cursorSell) return;
+  const list: CursorSellSale[] = order.value.cursorSell.sales;
+  const idx = list.findIndex((x) => x.id === s.id);
+  if (idx >= 0) list[idx] = s;
+  // 开通完成后主动拉一次订单，让状态 / 卡密同步
+  if (!s.making) load(order.value?.contact || contactInput.value.trim() || undefined);
+}
+
 const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
   return (order.value?.cardKeys || [])
+    .filter((item: any) => !teamCardKeyIds.value.has(item.id))
     .map((item: any) => {
       const account = parseWarehouseDeliveryAccount(item);
       return account ? { ...account, id: item.id, soldAt: item.soldAt } : null;
@@ -74,7 +92,9 @@ const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; s
 });
 
 const plainCardKeys = computed(() => {
-  return (order.value?.cardKeys || []).filter((item: any) => !parseWarehouseDeliveryAccount(item));
+  return (order.value?.cardKeys || []).filter(
+    (item: any) => !teamCardKeyIds.value.has(item.id) && !parseWarehouseDeliveryAccount(item),
+  );
 });
 
 const primaryDeliveryEmail = computed(() => deliveryAccounts.value[0]?.email || '');
@@ -349,7 +369,9 @@ const statusHeroClass = computed(() => {
         <!-- PAID 中：发货进度 -->
         <div v-if="order.status === 'PAID'" class="mt-4 flex items-center gap-2.5 text-sm text-sky-800">
           <div class="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin shrink-0" />
-          <span>付款已到账，正在为您出库…通常 3-10 秒完成</span>
+          <span v-if="teamMaking">付款已到账，渠道正在为您开通 Team 账号，通常几分钟内完成，页面会自动刷新</span>
+          <span v-else-if="isTeamOrder">付款已到账，正在从渠道为您采购账号…通常数秒完成</span>
+          <span v-else>付款已到账，正在为您出库…通常 3-10 秒完成</span>
         </div>
       </div>
 
@@ -525,6 +547,16 @@ const statusHeroClass = computed(() => {
         </div>
       </div>
 
+      <!-- ────── Team 渠道交付（凭据 / 开通中 / 授权登录 / 提取卡） ────── -->
+      <TeamDeliveryPanel
+        v-if="teamSales.length"
+        :order-no="order.orderNo"
+        :contact="order.contact || contactInput.trim() || undefined"
+        :sales="teamSales"
+        :order-status="order.status"
+        @updated="onTeamSaleUpdated"
+      />
+
       <!-- ────── 账号交付 ────── -->
       <div v-if="deliveryAccounts.length" class="card p-5 md:p-6 mb-4">
         <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -684,9 +716,11 @@ const statusHeroClass = computed(() => {
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="font-semibold text-amber-900">暂无现货，请联系客服发货</div>
+            <div class="font-semibold text-amber-900">{{ isTeamOrder ? '渠道暂未出货，系统正在自动重试' : '暂无现货，请联系客服发货' }}</div>
             <p class="text-sm text-amber-800 mt-1 leading-relaxed">
-              您已付款成功，订单号 <code class="font-mono bg-white/80 px-1.5 py-0.5 rounded text-amber-900 text-xs">{{ order.orderNo }}</code>。客服会尽快人工发货。
+              您已付款成功，订单号 <code class="font-mono bg-white/80 px-1.5 py-0.5 rounded text-amber-900 text-xs">{{ order.orderNo }}</code>。
+              <template v-if="isTeamOrder">渠道可能暂时缺货，系统会每几分钟自动重试并在成功后显示账号；如长时间未发货，请联系客服。</template>
+              <template v-else>客服会尽快人工发货。</template>
             </p>
           </div>
         </div>

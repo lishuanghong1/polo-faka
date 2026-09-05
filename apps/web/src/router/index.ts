@@ -55,6 +55,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'admin-vip': 'VIP 等级',
   'admin-vip-discounts': '商品折扣',
   'admin-aizhp': 'Aizhp 渠道',
+  'admin-cursor-sell': 'Team 渠道',
 };
 
 const routes: RouteRecordRaw[] = [
@@ -180,6 +181,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'vip', name: 'admin-vip', component: () => import('@/pages/admin/Vip.vue') },
       { path: 'vip/discounts', name: 'admin-vip-discounts', component: () => import('@/pages/admin/VipDiscounts.vue') },
       { path: 'aizhp', name: 'admin-aizhp', component: () => import('@/pages/admin/AizhpRefund.vue') },
+      { path: 'cursor-sell', name: 'admin-cursor-sell', component: () => import('@/pages/admin/CursorSell.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', component: () => import('@/pages/NotFound.vue') },

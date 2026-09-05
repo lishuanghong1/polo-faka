@@ -14,6 +14,7 @@ import { VipService } from '../vip/vip.service';
 import { PoolService } from '../pool/pool.service';
 import { PointsService } from '../points/points.service';
 import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
+import { CursorSellFulfilService } from '../cursor-sell/cursor-sell-fulfil.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -29,6 +30,7 @@ export class OrdersService {
     private pool: PoolService,
     private points: PointsService,
     private aizhpOpen: AizhpOpenService,
+    private cursorSell: CursorSellFulfilService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -57,6 +59,20 @@ export class OrdersService {
     }
     if (sku.product.deliveryType === 'POOL_QUOTA' && !userId) {
       throw new BadRequestException('号池额度包需要登录后购买');
+    }
+    if (sku.product.deliveryType === 'CURSOR_SELL') {
+      // 下单前先确认规格绑定了渠道商品，避免付了钱才发现发不出货
+      const attrs = (sku.attrs && typeof sku.attrs === 'object' ? sku.attrs : {}) as Record<string, unknown>;
+      const code = String(attrs.cursorSellCode || '').trim();
+      if (!code) throw new BadRequestException('该规格暂不可售（未绑定渠道商品），请联系客服');
+      const channelProduct = await this.prisma.cursorSellProduct.findUnique({ where: { code } });
+      if (!channelProduct || !channelProduct.active) {
+        throw new BadRequestException('该规格对应的渠道商品已下架，请联系客服');
+      }
+      if (channelProduct.ondemandTeam && dto.quantity > 5) {
+        throw new BadRequestException('现做 Team 商品单次最多购买 5 个');
+      }
+      if (dto.quantity > 50) throw new BadRequestException('单次最多购买 50 个');
     }
 
     const unitPrice = this.calcUnitPrice(
@@ -305,6 +321,12 @@ export class OrdersService {
         return;
       }
 
+      // ── Team 售号渠道：实时向上游采购发货（幂等、失败留 PAID、现做由 cron 轮询） ──
+      if (order.product.deliveryType === 'CURSOR_SELL') {
+        await this.cursorSell.deliverOrder(order);
+        return;
+      }
+
       // ── AIZHP 渠道发货 ──
       if (order.product.deliveryType === 'AIZHP') {
         const account = await this.aizhpOpen.fetchUnusedAccount();
@@ -465,7 +487,16 @@ export class OrdersService {
       }
     }
 
-    return { ...order, cardKeys, redeemCode, aizhpRefund };
+    // Team 渠道订单：附带每个成交的结构化信息（凭据 / 开通中 / 授权登录 / 质保）
+    let cursorSell: { sales: Awaited<ReturnType<CursorSellFulfilService['salesForCardKeys']>> } | null = null;
+    if ((order.product.deliveryType as string) === 'CURSOR_SELL' || cardKeyIds.length) {
+      const sales = cardKeyIds.length ? await this.cursorSell.salesForCardKeys(cardKeyIds) : [];
+      if (sales.length || (order.product.deliveryType as string) === 'CURSOR_SELL') {
+        cursorSell = { sales };
+      }
+    }
+
+    return { ...order, cardKeys, redeemCode, aizhpRefund, cursorSell };
   }
 
   /**
@@ -636,9 +667,10 @@ export class OrdersService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // 卡密回退：手动发货的（remark="管理员手动发货"）直接标 REFUNDED，否则回到 AVAILABLE 池
+      // 卡密回退：手动发货的（remark="管理员手动发货"）与 Team 渠道实时采购的账号
+      // （已经从上游买断，不能再卖给别人）直接标 REFUNDED，其余回到 AVAILABLE 池
       for (const c of order.cardKeys) {
-        if (c.remark === '管理员手动发货') {
+        if (c.remark === '管理员手动发货' || (c.remark || '').startsWith('[cursor-sell]')) {
           await tx.cardKey.update({
             where: { id: c.id },
             data: { status: 'REFUNDED', orderNo: null },
