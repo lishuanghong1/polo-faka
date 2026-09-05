@@ -12,7 +12,9 @@ import { decryptString, isEncrypted, maskSecret } from '../../common/crypto.util
 /**
  * Cursor 成品号购买 API（cursor.zhangyuwang.cn/api/open/sell）客户端。
  *
- * 鉴权：请求头 `Authorization: Bearer <API_KEY>`；
+ * 鉴权：请求头 `Authorization: Bearer <API_KEY>`。API Key 可选：
+ * 站点设置里没填时请求不带 Authorization 头（兑换充值卡接口允许匿名调用），
+ * 只有查余额这类必须鉴权的接口才要求配置 Key。
  * 响应统一为 `{ ok: true, data }` / `{ ok: false, error_code, error }`；
  * 金额单位一律「人民币分」。
  *
@@ -26,6 +28,7 @@ const DEFAULT_API_BASE = 'https://cursor.zhangyuwang.cn/api/open/sell';
 
 export interface CursorSellConfig {
   baseUrl: string;
+  /** 可为空串：表示匿名调用 */
   apiKey: string;
 }
 
@@ -103,10 +106,6 @@ export class CursorSellService {
 
     const baseUrl = ((map.cursor_sell_api_base ?? '').trim() || DEFAULT_API_BASE).replace(/\/+$/, '');
     const apiKey = (map.cursor_sell_api_key ?? '').trim();
-    if (!apiKey) {
-      this.logger.warn('Cursor Sell enabled but apiKey missing');
-      return null;
-    }
     return { baseUrl, apiKey };
   }
 
@@ -122,15 +121,15 @@ export class CursorSellService {
         baseURL: cfg.baseUrl,
         timeout: 30_000,
         headers: {
-          Authorization: `Bearer ${cfg.apiKey}`,
           'Content-Type': 'application/json',
+          ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
         },
         // 4xx 由业务层按 error_code 处理；5xx / 网络错误走 catch
         validateStatus: (s) => s < 500,
       });
       this.snapshot = cfg;
       this.logger.log(
-        `Cursor Sell client ready (baseUrl=${cfg.baseUrl}, apiKey=${maskSecret(cfg.apiKey)})`,
+        `Cursor Sell client ready (baseUrl=${cfg.baseUrl}, apiKey=${cfg.apiKey ? maskSecret(cfg.apiKey) : '<none>'})`,
       );
     }
     return { client: this.client, cfg };
@@ -138,6 +137,12 @@ export class CursorSellService {
 
   async isEnabled(): Promise<boolean> {
     return !!(await this.getClient());
+  }
+
+  /** 是否配置了 API Key（查余额等必须鉴权的接口需要） */
+  async hasApiKey(): Promise<boolean> {
+    const cfg = await this.loadConfig();
+    return !!cfg?.apiKey;
   }
 
   private async request<T>(

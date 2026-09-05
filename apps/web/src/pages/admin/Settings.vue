@@ -57,9 +57,9 @@ const aizhpFields: Field[] = [
 ];
 
 const cursorSellFields: Field[] = [
-  { key: 'cursor_sell_enabled', label: '启用 Team 兑换', isPublic: false, type: 'switch', hint: '开启后前台「兑换码」页出现「Team 兑换」选项，用户输入的充值卡码会交给上游售号 API 兑换' },
+  { key: 'cursor_sell_enabled', label: '启用 Team 兑换', isPublic: false, type: 'switch', hint: '开启后前台「兑换码」页出现「Team 兑换」选项，用户输入的充值卡码会交给上游售号 API 兑换。不填 API Key 也可启用。' },
   { key: 'cursor_sell_api_base', label: 'API Base URL', placeholder: 'https://cursor.zhangyuwang.cn/api/open/sell', isPublic: false, type: 'text', mono: true, hint: '留空使用默认地址。不带尾部斜杠。' },
-  { key: 'cursor_sell_api_key', label: 'API Key', placeholder: '售号平台签发的 API Key（Authorization: Bearer）', isPublic: false, type: 'textarea', mono: true, hint: '需已绑定用户；加密存储，保存后不再回显。' },
+  { key: 'cursor_sell_api_key', label: 'API Key（可选）', placeholder: '售号平台签发的 API Key（Authorization: Bearer）；可留空', isPublic: false, type: 'textarea', mono: true, hint: '留空则兑换请求不带 Authorization 头；填写后所有请求带 Bearer 鉴权，并可用下方「测试连接」查余额。加密存储，保存后不再回显。' },
 ];
 
 const wecomFields: Field[] = [
@@ -100,6 +100,22 @@ async function testCursorSell() {
     ElMessage.error(e?.response?.data?.error || e?.message || '连接失败');
   } finally {
     cursorSellTesting.value = false;
+  }
+}
+
+/** 密钥字段留空表示"保持不变"，清除需要走专门的哨兵值 */
+const SECRET_CLEAR = '__clear__';
+const cursorSellClearing = ref(false);
+async function clearCursorSellKey() {
+  if (!window.confirm('确定清除已保存的 API Key？清除后兑换请求将不带 Authorization 头。')) return;
+  cursorSellClearing.value = true;
+  try {
+    await api.admin.settingsSet({ cursor_sell_api_key: { value: SECRET_CLEAR, isPublic: false } });
+    cursorSellBalance.value = null;
+    ElMessage.success('已清除 API Key');
+    await load();
+  } finally {
+    cursorSellClearing.value = false;
   }
 }
 
@@ -463,7 +479,7 @@ onMounted(load);
       <div class="card p-4 bg-sky-50/40 border-sky-200 text-sky-900 text-xs flex gap-3">
         <span class="text-base">ℹ</span>
         <div class="space-y-1.5 leading-relaxed">
-          <p>对接 <b>Cursor 成品号购买 API</b>（<code class="font-mono">/api/open/sell/*</code>）。鉴权方式：<code class="font-mono">Authorization: Bearer API_KEY</code>。</p>
+          <p>对接 <b>Cursor 成品号购买 API</b>（<code class="font-mono">/api/open/sell/*</code>）。<b>API Key 可选</b>：兑换充值卡接口允许不带 Key 调用，只打开开关即可使用；填写 Key 后请求会带 <code class="font-mono">Authorization: Bearer API_KEY</code>，并可用「测试连接」查售号钱包余额。</p>
           <p><b>功能</b>：前台「兑换码」页新增「Team 兑换」选项；用户输入的充值卡码（<code class="font-mono">SC-…</code>）由本站后端调用 <code class="font-mono">POST /wallet/redeem</code> 兑换，并把到账金额展示给用户。每次兑换成功 / 失败都会写入审计日志（动作 <code class="font-mono">TEAM_REDEEM</code>）。</p>
           <p><b>安全</b>：API Key 会被 AES-GCM 加密入库，保存后不再回显，永远不发给浏览器；售号钱包余额只对管理员登录态展示。</p>
         </div>
@@ -524,10 +540,18 @@ onMounted(load);
           >
             {{ cursorSellTesting ? '连接中…' : '测试连接（查售号钱包余额）' }}
           </button>
+          <button
+            v-if="hasValueMap.cursor_sell_api_key"
+            class="px-4 py-1.5 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 text-sm disabled:opacity-50"
+            :disabled="cursorSellClearing"
+            @click="clearCursorSellKey"
+          >
+            {{ cursorSellClearing ? '清除中…' : '清除已保存的 Key' }}
+          </button>
           <span v-if="cursorSellBalance !== null" class="text-sm text-emerald-700">
             售号钱包余额：¥{{ cursorSellBalance.toFixed(2) }}
           </span>
-          <span class="text-xs text-ink-400">先「保存所有更改」再测试；测试使用的是数据库里已保存的配置。</span>
+          <span class="text-xs text-ink-400">测试需要已保存 API Key（查余额接口必须鉴权）；先「保存所有更改」再测试。</span>
         </div>
       </div>
     </div>

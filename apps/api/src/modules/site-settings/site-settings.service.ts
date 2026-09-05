@@ -22,6 +22,8 @@ const SECRET_KEYS = new Set<string>([
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */
 const SECRET_PLACEHOLDER = '__keep__';
+/** 密钥字段留空即"保持不变"，所以清除需要显式哨兵值 */
+const SECRET_CLEAR = '__clear__';
 
 @Injectable()
 export class SiteSettingsService {
@@ -104,8 +106,8 @@ export class SiteSettingsService {
       }
       let storeValue = v.value;
       let isPublic = !!v.isPublic;
-      if (isSecret && v.value) {
-        storeValue = encryptString(v.value);
+      if (isSecret) {
+        storeValue = v.value === SECRET_CLEAR ? '' : encryptString(v.value);
         isPublic = false;
       }
       ops.push(

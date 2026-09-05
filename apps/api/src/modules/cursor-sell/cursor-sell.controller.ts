@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
@@ -80,6 +80,12 @@ export class CursorSellController {
   @ApiBearerAuth()
   @Get('wallet')
   async wallet() {
+    if (!(await this.svc.isEnabled())) {
+      throw new BadRequestException('Team 兑换未启用，请先打开开关并保存');
+    }
+    if (!(await this.svc.hasApiKey())) {
+      throw new BadRequestException('未配置 API Key，无法查询钱包余额；兑换接口本身可不带 Key 使用');
+    }
     const { balanceCents } = await this.svc.getWallet();
     return { balanceCents, balance: balanceCents / 100 };
   }
