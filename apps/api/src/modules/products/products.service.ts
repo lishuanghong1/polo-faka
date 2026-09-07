@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CursorSellListingService } from '../cursor-sell/cursor-sell-listing.service';
 
 interface ListQuery {
   categoryId?: number;
@@ -10,7 +11,10 @@ interface ListQuery {
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cursorSellListing: CursorSellListingService,
+  ) {}
 
   async list(q: ListQuery) {
     const page = Math.max(1, Number(q.page) || 1);
@@ -209,17 +213,23 @@ export class ProductsService {
     return Math.max(0, Math.min(1, n));
   }
 
-  create(data: any) {
+  async create(data: any) {
     const { skus = [], ...rest } = data;
     const rate = this.normalizePointsAwardRate(rest.pointsAwardRate);
     if (rate !== undefined) rest.pointsAwardRate = rate;
-    return this.prisma.product.create({
+    const created = await this.prisma.product.create({
       data: {
         ...rest,
         skus: skus.length ? { create: skus } : undefined,
       },
       include: { skus: true },
     });
+    // Team 渠道跟价规格：价格以服务端按当前成本重算为准，不信任前端带过来的数字
+    if (created.deliveryType === 'CURSOR_SELL') {
+      await this.cursorSellListing.repriceProduct(created.id);
+      return this.prisma.product.findUnique({ where: { id: created.id }, include: { skus: true } });
+    }
+    return created;
   }
 
   async update(id: number, data: any) {
@@ -259,6 +269,12 @@ export class ProductsService {
           await this.prisma.sku.create({ data: { ...rest, productId: id } });
         }
       }
+    }
+    if (rest.deliveryType === 'CURSOR_SELL') {
+      await this.cursorSellListing.repriceProduct(id);
+    } else if (rest.deliveryType === undefined) {
+      const p = await this.prisma.product.findUnique({ where: { id }, select: { deliveryType: true } });
+      if (p?.deliveryType === 'CURSOR_SELL') await this.cursorSellListing.repriceProduct(id);
     }
     return this.detail(id);
   }

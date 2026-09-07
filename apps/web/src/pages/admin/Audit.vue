@@ -18,6 +18,8 @@ const labelMap: Record<string, string> = {
   CURSOR_SELL_PURCHASE_RETRY: 'Team 渠道重试采购',
   CURSOR_SELL_PUSH_STOCK: 'Team 渠道采购入库',
   CURSOR_SELL_LOGIN_APPROVE: 'Team 授权登录确认',
+  CURSOR_SELL_AUTO_LIST: 'Team 渠道商品上架',
+  CURSOR_SELL_LISTING_RULES: 'Team 渠道上架规则修改',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',

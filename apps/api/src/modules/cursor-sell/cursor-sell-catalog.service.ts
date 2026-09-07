@@ -2,23 +2,58 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CursorSellService } from './cursor-sell.service';
+import { CursorSellListingService } from './cursor-sell-listing.service';
 import { UpstreamProduct } from './cursor-sell.types';
+
+export interface SyncResult {
+  upserted: number;
+  deactivated: number;
+  syncedAt: string;
+  listing: { listed: number; repriced: number; offShelf: number; restored: number };
+}
+
+/** 缓存超过这个时长视为"陈旧"，下单前会先刷一次（cron 每 5 分钟同步，正常不会触发） */
+const FRESH_MS = 6 * 60 * 1000;
 
 /**
  * 上游商品缓存：同步 GET /products 到 cursor_sell_products。
  * 缓存用于：后台商品绑定下拉、前台库存展示、采购成本快照。
+ * 同步完成后交给 ListingService 做自动上架 / 跟价 / 下架联动。
  */
 @Injectable()
 export class CursorSellCatalogService {
   private readonly logger = new Logger(CursorSellCatalogService.name);
+  private inflight: Promise<SyncResult> | null = null;
 
   constructor(
     private prisma: PrismaService,
     private api: CursorSellService,
+    private listing: CursorSellListingService,
   ) {}
 
+  /** 并发去重：同一时刻只跑一次同步，其余调用等待同一个结果 */
+  sync(): Promise<SyncResult> {
+    if (!this.inflight) {
+      this.inflight = this.doSync().finally(() => {
+        this.inflight = null;
+      });
+    }
+    return this.inflight;
+  }
+
+  /** 缓存陈旧时同步一次；失败不抛（下单流程不因上游抖动被卡住，仍按缓存价校验） */
+  async ensureFresh(): Promise<void> {
+    const last = await this.lastSyncAt();
+    if (last && Date.now() - last.getTime() < FRESH_MS) return;
+    try {
+      await this.sync();
+    } catch (e) {
+      this.logger.warn(`ensureFresh sync failed: ${(e as Error).message}`);
+    }
+  }
+
   /** 拉取上游商品并 upsert；上游不再返回的商品置 active=false */
-  async sync(): Promise<{ upserted: number; deactivated: number; syncedAt: string }> {
+  private async doSync(): Promise<SyncResult> {
     const list = await this.api.listProducts();
     const now = new Date();
     const codes: string[] = [];
@@ -62,7 +97,14 @@ export class CursorSellCatalogService {
       data: { active: false },
     });
     this.logger.log(`cursor-sell products synced: ${codes.length} upserted, ${deactivated.count} deactivated`);
-    return { upserted: codes.length, deactivated: deactivated.count, syncedAt: now.toISOString() };
+
+    let listing = { listed: 0, repriced: 0, offShelf: 0, restored: 0 };
+    try {
+      listing = await this.listing.applyAfterSync();
+    } catch (e) {
+      this.logger.error(`listing follow failed: ${(e as Error).message}`, (e as Error).stack);
+    }
+    return { upserted: codes.length, deactivated: deactivated.count, syncedAt: now.toISOString(), listing };
   }
 
   /** 后台列表（含下架的） */

@@ -18,6 +18,8 @@ export const AuditActions = {
   CURSOR_SELL_PURCHASE_RETRY: 'CURSOR_SELL_PURCHASE_RETRY',   // 重试采购单
   CURSOR_SELL_PUSH_STOCK: 'CURSOR_SELL_PUSH_STOCK',           // 采购结果入卡密池 / 仓库
   CURSOR_SELL_LOGIN_APPROVE: 'CURSOR_SELL_LOGIN_APPROVE',     // 授权登录确认（用户 / 后台）
+  CURSOR_SELL_AUTO_LIST: 'CURSOR_SELL_AUTO_LIST',             // 渠道商品上架为本站商品
+  CURSOR_SELL_LISTING_RULES: 'CURSOR_SELL_LISTING_RULES',     // 修改自动上架 / 跟价规则
 
   // 订单
   ORDER_MARK_PAID: 'ORDER_MARK_PAID',
@@ -97,6 +99,8 @@ export const AuditActionLabels: Record<string, string> = {
   CURSOR_SELL_PURCHASE_RETRY: 'Team 渠道重试采购',
   CURSOR_SELL_PUSH_STOCK: 'Team 渠道采购入库',
   CURSOR_SELL_LOGIN_APPROVE: 'Team 授权登录确认',
+  CURSOR_SELL_AUTO_LIST: 'Team 渠道商品上架',
+  CURSOR_SELL_LISTING_RULES: 'Team 渠道上架规则修改',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',

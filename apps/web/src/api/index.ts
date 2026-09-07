@@ -65,6 +65,30 @@ export type CursorSellProduct = {
   ondemandTeam: boolean;
   active: boolean;
   lastSyncAt: string | null;
+  /** 绑定了该渠道商品的本站规格（后台列表接口附带） */
+  local?: CursorSellLocalBinding[];
+};
+
+export type CursorSellLocalBinding = {
+  productId: number;
+  productTitle: string;
+  productStatus: string;
+  skuId: number;
+  skuName: string;
+  price: number;
+  /** 是否跟随渠道价 */
+  follow: boolean;
+  autoListed: boolean;
+};
+
+/** Team 售号渠道：自动上架 / 跟价规则 */
+export type CursorSellListingRules = {
+  autoList: boolean;
+  categoryId: number | null;
+  markupYuan: number;
+  markupPercent: number;
+  followOffShelf: boolean;
+  minMarginYuan: number;
 };
 
 /** Team 售号渠道：一次 buy-account 调用 */
@@ -494,11 +518,29 @@ export const api = {
       products: (activeOnly = false) =>
         http.get<CursorSellProduct[]>('/admin/cursor-sell/products', { params: activeOnly ? { activeOnly: 1 } : {} }),
       syncProducts: () =>
-        http.post<{ upserted: number; deactivated: number; syncedAt: string }>(
-          '/admin/cursor-sell/products/sync',
-          undefined,
-          { silent: true, timeout: 60_000 } as any,
+        http.post<{
+          upserted: number;
+          deactivated: number;
+          syncedAt: string;
+          listing: { listed: number; repriced: number; offShelf: number; restored: number };
+        }>('/admin/cursor-sell/products/sync', undefined, { silent: true, timeout: 90_000 } as any),
+      listingRules: () => http.get<CursorSellListingRules>('/admin/cursor-sell/listing-rules'),
+      saveListingRules: (body: Partial<CursorSellListingRules>) =>
+        http.put<CursorSellListingRules>('/admin/cursor-sell/listing-rules', body, { silent: true } as any),
+      listProduct: (code: string, body: { categoryId?: number; markupYuan?: number; markupPercent?: number } = {}) =>
+        http.post<{ productId: number; skuId: number; created: boolean; price: number }>(
+          `/admin/cursor-sell/products/${encodeURIComponent(code)}/list`,
+          body,
+          { silent: true } as any,
         ),
+      listBatch: (body: { codes: string[]; categoryId?: number; markupYuan?: number; markupPercent?: number }) =>
+        http.post<{
+          total: number;
+          created: number;
+          existed: number;
+          failed: number;
+          results: Array<{ code: string; ok: boolean; created?: boolean; productId?: number; error?: string }>;
+        }>('/admin/cursor-sell/products/list-batch', body, { silent: true, timeout: 120_000 } as any),
       purchases: (params: { page?: number; pageSize?: number; status?: string; source?: string; keyword?: string }) =>
         http.get<{ total: number; page: number; pageSize: number; items: CursorSellPurchase[] }>(
           '/admin/cursor-sell/purchases',

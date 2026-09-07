@@ -1,6 +1,20 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Request } from 'express';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +22,30 @@ import { AuditActions } from '../audit/audit.constants';
 import { CursorSellService } from './cursor-sell.service';
 import { CursorSellCatalogService } from './cursor-sell-catalog.service';
 import { CursorSellFulfilService, PushDestination } from './cursor-sell-fulfil.service';
+import { CursorSellListingService } from './cursor-sell-listing.service';
+
+class ListingRulesDto {
+  @IsOptional() @IsBoolean() autoList?: boolean;
+  @IsOptional() @IsInt() categoryId?: number | null;
+  @IsOptional() @IsNumber() @Min(0) markupYuan?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(1000) markupPercent?: number;
+  @IsOptional() @IsBoolean() followOffShelf?: boolean;
+  @IsOptional() @IsNumber() @Min(0) minMarginYuan?: number;
+}
+
+class ListOneDto {
+  @IsOptional() @IsInt() categoryId?: number;
+  @IsOptional() @IsNumber() @Min(0) markupYuan?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(1000) markupPercent?: number;
+}
+
+class ListBatchDto extends ListOneDto {
+  @IsArray()
+  @ArrayNotEmpty({ message: '请选择要上架的商品' })
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  codes!: string[];
+}
 
 class WalletRedeemDto {
   @IsString()
@@ -65,6 +103,7 @@ export class CursorSellAdminController {
     private api: CursorSellService,
     private catalog: CursorSellCatalogService,
     private fulfil: CursorSellFulfilService,
+    private listing: CursorSellListingService,
     private audit: AuditService,
   ) {}
 
@@ -117,15 +156,54 @@ export class CursorSellAdminController {
 
   // ====== 商品缓存 ======
 
+  /** 缓存列表 + 每个渠道商品对应的本站规格绑定（是否已上架 / 跟价 / 售价） */
   @Get('products')
-  products(@Query('activeOnly') activeOnly?: string) {
-    return this.catalog.list({ activeOnly: activeOnly === '1' || activeOnly === 'true' });
+  async products(@Query('activeOnly') activeOnly?: string) {
+    const list = await this.catalog.list({ activeOnly: activeOnly === '1' || activeOnly === 'true' });
+    const bindings = await this.listing.findLocalBindings(list.map((p) => p.code));
+    return list.map((p) => ({ ...p, local: bindings.get(p.code) ?? [] }));
   }
 
   @Post('products/sync')
   async syncProducts(@Req() req: Request) {
     const r = await this.catalog.sync();
     void this.audit.fromReq(req, AuditActions.CURSOR_SELL_PRODUCT_SYNC, { detail: r });
+    return r;
+  }
+
+  // ====== 自动上架 / 跟价规则 ======
+
+  @Get('listing-rules')
+  listingRules() {
+    return this.listing.loadRules();
+  }
+
+  @Put('listing-rules')
+  async saveListingRules(@Body() body: ListingRulesDto, @Req() req: Request) {
+    const r = await this.listing.saveRules(body);
+    this.api.invalidate();
+    void this.audit.fromReq(req, AuditActions.CURSOR_SELL_LISTING_RULES, { detail: r });
+    return r;
+  }
+
+  /** 把单个渠道商品上架为本站商品（一个跟价规格） */
+  @Post('products/:code/list')
+  async listOne(@Param('code') code: string, @Body() body: ListOneDto, @Req() req: Request) {
+    const r = await this.listing.listProduct(code, body);
+    void this.audit.fromReq(req, AuditActions.CURSOR_SELL_AUTO_LIST, {
+      target: `product:${r.productId}`,
+      detail: { code, created: r.created, price: r.price, by: 'admin' },
+    });
+    return r;
+  }
+
+  @Post('products/list-batch')
+  async listBatch(@Body() body: ListBatchDto, @Req() req: Request) {
+    const { codes, ...opts } = body;
+    const r = await this.listing.listBatch(codes, opts);
+    void this.audit.fromReq(req, AuditActions.CURSOR_SELL_AUTO_LIST, {
+      detail: { total: r.total, created: r.created, existed: r.existed, failed: r.failed, by: 'admin' },
+    });
     return r;
   }
 

@@ -28,6 +28,15 @@ async function loadCursorSellProducts() {
 function cursorSellProductOf(code: string) {
   return cursorSellProducts.value.find((p) => p.code === code) || null;
 }
+/** 跟价售价 = max(成本 + 固定加价, 成本 × (1 + 比例))，与后端一致 */
+function cursorSellFollowPrice(s: any): number | null {
+  const cp = cursorSellProductOf(s._cursorSellCode);
+  if (!cp) return null;
+  const cost = cp.price;
+  const fixed = cost + Math.max(0, Number(s._cursorSellMarkupYuan) || 0);
+  const pct = cost * (1 + Math.max(0, Number(s._cursorSellMarkupPercent) || 0) / 100);
+  return Math.round(Math.max(fixed, pct) * 100) / 100;
+}
 watch(
   () => editing.value?.deliveryType,
   (t) => {
@@ -78,6 +87,10 @@ function startEdit(p: any) {
     s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
     s._cursorSellCode = attrs.cursorSellCode ?? '';
     s._cursorSellExtractSplit = !!attrs.cursorSellExtractSplit;
+    const pricing = attrs.cursorSellPricing && typeof attrs.cursorSellPricing === 'object' ? attrs.cursorSellPricing : null;
+    s._cursorSellFollow = !!pricing;
+    s._cursorSellMarkupYuan = pricing ? Number(pricing.markupYuan) || 0 : 20;
+    s._cursorSellMarkupPercent = pricing ? Number(pricing.markupPercent) || 0 : 0;
   }
   // AIZHP 档位：从第一个 SKU 的 attrs.aizhpPlan 读取
   const firstSkuAttrs = editing.value.skus?.[0]?.attrs;
@@ -96,7 +109,11 @@ function newProduct() {
     _tagsStr: '',
     _bulkStr: '',
     warranty: '',
-    skus: [{ name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '', _cursorSellCode: '', _cursorSellExtractSplit: false }],
+    skus: [{
+      name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '',
+      _cursorSellCode: '', _cursorSellExtractSplit: false,
+      _cursorSellFollow: true, _cursorSellMarkupYuan: 20, _cursorSellMarkupPercent: 0,
+    }],
     status: 'ON_SALE',
     deliveryType: 'CARD_KEY',
     pointsAwardEnabled: true,
@@ -142,12 +159,30 @@ async function save() {
       const cp = cursorSellProductOf(attrs.cursorSellCode);
       if (cp?.extractOnly && s._cursorSellExtractSplit) attrs.cursorSellExtractSplit = true;
       else delete attrs.cursorSellExtractSplit;
+      if (s._cursorSellFollow) {
+        attrs.cursorSellPricing = {
+          mode: 'COST_PLUS',
+          markupYuan: Math.max(0, Number(s._cursorSellMarkupYuan) || 0),
+          markupPercent: Math.max(0, Number(s._cursorSellMarkupPercent) || 0),
+        };
+        // 跟价规格的价格由服务端按最新成本重算，这里先填当前预览值
+        const preview = cursorSellFollowPrice(s);
+        if (preview != null) s.price = preview;
+      } else {
+        delete attrs.cursorSellPricing;
+      }
     } else {
       delete attrs.cursorSellCode;
       delete attrs.cursorSellExtractSplit;
+      delete attrs.cursorSellPricing;
+      delete attrs.cursorSellAutoListed;
+      delete attrs.cursorSellAutoOffShelf;
     }
     delete s._cursorSellCode;
     delete s._cursorSellExtractSplit;
+    delete s._cursorSellFollow;
+    delete s._cursorSellMarkupYuan;
+    delete s._cursorSellMarkupPercent;
     if (payload.deliveryType === 'POOL_QUOTA') {
       const validityDays = Number(s._poolValidityDays);
       delete attrs.poolQuota;
@@ -603,9 +638,25 @@ function removeSku(i: number) {
                 <span>字段：<span class="font-mono">{{ cursorSellProductOf(s._cursorSellCode)!.deliveryFields.join(', ') || '—' }}</span></span>
                 <span v-if="cursorSellProductOf(s._cursorSellCode)!.warrantyHours">质保 {{ cursorSellProductOf(s._cursorSellCode)!.warrantyHours }}h</span>
                 <span v-if="cursorSellProductOf(s._cursorSellCode)!.ondemandTeam" class="text-rose-700">现做（单次 ≤5，付款后先显示开通中）</span>
-                <span v-if="Number(s.price) > 0 && Number(s.price) < cursorSellProductOf(s._cursorSellCode)!.price" class="text-rose-700 font-medium">
+                <span v-if="!s._cursorSellFollow && Number(s.price) > 0 && Number(s.price) < cursorSellProductOf(s._cursorSellCode)!.price" class="text-rose-700 font-medium">
                   ⚠ 售价低于成本 ¥{{ cursorSellProductOf(s._cursorSellCode)!.price.toFixed(2) }}
                 </span>
+              </div>
+              <div class="flex items-center gap-3 flex-wrap text-xs bg-white border border-sky-100 rounded-md px-3 py-2">
+                <label class="flex items-center gap-1.5 cursor-pointer text-ink-800 font-medium">
+                  <input v-model="s._cursorSellFollow" type="checkbox" />
+                  跟随渠道价
+                </label>
+                <template v-if="s._cursorSellFollow">
+                  <span class="text-ink-500">成本 ¥{{ cursorSellProductOf(s._cursorSellCode)!.price.toFixed(2) }} +</span>
+                  <input v-model.number="s._cursorSellMarkupYuan" type="number" min="0" step="0.5" class="w-20 px-2 py-1 border border-ink-200 rounded text-right" />
+                  <span class="text-ink-500">元，或 ×(1 +</span>
+                  <input v-model.number="s._cursorSellMarkupPercent" type="number" min="0" step="1" class="w-16 px-2 py-1 border border-ink-200 rounded text-right" />
+                  <span class="text-ink-500">%) 取高 ⇒ 售价</span>
+                  <b class="text-rose-600">¥{{ (cursorSellFollowPrice(s) ?? 0).toFixed(2) }}</b>
+                  <span class="text-ink-400">（渠道成本变动时每 5 分钟自动重算，上方价格框无效）</span>
+                </template>
+                <span v-else class="text-ink-400">手工定价：使用上方价格框，同步不会改动</span>
               </div>
               <label v-if="cursorSellProductOf(s._cursorSellCode)!.extractOnly" class="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
                 <input v-model="s._cursorSellExtractSplit" type="checkbox" />

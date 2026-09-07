@@ -15,6 +15,8 @@ import { PoolService } from '../pool/pool.service';
 import { PointsService } from '../points/points.service';
 import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
 import { CursorSellFulfilService } from '../cursor-sell/cursor-sell-fulfil.service';
+import { CursorSellCatalogService } from '../cursor-sell/cursor-sell-catalog.service';
+import { CursorSellListingService } from '../cursor-sell/cursor-sell-listing.service';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -31,6 +33,8 @@ export class OrdersService {
     private points: PointsService,
     private aizhpOpen: AizhpOpenService,
     private cursorSell: CursorSellFulfilService,
+    private cursorSellCatalog: CursorSellCatalogService,
+    private cursorSellListing: CursorSellListingService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -65,10 +69,21 @@ export class OrdersService {
       const attrs = (sku.attrs && typeof sku.attrs === 'object' ? sku.attrs : {}) as Record<string, unknown>;
       const code = String(attrs.cursorSellCode || '').trim();
       if (!code) throw new BadRequestException('该规格暂不可售（未绑定渠道商品），请联系客服');
+
+      // 价格保护：缓存陈旧时先刷一次上游价（会顺带重算跟价规格）。
+      // 若规格价格因此变了，说明页面上展示的是旧价，让用户刷新后再下单，而不是悄悄按新价扣钱。
+      const priceShown = Number(sku.price);
+      await this.cursorSellCatalog.ensureFresh();
+      const freshSku = await this.prisma.sku.findUnique({ where: { id: sku.id }, select: { price: true } });
+      if (freshSku && Math.abs(Number(freshSku.price) - priceShown) >= 0.005) {
+        throw new BadRequestException('渠道价格刚刚变动，请刷新页面后重新下单');
+      }
+
       const channelProduct = await this.prisma.cursorSellProduct.findUnique({ where: { code } });
       if (!channelProduct || !channelProduct.active) {
         throw new BadRequestException('该规格对应的渠道商品已下架，请联系客服');
       }
+      await this.cursorSellListing.assertSellable(priceShown, channelProduct.priceCents, sku.attrs);
       if (channelProduct.ondemandTeam && dto.quantity > 5) {
         throw new BadRequestException('现做 Team 商品单次最多购买 5 个');
       }
