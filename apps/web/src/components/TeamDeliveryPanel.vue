@@ -19,6 +19,8 @@ const props = defineProps<{
   contact?: string;
   sales: CursorSellSale[];
   orderStatus: string;
+  /** 嵌在别的卡片里时不再套一层 card 外框（如兑换结果页） */
+  embedded?: boolean;
 }>();
 const emit = defineEmits<{ (e: 'updated', sale: CursorSellSale): void }>();
 
@@ -156,7 +158,7 @@ function warrantyState(s: CursorSellSale) {
 </script>
 
 <template>
-  <div class="card p-5 md:p-6 mb-4">
+  <div :class="embedded ? 'border-t border-ink-100 pt-4' : 'card p-5 md:p-6 mb-4'">
     <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
       <h3 class="text-sm font-semibold text-ink-900 flex items-center gap-2">
         <span class="w-1 h-4 bg-brand-600 rounded-full" />

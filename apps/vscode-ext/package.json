@@ -1,0 +1,45 @@
+{
+  "name": "polo-cursor-account",
+  "displayName": "Polo Cursor 账号",
+  "description": "积分兑换 Cursor 账号并自动登录",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "polo.openPanel", "title": "Polo: 打开账号面板" }
+    ],
+    "configuration": {
+      "title": "Polo Cursor 账号",
+      "properties": {
+        "poloCursor.apiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "后端 API 地址，例如 https://your-api.com"
+        },
+        "poloCursor.jwt": {
+          "type": "string",
+          "default": "",
+          "description": "登录后的 JWT Token"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

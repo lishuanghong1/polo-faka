@@ -171,7 +171,7 @@ export class CursorSellAdminController {
     return r;
   }
 
-  // ====== 自动上架 / 跟价规则 ======
+  // ====== 跟价 / 手动上架规则 ======
 
   @Get('listing-rules')
   listingRules() {

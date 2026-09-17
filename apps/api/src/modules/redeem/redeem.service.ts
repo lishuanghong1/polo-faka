@@ -41,6 +41,36 @@ export class RedeemService {
 
   // ─────────────────────────── Admin ───────────────────────────
 
+  /**
+   * Team 渠道规格的可兑换性校验：规格必须绑定在售的渠道商品，数量不超过上游上限
+   * （现做 Team 5 / 其它 50）。生成兑换码和兑换时都调用，避免用户先被扣次数再发现发不出货。
+   */
+  private async assertCursorSellRedeemable(
+    sku: { attrs: unknown; product: { deliveryType: string } },
+    qty: number,
+    who: 'admin' | 'customer',
+  ) {
+    if (sku.product.deliveryType !== 'CURSOR_SELL') return;
+    const attrs = (sku.attrs && typeof sku.attrs === 'object' ? sku.attrs : {}) as Record<string, unknown>;
+    const code = String(attrs.cursorSellCode || '').trim();
+    const customerMsg = '该兑换码对应的商品暂不可兑换，请联系客服';
+    if (!code) {
+      throw new BadRequestException(who === 'admin' ? '该规格尚未绑定渠道商品，请先到商品编辑里绑定' : customerMsg);
+    }
+    const channel = await this.prisma.cursorSellProduct.findUnique({ where: { code } });
+    if (!channel || !channel.active) {
+      throw new BadRequestException(who === 'admin' ? '该规格绑定的渠道商品已下架，请换绑' : customerMsg);
+    }
+    const limit = channel.ondemandTeam ? 5 : 50;
+    if (qty > limit) {
+      throw new BadRequestException(
+        who === 'admin'
+          ? `渠道限制：${channel.ondemandTeam ? '现做 Team' : '该商品'}单次最多 ${limit} 个，请调小「单次兑换发货数量」`
+          : customerMsg,
+      );
+    }
+  }
+
   /** 批量生成兑换码 */
   async generate(input: GenerateInput) {
     if (!Number.isInteger(input.count) || input.count <= 0 || input.count > 5000) {
@@ -56,6 +86,7 @@ export class RedeemService {
 
     const batchTag = `B${dayjs().format('YYYYMMDDHHmmss')}-${codeNano().slice(0, 6)}`;
     const qtyPerUse = input.qtyPerUse && input.qtyPerUse > 0 ? input.qtyPerUse : 1;
+    await this.assertCursorSellRedeemable(sku, qtyPerUse, 'admin');
     const maxUses = input.maxUses && input.maxUses > 0 ? input.maxUses : 1;
     const expireAt = input.expireAt ? new Date(input.expireAt) : null;
     const codes: string[] = [];
@@ -236,8 +267,31 @@ export class RedeemService {
     if (!code) throw new NotFoundException('兑换码不存在');
     const sku = await this.prisma.sku.findUnique({
       where: { id: code.skuId },
-      include: { product: { select: { title: true, cover: true } } },
+      include: { product: { select: { title: true, cover: true, deliveryType: true } } },
     });
+
+    // Team 渠道商品：附带交付形态，前端据此提示"实时采购 / 现做 / 授权登录"
+    let cursorSell: { deliveryMode: string; ondemandTeam: boolean; active: boolean; warrantyHours: number | null } | null = null;
+    if (sku?.product?.deliveryType === 'CURSOR_SELL') {
+      const attrs = (sku.attrs && typeof sku.attrs === 'object' ? sku.attrs : {}) as Record<string, unknown>;
+      const channelCode = String(attrs.cursorSellCode || '').trim();
+      const channel = channelCode
+        ? await this.prisma.cursorSellProduct.findUnique({ where: { code: channelCode } })
+        : null;
+      const fields = Array.isArray(channel?.deliveryFields) ? (channel!.deliveryFields as string[]) : [];
+      cursorSell = {
+        deliveryMode: channel?.extractOnly
+          ? 'extract'
+          : fields.includes('login')
+            ? 'login'
+            : fields.includes('card')
+              ? 'card'
+              : 'account',
+        ondemandTeam: !!channel?.ondemandTeam,
+        active: !!channel?.active,
+        warrantyHours: channel?.warrantyHours ?? null,
+      };
+    }
 
     // 历史兑换订单（按 RedeemRecord 关联 orderNo 查 Order）
     // 注：RedeemRecord 与 Order 之间没有 schema relation，用 orderNo 字符串关联即可
@@ -298,6 +352,8 @@ export class RedeemService {
       productTitle: sku?.product?.title ?? '',
       productCover: sku?.product?.cover ?? '',
       skuName: sku?.name ?? '',
+      deliveryType: sku?.product?.deliveryType ?? null,
+      cursorSell,
       orders,
     };
   }
@@ -312,6 +368,19 @@ export class RedeemService {
   }) {
     const rawCode = input.code?.trim().toUpperCase();
     if (!rawCode) throw new BadRequestException('请填写兑换码');
+
+    // Team 渠道商品：先确认能发货再扣次数（渠道商品下架 / 未绑定时直接拦住）
+    const preview = await this.prisma.redeemCode.findUnique({
+      where: { code: rawCode },
+      select: { skuId: true, qtyPerUse: true },
+    });
+    if (preview) {
+      const previewSku = await this.prisma.sku.findUnique({
+        where: { id: preview.skuId },
+        include: { product: { select: { deliveryType: true } } },
+      });
+      if (previewSku) await this.assertCursorSellRedeemable(previewSku, preview.qtyPerUse, 'customer');
+    }
 
     // 用事务 + select for update 防并发超用
     const reservedId = await this.prisma.$transaction(async (tx) => {

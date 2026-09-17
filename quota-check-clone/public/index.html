@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Cursor 额度查询</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="/quota-check" aria-label="POLO">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span class="brand-name">POLO</span>
+        </a>
+
+        <nav class="main-nav" aria-label="主要导航">
+          <a class="nav-item nav-item-active" href="/quota-check" aria-current="page">
+            <!-- Lucide: chart-no-axes-column-increasing -->
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 16 4-5 4 3 4-6"/></svg>
+            <span>额度查询</span>
+          </a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <section class="query-section" aria-labelledby="page-title">
+        <div class="page-heading">
+          <h1 id="page-title">Cursor 额度查询</h1>
+          <p>粘贴 Token 即可查看账号用量、会员类型、费用明细</p>
+        </div>
+
+        <form id="quota-form" class="query-panel" novalidate>
+          <label class="sr-only" for="token-input">Cursor Token</label>
+          <textarea
+            id="token-input"
+            name="token"
+            rows="3"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="请粘贴您的 Cursor Token（WorkosCursorSessionToken）"
+          ></textarea>
+          <div id="form-error" class="form-error" role="alert" hidden></div>
+          <div class="query-actions">
+            <span class="shortcut-hint">Ctrl + Enter 快速查询</span>
+            <button id="submit-button" class="submit-button" type="submit">
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">查询额度</span>
+            </button>
+          </div>
+        </form>
+
+        <details class="token-help">
+          <summary>
+            <span>如何获取 Token?</span>
+            <!-- Lucide: chevron-right -->
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </summary>
+          <div class="help-content">
+            <ol>
+              <li>登录 Cursor 网页端，打开浏览器开发者工具。</li>
+              <li>在 Application / Cookies 中找到 <code>WorkosCursorSessionToken</code>。</li>
+              <li>复制完整值并粘贴到上方输入框，查询过程不会在本机落盘。</li>
+            </ol>
+          </div>
+        </details>
+
+        <section id="result-panel" class="result-section" aria-live="polite" hidden>
+          <div class="account-bar">
+            <div class="account-left">
+              <strong id="account-email" class="account-email">未知账号</strong>
+              <span id="membership-badge" class="account-plan">未知会员</span>
+            </div>
+            <div class="account-cycle">
+              <span>账期</span>
+              <strong id="billing-cycle">-</strong>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card stat-card-primary">
+              <span class="stat-icon stat-icon-amber" aria-hidden="true">
+                <!-- Lucide: dollar-sign -->
+                <svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </span>
+              <div><span class="stat-label">总费用</span><strong id="total-cost" class="stat-value cost">-</strong></div>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon stat-icon-blue" aria-hidden="true">
+                <!-- Lucide: activity -->
+                <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              </span>
+              <div><span class="stat-label">总请求数</span><strong id="total-requests" class="stat-value">-</strong></div>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon stat-icon-purple" aria-hidden="true">
+                <!-- Lucide: atom -->
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.35-4.5-11.87S5.86 1.8 3.83 3.83s-.02 7.35 4.5 11.87 9.84 6.53 11.87 4.5Z"/><path d="M15.7 15.7c4.52-4.52 6.54-9.84 4.5-11.87s-7.35-.02-11.87 4.5-6.53 9.84-4.5 11.87 7.35.02 11.87-4.5Z"/></svg>
+              </span>
+              <div><span class="stat-label">总 Tokens</span><strong id="total-tokens" class="stat-value">-</strong></div>
+            </article>
+          </div>
+
+          <section class="report-panel usage-panel" aria-labelledby="included-title">
+            <header class="panel-header">
+              <h2 id="included-title">套餐内用量</h2>
+              <span id="total-percent" class="panel-badge">合计 0.0%</span>
+            </header>
+            <div class="usage-cards">
+              <article class="usage-item usage-api">
+                <div class="usage-item-top">
+                  <span class="usage-name"><i></i>API</span>
+                  <strong><span id="api-percent">0.0</span><small>%</small></strong>
+                </div>
+                <div class="usage-track"><span id="api-progress"></span></div>
+                <div class="usage-meta"><span><b id="api-tokens">0</b> tokens</span><strong id="api-cost">$0.00</strong></div>
+              </article>
+              <article class="usage-item usage-auto">
+                <div class="usage-item-top">
+                  <span class="usage-name"><i></i>Auto + Composer</span>
+                  <strong><span id="auto-percent">0.0</span><small>%</small></strong>
+                </div>
+                <div class="usage-track"><span id="auto-progress"></span></div>
+                <div class="usage-meta"><span><b id="auto-tokens">0</b> tokens</span><strong id="auto-cost">$0.00</strong></div>
+              </article>
+            </div>
+          </section>
+
+          <section id="ondemand-card" class="ondemand-card" aria-labelledby="ondemand-title">
+            <div class="ondemand-left">
+              <span class="ondemand-icon" aria-hidden="true">
+                <!-- Lucide: triangle-alert -->
+                <svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>
+              </span>
+              <div><h2 id="ondemand-title">超额用量</h2><p>套餐外按量计费部分（On-Demand）</p></div>
+            </div>
+            <div class="ondemand-metrics">
+              <div><span>超额费用</span><strong id="ondemand-cost">$0.00</strong></div>
+              <div><span>超额请求数</span><strong><b id="ondemand-count">0</b><small>次</small></strong></div>
+              <div><span>超额 Tokens</span><strong id="ondemand-tokens">0</strong></div>
+            </div>
+          </section>
+
+          <section id="model-panel" class="report-panel" aria-labelledby="model-title" hidden>
+            <header class="panel-header"><h2 id="model-title">全模型用量</h2></header>
+            <div class="table-scroll">
+              <table class="report-table model-table">
+                <thead><tr><th>模型</th><th>请求数</th><th>Tokens</th><th>费用</th></tr></thead>
+                <tbody id="model-table-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="report-panel detail-panel" aria-labelledby="detail-title">
+            <header class="panel-header">
+              <h2 id="detail-title">用量明细</h2>
+              <span id="detail-count-badge" class="panel-badge">共 0 条</span>
+            </header>
+
+            <div class="detail-filters">
+              <div class="filter-tabs" role="tablist" aria-label="用量类型">
+                <button class="filter-tab active" type="button" role="tab" data-type="all" aria-selected="true">全部</button>
+                <button class="filter-tab" type="button" role="tab" data-type="included" aria-selected="false">套餐内</button>
+                <button class="filter-tab" type="button" role="tab" data-type="ondemand" aria-selected="false">超额</button>
+              </div>
+              <div class="date-range" aria-label="日期范围">
+                <!-- Lucide: calendar-days -->
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4M16 2v4M3 10h18"/><rect width="18" height="18" x="3" y="4" rx="2"/></svg>
+                <input id="start-date" type="date" aria-label="开始日期" />
+                <span>至</span>
+                <input id="end-date" type="date" aria-label="结束日期" />
+              </div>
+              <select id="model-filter" class="model-filter" aria-label="模型筛选">
+                <option value="">全部模型</option>
+              </select>
+            </div>
+
+            <div class="filter-summary">
+              <span>筛选 <b id="filtered-count">0</b> 条</span>
+              <span>费用 <b id="filtered-cost">$0.00</b></span>
+              <span class="summary-green">套餐内 <b id="filtered-included">0</b></span>
+              <span class="summary-red">超额 <b id="filtered-ondemand">0</b></span>
+            </div>
+
+            <div class="table-scroll">
+              <table class="report-table detail-table">
+                <thead><tr><th>#</th><th>时间</th><th>模型</th><th>类型</th><th>Tokens</th><th>费用</th></tr></thead>
+                <tbody id="detail-table-body"></tbody>
+              </table>
+              <p id="detail-empty" class="detail-empty" hidden>没有符合条件的用量记录</p>
+            </div>
+
+            <nav id="detail-pagination" class="detail-pagination" aria-label="用量明细分页" hidden>
+              <label>每页
+                <select id="page-size"><option>10</option><option selected>20</option><option>50</option><option>100</option></select>
+              </label>
+              <button id="previous-page" type="button" title="上一页" aria-label="上一页">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <span id="page-indicator">1 / 1</span>
+              <button id="next-page" type="button" title="下一页" aria-label="下一页">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+            </nav>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

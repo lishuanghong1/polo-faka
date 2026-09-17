@@ -342,8 +342,13 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 50)));
         <label class="text-sm text-ink-700 block mb-1">选择商品 *</label>
         <select v-model="gen.productId" class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm">
           <option :value="undefined">请选择</option>
-          <option v-for="p in products" :key="p.id" :value="p.id">{{ p.title }}</option>
+          <option v-for="p in products" :key="p.id" :value="p.id">
+            {{ p.title }}{{ p.deliveryType === 'CURSOR_SELL' ? '　[Team 渠道]' : p.deliveryType === 'AIZHP' ? '　[Aizhp]' : p.deliveryType === 'POOL_QUOTA' ? '　[号池]' : '' }}
+          </option>
         </select>
+        <p v-if="selectedProduct?.deliveryType === 'CURSOR_SELL'" class="text-[11px] text-sky-800 bg-sky-50 border border-sky-100 rounded-md px-2.5 py-2 mt-2 leading-relaxed">
+          Team 渠道商品：用户兑换时系统实时向上游采购发货（不占本站库存，会消耗渠道余额）。「单次兑换发货数量」受渠道限制：现做 Team ≤ 5，其它 ≤ 50。
+        </p>
       </div>
       <div>
         <label class="text-sm text-ink-700 block mb-1">选择规格 *</label>

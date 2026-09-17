@@ -18,7 +18,7 @@ const FRESH_MS = 6 * 60 * 1000;
 /**
  * 上游商品缓存：同步 GET /products 到 cursor_sell_products。
  * 缓存用于：后台商品绑定下拉、前台库存展示、采购成本快照。
- * 同步完成后交给 ListingService 做自动上架 / 跟价 / 下架联动。
+ * 同步完成后交给 ListingService 做跟价 / 下架联动（不自动上架新商品）。
  */
 @Injectable()
 export class CursorSellCatalogService {

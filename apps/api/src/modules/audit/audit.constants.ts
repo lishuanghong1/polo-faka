@@ -19,7 +19,7 @@ export const AuditActions = {
   CURSOR_SELL_PUSH_STOCK: 'CURSOR_SELL_PUSH_STOCK',           // 采购结果入卡密池 / 仓库
   CURSOR_SELL_LOGIN_APPROVE: 'CURSOR_SELL_LOGIN_APPROVE',     // 授权登录确认（用户 / 后台）
   CURSOR_SELL_AUTO_LIST: 'CURSOR_SELL_AUTO_LIST',             // 渠道商品上架为本站商品
-  CURSOR_SELL_LISTING_RULES: 'CURSOR_SELL_LISTING_RULES',     // 修改自动上架 / 跟价规则
+  CURSOR_SELL_LISTING_RULES: 'CURSOR_SELL_LISTING_RULES',     // 修改跟价 / 手动上架规则
 
   // 订单
   ORDER_MARK_PAID: 'ORDER_MARK_PAID',

@@ -81,7 +81,7 @@ export type CursorSellLocalBinding = {
   autoListed: boolean;
 };
 
-/** Team 售号渠道：自动上架 / 跟价规则 */
+/** Team 售号渠道：跟价 / 手动上架规则（autoList 已废弃，始终为 false） */
 export type CursorSellListingRules = {
   autoList: boolean;
   categoryId: number | null;

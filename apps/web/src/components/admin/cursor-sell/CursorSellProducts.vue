@@ -90,7 +90,7 @@ async function sync() {
     const r = await api.admin.cursorSell.syncProducts();
     const l = r.listing || { listed: 0, repriced: 0, offShelf: 0, restored: 0 };
     ElMessage.success(
-      `同步完成：更新 ${r.upserted}，下架 ${r.deactivated}；自动上架 ${l.listed}，调价 ${l.repriced}，本站下架 ${l.offShelf}，恢复 ${l.restored}`,
+      `同步完成：更新 ${r.upserted}，下架 ${r.deactivated}；调价 ${l.repriced}，本站下架 ${l.offShelf}，恢复 ${l.restored}`,
     );
     await load();
     emit('synced');
@@ -177,23 +177,16 @@ defineExpose({ load });
 
 <template>
   <div class="space-y-4">
-    <!-- 自动上架 / 跟价规则 -->
+    <!-- 跟价 / 手动上架规则 -->
     <div class="rounded-xl border border-ink-100 bg-white p-5">
       <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
         <div>
-          <div class="text-sm font-medium text-ink-900">自动上架 & 跟价规则</div>
-          <p class="text-[11px] text-ink-400 mt-0.5">每次同步（每 5 分钟 / 手动）按此规则：新商品自动上架、跟价规格按最新成本重算、上游下架则本站下架。</p>
+          <div class="text-sm font-medium text-ink-900">跟价规则</div>
+          <p class="text-[11px] text-ink-400 mt-0.5">每次同步（每 5 分钟 / 手动）按此规则：跟价规格按最新成本重算、上游下架则本站下架。新渠道商品需在下方列表手动上架。</p>
         </div>
         <BrandButton variant="primary" size="sm" :loading="rulesSaving" :disabled="!rules" @click="saveRules">保存规则</BrandButton>
       </div>
       <div v-if="rules" class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-        <label class="flex items-start gap-2 cursor-pointer">
-          <input v-model="rules.autoList" type="checkbox" class="mt-1" />
-          <span>
-            <span class="text-ink-800 font-medium">自动上架新同步到的渠道商品</span>
-            <span class="block text-[11px] text-ink-400">关闭后仍可在下方列表手动上架</span>
-          </span>
-        </label>
         <div>
           <label class="text-xs text-ink-500 block mb-1">上架到分类</label>
           <select v-model="rules.categoryId" class="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white text-sm">
@@ -332,7 +325,7 @@ defineExpose({ load });
       </table>
     </div>
     <p class="text-[11px] text-ink-400 leading-relaxed">
-      库存为上游静态估算，成交时会实时验档，偶发无货属正常。自动上架生成的商品是普通商品：标题、描述、封面、分类随便改，同步只会更新价格和上下架状态；在商品编辑里关掉规格的「跟随渠道价」即可手工定价。
+      库存为上游静态估算，成交时会实时验档，偶发无货属正常。手动上架生成的商品是普通商品：标题、描述、封面、分类随便改，同步只会更新价格和上下架状态；在商品编辑里关掉规格的「跟随渠道价」即可手工定价。
     </p>
   </div>
 </template>

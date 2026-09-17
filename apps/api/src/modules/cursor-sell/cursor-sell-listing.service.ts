@@ -3,11 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
- * 渠道商品 → 本站商品 的自动上架与价格/状态跟随。
+ * 渠道商品 → 本站商品 的手动上架与价格/状态跟随。
  *
  * 规则存 site_settings（非密钥，直接读写）：
- *   cursor_sell_auto_list             自动上架新同步到的渠道商品（默认开）
- *   cursor_sell_auto_list_category_id 上架到哪个分类（空 = 第一个非"全部"分类）
+ *   cursor_sell_auto_list             已废弃：同步不再自动上架，始终视为关
+ *   cursor_sell_auto_list_category_id 手动上架到哪个分类（空 = 第一个非"全部"分类）
  *   cursor_sell_markup_yuan           默认加价（元，默认 20）
  *   cursor_sell_markup_percent        默认加价比例（%，默认 0；与固定加价取高）
  *   cursor_sell_follow_offshelf       上游下架 → 本站自动下架；恢复 → 自动恢复（默认开）
@@ -16,7 +16,7 @@ import { PrismaService } from '../../prisma/prisma.service';
  * 规格侧标记（Sku.attrs）：
  *   cursorSellCode        绑定的渠道商品
  *   cursorSellPricing     { mode:'COST_PLUS', markupYuan, markupPercent }；有 = 跟价，同步时重算
- *   cursorSellAutoListed  由自动上架创建
+ *   cursorSellAutoListed  由上架接口创建（含历史自动上架）
  *   cursorSellAutoOffShelf 被系统自动下架（上游恢复时只恢复带此标记的商品）
  */
 
@@ -86,7 +86,7 @@ export class CursorSellListingService {
     };
     const categoryRaw = num(map[RULE_KEYS.categoryId], 0);
     return {
-      autoList: bool(map[RULE_KEYS.autoList], true),
+      autoList: false,
       categoryId: categoryRaw > 0 ? categoryRaw : null,
       markupYuan: Math.max(0, num(map[RULE_KEYS.markupYuan], 20)),
       markupPercent: Math.max(0, num(map[RULE_KEYS.markupPercent], 0)),
@@ -105,7 +105,7 @@ export class CursorSellListingService {
           create: { key, value, isPublic: false },
         }),
       );
-    if (input.autoList !== undefined) put(RULE_KEYS.autoList, input.autoList ? 'true' : 'false');
+    put(RULE_KEYS.autoList, 'false');
     if (input.categoryId !== undefined) put(RULE_KEYS.categoryId, input.categoryId ? String(input.categoryId) : '');
     if (input.markupYuan !== undefined) put(RULE_KEYS.markupYuan, String(Math.max(0, Number(input.markupYuan) || 0)));
     if (input.markupPercent !== undefined) put(RULE_KEYS.markupPercent, String(Math.max(0, Number(input.markupPercent) || 0)));
@@ -240,7 +240,7 @@ export class CursorSellListingService {
       },
       include: { skus: true },
     });
-    this.logger.log(`auto-listed ${code} → product #${product.id} at ¥${price}`);
+    this.logger.log(`listed ${code} → product #${product.id} at ¥${price}`);
     return { productId: product.id, skuId: product.skus[0].id, created: true, price };
   }
 
@@ -283,7 +283,8 @@ export class CursorSellListingService {
   // ─────────────────────────── 同步后的跟随 ───────────────────────────
 
   /**
-   * 商品缓存同步完成后调用：自动上架新商品、重算跟价规格、上游下架/恢复联动。
+   * 商品缓存同步完成后调用：重算跟价规格、上游下架/恢复联动。
+   * 不再自动上架新渠道商品，需运营在后台手动上架。
    */
   async applyAfterSync(): Promise<{ listed: number; repriced: number; offShelf: number; restored: number }> {
     const rules = await this.loadRules();
@@ -295,24 +296,10 @@ export class CursorSellListingService {
       include: { product: { select: { id: true, status: true } } },
     });
 
-    // 1) 自动上架
-    let listed = 0;
-    if (rules.autoList) {
-      const bound = new Set(
-        skus.map((s) => String(attrsOf(s.attrs).cursorSellCode || '').trim()).filter(Boolean),
-      );
-      for (const up of upstream) {
-        if (!up.active || bound.has(up.code)) continue;
-        try {
-          const r = await this.listProduct(up.code);
-          if (r.created) listed++;
-        } catch (e) {
-          this.logger.warn(`auto-list ${up.code} skipped: ${(e as Error).message}`);
-        }
-      }
-    }
+    await this.persistAutoListDisabled();
+    const listed = 0;
 
-    // 2) 跟价重算
+    // 1) 跟价重算
     let repriced = 0;
     const touchedProducts = new Set<number>();
     for (const s of skus) {
@@ -330,7 +317,7 @@ export class CursorSellListingService {
     }
     for (const productId of touchedProducts) await this.syncBasePrice(productId);
 
-    // 3) 上游下架 → 本站下架；上游恢复 → 恢复我们自动下架的
+    // 2) 上游下架 → 本站下架；上游恢复 → 恢复我们自动下架的
     let offShelf = 0;
     let restored = 0;
     if (rules.followOffShelf) {
@@ -378,6 +365,17 @@ export class CursorSellListingService {
       this.logger.log(`listing follow: listed=${listed} repriced=${repriced} offShelf=${offShelf} restored=${restored}`);
     }
     return { listed, repriced, offShelf, restored };
+  }
+
+  /** 把历史「自动上架」开关落成关，避免库里残留 true */
+  private async persistAutoListDisabled() {
+    const row = await this.prisma.siteSetting.findUnique({ where: { key: RULE_KEYS.autoList } });
+    if (row?.value === 'false') return;
+    await this.prisma.siteSetting.upsert({
+      where: { key: RULE_KEYS.autoList },
+      update: { value: 'false', isPublic: false },
+      create: { key: RULE_KEYS.autoList, value: 'false', isPublic: false },
+    });
   }
 
   /** 单个商品保存后：按跟价规则重算其规格价格与起价（商品编辑保存时调用） */
