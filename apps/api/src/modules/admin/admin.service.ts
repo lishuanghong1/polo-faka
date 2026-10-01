@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LOCAL_DELIVERY_TYPES } from '../products/local-delivery';
 
 @Injectable()
 export class AdminService {
@@ -10,157 +11,44 @@ export class AdminService {
     const now = new Date();
     const startOfDay = dayjs().startOf('day').toDate();
     const startOf7d = dayjs().subtract(7, 'day').startOf('day').toDate();
-
     const [
-      productCount,
-      onSale,
-      userCount,
-      todayOrdersLocal,
-      todayOrdersForge,
-      todayOrdersQuota,
-      todayPaidLocal,
-      todayPaidForge,
-      todayPaidQuota,
-      todayRevenueLocal,
-      todayRevenueForge,
-      todayRevenueQuota,
-      weekRevenueLocal,
-      weekRevenueForge,
-      weekRevenueQuota,
-      pendingLocal,
-      pendingForge,
-      pendingQuota,
-      cardKeyTotal,
-      cardKeyAvail,
-      poolAccounts,
+      productCount, onSale, userCount, todayOrders, todayPaid,
+      todayRevenue, weekRevenue, pendingDeliver, cardKeyTotal, cardKeyAvail, poolAccounts,
     ] = await Promise.all([
       this.prisma.product.count(),
-      this.prisma.product.count({ where: { status: 'ON_SALE' } }),
+      this.prisma.product.count({
+        where: { status: 'ON_SALE', deliveryType: { in: [...LOCAL_DELIVERY_TYPES] } },
+      }),
       this.prisma.user.count(),
-      // 今日订单数（含全部状态）
       this.prisma.order.count({ where: { createdAt: { gte: startOfDay } } }),
-      this.prisma.forgeOrder.count({ where: { createdAt: { gte: startOfDay } } }),
-      this.prisma.forgeQuotaOrder.count({ where: { createdAt: { gte: startOfDay } } }),
-      // 今日成交订单数（已支付/已发货，排除退款）
       this.prisma.order.count({
-        where: {
-          createdAt: { gte: startOfDay },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
+        where: { createdAt: { gte: startOfDay }, status: { in: ['PAID', 'DELIVERED'] } },
       }),
-      this.prisma.forgeOrder.count({
-        where: {
-          createdAt: { gte: startOfDay },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      this.prisma.forgeQuotaOrder.count({
-        where: {
-          createdAt: { gte: startOfDay },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      // 今日营收（按支付时间，排除退款）
       this.prisma.order.aggregate({
         _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOfDay, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
+        where: { paidAt: { gte: startOfDay, not: null }, status: { in: ['PAID', 'DELIVERED'] } },
       }),
-      this.prisma.forgeOrder.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOfDay, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      this.prisma.forgeQuotaOrder.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOfDay, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      // 7 日营收（同上）
       this.prisma.order.aggregate({
         _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOf7d, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
+        where: { paidAt: { gte: startOf7d, not: null }, status: { in: ['PAID', 'DELIVERED'] } },
       }),
-      this.prisma.forgeOrder.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOf7d, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      this.prisma.forgeQuotaOrder.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          paidAt: { gte: startOf7d, not: null },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-      }),
-      // 待处理：本地 PAID（卡密尚未发出）；Forge/额度包 PAID + FAILED（需人工重发）
       this.prisma.order.count({ where: { status: 'PAID' } }),
-      this.prisma.forgeOrder.count({
-        where: { status: { in: ['PAID', 'FAILED'] } },
-      }),
-      this.prisma.forgeQuotaOrder.count({
-        where: { status: { in: ['PAID', 'FAILED'] } },
-      }),
       this.prisma.cardKey.count(),
       this.prisma.cardKey.count({ where: { status: 'AVAILABLE' } }),
       this.prisma.poolAccount.count(),
     ]);
-
-    const todayRevenue =
-      Number(todayRevenueLocal._sum.totalAmount ?? 0) +
-      Number(todayRevenueForge._sum.totalAmount ?? 0) +
-      Number(todayRevenueQuota._sum.totalAmount ?? 0);
-    const weekRevenue =
-      Number(weekRevenueLocal._sum.totalAmount ?? 0) +
-      Number(weekRevenueForge._sum.totalAmount ?? 0) +
-      Number(weekRevenueQuota._sum.totalAmount ?? 0);
-
+    const local = {
+      today: todayOrders,
+      todayPaid,
+      todayRevenue: +Number(todayRevenue._sum.totalAmount ?? 0).toFixed(2),
+      weekRevenue: +Number(weekRevenue._sum.totalAmount ?? 0).toFixed(2),
+      pendingDeliver,
+    };
     return {
       now,
       product: { total: productCount, onSale },
       user: { total: userCount },
-      order: {
-        today: todayOrdersLocal + todayOrdersForge + todayOrdersQuota,
-        todayPaid: todayPaidLocal + todayPaidForge + todayPaidQuota,
-        todayRevenue: +todayRevenue.toFixed(2),
-        weekRevenue: +weekRevenue.toFixed(2),
-        pendingDeliver: pendingLocal + pendingForge + pendingQuota,
-        // 拆分便于审计
-        breakdown: {
-          local: {
-            today: todayOrdersLocal,
-            todayPaid: todayPaidLocal,
-            todayRevenue: Number(todayRevenueLocal._sum.totalAmount ?? 0),
-            weekRevenue: Number(weekRevenueLocal._sum.totalAmount ?? 0),
-            pendingDeliver: pendingLocal,
-          },
-          forge: {
-            today: todayOrdersForge,
-            todayPaid: todayPaidForge,
-            todayRevenue: Number(todayRevenueForge._sum.totalAmount ?? 0),
-            weekRevenue: Number(weekRevenueForge._sum.totalAmount ?? 0),
-            pendingDeliver: pendingForge,
-          },
-          forgeQuota: {
-            today: todayOrdersQuota,
-            todayPaid: todayPaidQuota,
-            todayRevenue: Number(todayRevenueQuota._sum.totalAmount ?? 0),
-            weekRevenue: Number(weekRevenueQuota._sum.totalAmount ?? 0),
-            pendingDeliver: pendingQuota,
-          },
-        },
-      },
+      order: { ...local, breakdown: { local } },
       cardKey: { total: cardKeyTotal, available: cardKeyAvail },
       pool: { accounts: poolAccounts },
     };
@@ -211,39 +99,23 @@ export class AdminService {
     ]).then(([total, items]) => ({ total, page, pageSize, items }));
   }
 
-  /** N 天内每日营收 / 订单数（本地 + 三方 + 额度包合并） */
+  /** N 天内本站订单每日营收 / 订单数 */
   async revenueTrend(days = 14) {
     const since = dayjs().subtract(days - 1, 'day').startOf('day');
-    const [localRows, forgeRows, quotaRows] = await Promise.all([
-      this.prisma.order.findMany({
-        where: {
-          paidAt: { not: null, gte: since.toDate() },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-        select: { paidAt: true, totalAmount: true },
-      }),
-      this.prisma.forgeOrder.findMany({
-        where: {
-          paidAt: { not: null, gte: since.toDate() },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-        select: { paidAt: true, totalAmount: true },
-      }),
-      this.prisma.forgeQuotaOrder.findMany({
-        where: {
-          paidAt: { not: null, gte: since.toDate() },
-          status: { in: ['PAID', 'DELIVERED'] },
-        },
-        select: { paidAt: true, totalAmount: true },
-      }),
-    ]);
+    const localRows = await this.prisma.order.findMany({
+      where: {
+        paidAt: { not: null, gte: since.toDate() },
+        status: { in: ['PAID', 'DELIVERED'] },
+      },
+      select: { paidAt: true, totalAmount: true },
+    });
 
     const buckets: Record<string, { date: string; revenue: number; orders: number }> = {};
     for (let i = 0; i < days; i++) {
       const d = since.add(i, 'day').format('YYYY-MM-DD');
       buckets[d] = { date: d, revenue: 0, orders: 0 };
     }
-    for (const r of [...localRows, ...forgeRows, ...quotaRows]) {
+    for (const r of localRows) {
       const d = dayjs(r.paidAt!).format('YYYY-MM-DD');
       if (!buckets[d]) continue;
       buckets[d].revenue += Number(r.totalAmount);
@@ -258,7 +130,10 @@ export class AdminService {
   /** 库存预警：可售卡密 < threshold 的 SKU */
   async stockAlerts(threshold = 5) {
     const skus = await this.prisma.sku.findMany({
-      where: { visible: true, product: { status: 'ON_SALE' } },
+      where: {
+        visible: true,
+        product: { status: 'ON_SALE', deliveryType: { in: [...LOCAL_DELIVERY_TYPES] } },
+      },
       include: { product: { select: { id: true, title: true } } },
     });
     const ids = skus.map((s) => s.id);

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import api, { type CursorSellProduct } from '@/api';
+import api from '@/api';
 import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import DataTable from '@/components/admin/DataTable.vue';
 import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
@@ -13,36 +13,9 @@ const editing = ref<any | null>(null);
 const loading = ref(false);
 const filter = ref<{ status: string; keyword: string }>({ status: '', keyword: '' });
 
-/** Team 售号渠道商品缓存（CURSOR_SELL 交付类型下给规格绑定用） */
-const cursorSellProducts = ref<CursorSellProduct[]>([]);
-const cursorSellLoaded = ref(false);
-async function loadCursorSellProducts() {
-  if (cursorSellLoaded.value) return;
-  try {
-    cursorSellProducts.value = await api.admin.cursorSell.products(false);
-    cursorSellLoaded.value = true;
-  } catch {
-    cursorSellProducts.value = [];
-  }
+function canManageProduct(p: any) {
+  return ['CARD_KEY', 'POOL_QUOTA', 'MANUAL'].includes(p.deliveryType);
 }
-function cursorSellProductOf(code: string) {
-  return cursorSellProducts.value.find((p) => p.code === code) || null;
-}
-/** 跟价售价 = max(成本 + 固定加价, 成本 × (1 + 比例))，与后端一致 */
-function cursorSellFollowPrice(s: any): number | null {
-  const cp = cursorSellProductOf(s._cursorSellCode);
-  if (!cp) return null;
-  const cost = cp.price;
-  const fixed = cost + Math.max(0, Number(s._cursorSellMarkupYuan) || 0);
-  const pct = cost * (1 + Math.max(0, Number(s._cursorSellMarkupPercent) || 0) / 100);
-  return Math.round(Math.max(fixed, pct) * 100) / 100;
-}
-watch(
-  () => editing.value?.deliveryType,
-  (t) => {
-    if (t === 'CURSOR_SELL') loadCursorSellProducts();
-  },
-);
 
 const statusOptions = [
   { value: '', label: '全部状态' },
@@ -67,6 +40,7 @@ async function load() {
 onMounted(load);
 
 function startEdit(p: any) {
+  if (!canManageProduct(p)) return;
   editing.value = JSON.parse(JSON.stringify(p));
   if (Array.isArray(editing.value.tags)) {
     editing.value._tagsStr = editing.value.tags.join(',');
@@ -85,16 +59,7 @@ function startEdit(p: any) {
   for (const s of editing.value.skus || []) {
     const attrs = s.attrs && typeof s.attrs === 'object' ? s.attrs : {};
     s._poolValidityDays = attrs.poolValidityDays ?? attrs.validityDays ?? '';
-    s._cursorSellCode = attrs.cursorSellCode ?? '';
-    s._cursorSellExtractSplit = !!attrs.cursorSellExtractSplit;
-    const pricing = attrs.cursorSellPricing && typeof attrs.cursorSellPricing === 'object' ? attrs.cursorSellPricing : null;
-    s._cursorSellFollow = !!pricing;
-    s._cursorSellMarkupYuan = pricing ? Number(pricing.markupYuan) || 0 : 20;
-    s._cursorSellMarkupPercent = pricing ? Number(pricing.markupPercent) || 0 : 0;
   }
-  // AIZHP 档位：从第一个 SKU 的 attrs.aizhpPlan 读取
-  const firstSkuAttrs = editing.value.skus?.[0]?.attrs;
-  editing.value._aizhpPlan = (firstSkuAttrs && typeof firstSkuAttrs === 'object' ? firstSkuAttrs.aizhpPlan : '') || 'pro';
 }
 
 function newProduct() {
@@ -111,8 +76,6 @@ function newProduct() {
     warranty: '',
     skus: [{
       name: '默认规格', price: 0, sort: 0, visible: true, _poolValidityDays: '',
-      _cursorSellCode: '', _cursorSellExtractSplit: false,
-      _cursorSellFollow: true, _cursorSellMarkupYuan: 20, _cursorSellMarkupPercent: 0,
     }],
     status: 'ON_SALE',
     deliveryType: 'CARD_KEY',
@@ -120,7 +83,6 @@ function newProduct() {
     pointsPayEnabled: true,
     pointsAwardRate: null,
     _pointsAwardRatePct: '',
-    _aizhpPlan: 'pro',
   };
 }
 
@@ -143,46 +105,9 @@ async function save() {
   }
   delete payload._tagsStr;
   delete payload._bulkStr;
-  if (payload.deliveryType === 'CURSOR_SELL') {
-    const missing = (payload.skus || []).find((s: any) => !String(s._cursorSellCode || '').trim());
-    if (missing) {
-      ElMessage.warning(`规格「${missing.name || '未命名'}」还没绑定渠道商品`);
-      return;
-    }
-  }
   payload.skus = (payload.skus || []).map((raw: any) => {
     const s = { ...raw };
     const attrs = s.attrs && typeof s.attrs === 'object' && !Array.isArray(s.attrs) ? { ...s.attrs } : {};
-    // 渠道绑定字段只在 CURSOR_SELL 下保留，切换交付类型时清掉，避免残留误导
-    if (payload.deliveryType === 'CURSOR_SELL') {
-      attrs.cursorSellCode = String(s._cursorSellCode || '').trim();
-      const cp = cursorSellProductOf(attrs.cursorSellCode);
-      if (cp?.extractOnly && s._cursorSellExtractSplit) attrs.cursorSellExtractSplit = true;
-      else delete attrs.cursorSellExtractSplit;
-      if (s._cursorSellFollow) {
-        attrs.cursorSellPricing = {
-          mode: 'COST_PLUS',
-          markupYuan: Math.max(0, Number(s._cursorSellMarkupYuan) || 0),
-          markupPercent: Math.max(0, Number(s._cursorSellMarkupPercent) || 0),
-        };
-        // 跟价规格的价格由服务端按最新成本重算，这里先填当前预览值
-        const preview = cursorSellFollowPrice(s);
-        if (preview != null) s.price = preview;
-      } else {
-        delete attrs.cursorSellPricing;
-      }
-    } else {
-      delete attrs.cursorSellCode;
-      delete attrs.cursorSellExtractSplit;
-      delete attrs.cursorSellPricing;
-      delete attrs.cursorSellAutoListed;
-      delete attrs.cursorSellAutoOffShelf;
-    }
-    delete s._cursorSellCode;
-    delete s._cursorSellExtractSplit;
-    delete s._cursorSellFollow;
-    delete s._cursorSellMarkupYuan;
-    delete s._cursorSellMarkupPercent;
     if (payload.deliveryType === 'POOL_QUOTA') {
       const validityDays = Number(s._poolValidityDays);
       delete attrs.poolQuota;
@@ -190,19 +115,8 @@ async function save() {
       delete attrs.quota;
       delete attrs.poolQuotaPerUnit;
       delete attrs.quotaPerUnit;
-      delete attrs.aizhpPlan;
       if (Number.isFinite(validityDays) && validityDays > 0) attrs.poolValidityDays = Math.floor(validityDays);
       else delete attrs.poolValidityDays;
-    } else if (payload.deliveryType === 'AIZHP') {
-      // 将档位存入每个 SKU 的 attrs
-      attrs.aizhpPlan = payload._aizhpPlan || 'pro';
-      delete attrs.poolQuota;
-      delete attrs.quotaTotal;
-      delete attrs.quota;
-      delete attrs.poolQuotaPerUnit;
-      delete attrs.quotaPerUnit;
-      delete attrs.poolValidityDays;
-      delete attrs.validityDays;
     } else {
       delete attrs.poolQuota;
       delete attrs.quotaTotal;
@@ -211,13 +125,11 @@ async function save() {
       delete attrs.quotaPerUnit;
       delete attrs.poolValidityDays;
       delete attrs.validityDays;
-      delete attrs.aizhpPlan;
     }
     s.attrs = Object.keys(attrs).length ? attrs : null;
     delete s._poolValidityDays;
     return s;
   });
-  delete payload._aizhpPlan;
 
   payload.pointsAwardEnabled = !!payload.pointsAwardEnabled;
   payload.pointsPayEnabled = !!payload.pointsPayEnabled;
@@ -257,6 +169,7 @@ async function del(p: any) {
 }
 
 async function toggleStatus(p: any) {
+  if (!canManageProduct(p) && p.status !== 'ON_SALE') return;
   const next = p.status === 'ON_SALE' ? 'OFF_SHELF' : 'ON_SALE';
   await api.admin.productsSetStatus(p.id, next);
   ElMessage.success(next === 'ON_SALE' ? '已上架' : '已下架');
@@ -265,6 +178,7 @@ async function toggleStatus(p: any) {
 
 // 列表内联调整排序权重（数字越大越靠前）。出错时回滚到服务端真实顺序。
 async function updateSort(p: any) {
+  if (!canManageProduct(p)) return;
   const sort = Number(p.sort);
   if (!Number.isFinite(sort)) {
     load();
@@ -341,6 +255,7 @@ function removeSku(i: number) {
             </div>
             <div class="min-w-0">
               <div class="font-medium text-ink-900 truncate">{{ p.title }}</div>
+              <div v-if="!canManageProduct(p)" class="text-xs text-amber-700">历史商品（已停用）</div>
               <div v-if="p.subtitle" class="text-xs text-ink-500 truncate">{{ p.subtitle }}</div>
             </div>
           </div>
@@ -359,6 +274,7 @@ function removeSku(i: number) {
             type="number"
             class="w-16 px-2 py-1 border border-ink-200 rounded-md text-right text-sm focus:border-brand-400 focus:outline-none"
             title="数字越大越靠前，修改后失焦自动保存"
+            :disabled="!canManageProduct(p)"
             @change="updateSort(p)"
           />
         </td>
@@ -393,6 +309,7 @@ function removeSku(i: number) {
         <td>
           <button
             class="text-xs px-2 py-0.5 rounded-md border whitespace-nowrap"
+            :disabled="!canManageProduct(p) && p.status !== 'ON_SALE'"
             :class="p.status === 'ON_SALE'
               ? 'bg-brand-50 text-brand-700 border-brand-200 hover:bg-brand-100'
               : 'bg-ink-100 text-ink-500 border-ink-200 hover:bg-ink-200'"
@@ -402,7 +319,7 @@ function removeSku(i: number) {
           </button>
         </td>
         <td class="text-right whitespace-nowrap">
-          <button class="text-ink-500 hover:text-brand-700 mr-3 text-sm" @click="startEdit(p)">编辑</button>
+          <button class="text-ink-500 hover:text-brand-700 mr-3 text-sm disabled:opacity-40" :disabled="!canManageProduct(p)" @click="startEdit(p)">编辑</button>
           <button class="text-ink-500 hover:text-rose-600 text-sm" @click="del(p)">删除</button>
         </td>
       </tr>
@@ -439,19 +356,9 @@ function removeSku(i: number) {
             <option value="CARD_KEY">卡密自动发货</option>
             <option value="POOL_QUOTA">号池额度包</option>
             <option value="MANUAL">人工发货</option>
-            <option value="AIZHP">Aizhp 渠道</option>
-            <option value="CURSOR_SELL">Team 售号渠道（付款后实时向上游采购）</option>
           </select>
         </div>
-        <div v-if="editing.deliveryType === 'AIZHP'">
-          <label class="block text-xs text-ink-500 mb-1">退款档位（账号类型）</label>
-          <select v-model="editing._aizhpPlan" class="w-full px-3 py-2 border border-ink-200 rounded-lg bg-white">
-            <option value="pro">Pro</option>
-            <option value="pro+">Pro+</option>
-            <option value="ultra">Ultra</option>
-          </select>
-          <p class="text-[11px] text-ink-400 mt-1">用户退款时自动按此档位提交，无需手动选择</p>
-        </div>
+
       </div>
       <div>
         <label class="block text-xs text-ink-500 mb-1">标题</label>
@@ -611,66 +518,7 @@ function removeSku(i: number) {
             额度按订单实付金额和环境变量 POOL_QUOTA_PER_CNY 自动计算，无需单独设置总额度。
           </p>
         </div>
-        <div v-if="editing.deliveryType === 'CURSOR_SELL'" class="space-y-2">
-          <div
-            v-for="(s, i) in editing.skus"
-            :key="`cs-${i}`"
-            class="rounded-lg bg-sky-50/50 border border-sky-100 p-3 space-y-2"
-          >
-            <div class="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr] gap-2 items-end">
-              <div class="min-w-0">
-                <div class="text-xs text-ink-500 mb-1">规格</div>
-                <div class="text-sm text-ink-800 truncate">{{ s.name || `规格 ${i + 1}` }}</div>
-              </div>
-              <div>
-                <label class="block text-xs text-ink-500 mb-1">绑定渠道商品</label>
-                <select v-model="s._cursorSellCode" class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm bg-white">
-                  <option value="" disabled>请选择</option>
-                  <option v-for="cp in cursorSellProducts" :key="cp.code" :value="cp.code" :disabled="!cp.active">
-                    {{ cp.title }} · {{ cp.tier.toUpperCase() }} · 成本 ¥{{ cp.price.toFixed(2) }} · 库存 {{ cp.stock }}{{ cp.active ? '' : '（已下架）' }}
-                  </option>
-                </select>
-              </div>
-            </div>
-            <template v-if="cursorSellProductOf(s._cursorSellCode)">
-              <div class="text-[11px] text-ink-600 flex flex-wrap gap-x-3 gap-y-1">
-                <span>交付：<b>{{ { account: '凭据直发', login: '授权登录', card: '池卡密', extract: '次数票' }[cursorSellProductOf(s._cursorSellCode)!.deliveryMode] }}</b></span>
-                <span>字段：<span class="font-mono">{{ cursorSellProductOf(s._cursorSellCode)!.deliveryFields.join(', ') || '—' }}</span></span>
-                <span v-if="cursorSellProductOf(s._cursorSellCode)!.warrantyHours">质保 {{ cursorSellProductOf(s._cursorSellCode)!.warrantyHours }}h</span>
-                <span v-if="cursorSellProductOf(s._cursorSellCode)!.ondemandTeam" class="text-rose-700">现做（单次 ≤5，付款后先显示开通中）</span>
-                <span v-if="!s._cursorSellFollow && Number(s.price) > 0 && Number(s.price) < cursorSellProductOf(s._cursorSellCode)!.price" class="text-rose-700 font-medium">
-                  ⚠ 售价低于成本 ¥{{ cursorSellProductOf(s._cursorSellCode)!.price.toFixed(2) }}
-                </span>
-              </div>
-              <div class="flex items-center gap-3 flex-wrap text-xs bg-white border border-sky-100 rounded-md px-3 py-2">
-                <label class="flex items-center gap-1.5 cursor-pointer text-ink-800 font-medium">
-                  <input v-model="s._cursorSellFollow" type="checkbox" />
-                  跟随渠道价
-                </label>
-                <template v-if="s._cursorSellFollow">
-                  <span class="text-ink-500">成本 ¥{{ cursorSellProductOf(s._cursorSellCode)!.price.toFixed(2) }} +</span>
-                  <input v-model.number="s._cursorSellMarkupYuan" type="number" min="0" step="0.5" class="w-20 px-2 py-1 border border-ink-200 rounded text-right" />
-                  <span class="text-ink-500">元，或 ×(1 +</span>
-                  <input v-model.number="s._cursorSellMarkupPercent" type="number" min="0" step="1" class="w-16 px-2 py-1 border border-ink-200 rounded text-right" />
-                  <span class="text-ink-500">%) 取高 ⇒ 售价</span>
-                  <b class="text-rose-600">¥{{ (cursorSellFollowPrice(s) ?? 0).toFixed(2) }}</b>
-                  <span class="text-ink-400">（渠道成本变动时每 5 分钟自动重算，上方价格框无效）</span>
-                </template>
-                <span v-else class="text-ink-400">手工定价：使用上方价格框，同步不会改动</span>
-              </div>
-              <label v-if="cursorSellProductOf(s._cursorSellCode)!.extractOnly" class="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
-                <input v-model="s._cursorSellExtractSplit" type="checkbox" />
-                多件购买时拆成多张各 1 次的提取卡（不勾则 1 张 N 次）
-              </label>
-            </template>
-          </div>
-          <p v-if="!cursorSellProducts.length" class="text-[11px] text-amber-700">
-            还没有渠道商品缓存，请先到「Team 渠道 → 渠道商品」同步。
-          </p>
-          <p class="text-[11px] text-sky-800 leading-relaxed">
-            前台库存显示为渠道预估库存；付款后自动向上游采购，失败会停在「已支付」并企微提醒。授权登录类商品的买家需在订单页粘贴登录链接完成授权。
-          </p>
-        </div>
+
         <p v-if="editing.id" class="text-[11px] text-ink-400 mt-1">
           提示：删除规格时如果该规格还有售出/锁定的卡密，保存会失败。
         </p>

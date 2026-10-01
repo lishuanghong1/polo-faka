@@ -80,8 +80,7 @@ services:
       dockerfile: apps/api/Dockerfile
     container_name: polo-api
     restart: always
-    # 指定容器内 DNS：绕过宿主机 / 云厂商默认 DNS，避免上游域名（cursorforgeai
-    # / 支付宝 openapi 等）解析失败（典型症状：日志里 ENOTFOUND getaddrinfo）。
+    # 指定容器内 DNS，避免支付宝等外部接口解析失败（ENOTFOUND getaddrinfo）。
     # 顺序：阿里 → 腾讯 → Cloudflare，前两个在国内云上稳定，第三个国际兜底。
     dns:
       - 223.5.5.5
@@ -109,12 +108,6 @@ services:
       ENABLE_MOCK_PAY: ${ENABLE_MOCK_PAY:-false}
       TRUST_PROXY: "true"
       ADMIN_IP_ALLOWLIST: ${ADMIN_IP_ALLOWLIST}
-      # Cursorforge 代理 OpenAPI 接码：env 留空时会 fallback 到后台
-      EMAIL_CODE_ENABLED: ${EMAIL_CODE_ENABLED:-}
-      EMAIL_CODE_API_BASE: ${EMAIL_CODE_API_BASE:-}
-      EMAIL_CODE_AGENT_KEY: ${EMAIL_CODE_AGENT_KEY:-}
-      EMAIL_CODE_AGENT_SECRET: ${EMAIL_CODE_AGENT_SECRET:-}
-      EMAIL_CODE_TIMEOUT_MS: ${EMAIL_CODE_TIMEOUT_MS:-}
       # 支付宝：env 留空时会 fallback 到后台「站点设置 → 支付宝」里的值
       # 推荐做法：这里全部留空，去后台填写（敏感字段会被 AES-GCM 加密入库）
       ALIPAY_ENABLED: ${ALIPAY_ENABLED:-}

@@ -315,7 +315,7 @@ function uaCategory(ua: string) {
       </div>
 
       <!-- 关联订单 -->
-      <div v-if="profile.linkedOrders.local.length || profile.linkedOrders.forge.length" class="card p-4">
+      <div v-if="profile.linkedOrders.local.length" class="card p-4">
         <div class="text-sm font-medium text-ink-700 mb-3">关联订单</div>
         <div v-if="profile.linkedOrders.local.length" class="mb-3">
           <div class="text-xs text-ink-500 mb-1">自建订单</div>
@@ -325,14 +325,7 @@ function uaCategory(ua: string) {
             <span>{{ o.status }} · ¥{{ o.payAmount }}</span>
           </div>
         </div>
-        <div v-if="profile.linkedOrders.forge.length">
-          <div class="text-xs text-ink-500 mb-1">代下订单</div>
-          <div v-for="o in profile.linkedOrders.forge" :key="o.orderNo" class="text-xs flex justify-between border-b border-ink-100 py-1 last:border-0">
-            <span class="font-mono">{{ o.orderNo }}</span>
-            <span class="text-ink-500">{{ o.typeName }}</span>
-            <span>{{ o.status }} · ¥{{ o.payAmount ?? o.totalAmount }}</span>
-          </div>
-        </div>
+
       </div>
 
       <!-- UA 列表（识别脚本工具） -->

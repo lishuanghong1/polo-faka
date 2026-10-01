@@ -9,6 +9,7 @@ import { Prisma, ProductSource, VipTier } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditActions } from '../audit/audit.constants';
+import { isLocalDeliveryType } from '../products/local-delivery';
 
 /** 等级顺序（NONE < GOLD < DIAMOND < SUPREME），数字越大越高 */
 const TIER_RANK: Record<VipTier, number> = {
@@ -66,6 +67,12 @@ const DISCOUNT_FLOOR = 0.5;
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
+}
+
+function assertLocalSource(productSource: ProductSource) {
+  if (productSource !== 'LOCAL') {
+    throw new BadRequestException('仅支持本站商品');
+  }
 }
 
 @Injectable()
@@ -202,6 +209,7 @@ export class VipService implements OnModuleInit {
     productSource: ProductSource,
     productKey: string,
   ): Promise<{ tier: VipTier; discount: number; custom: boolean }> {
+    assertLocalSource(productSource);
     if (!userId) return { tier: VipTier.NONE, discount: 1, custom: false };
     const u = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -280,6 +288,7 @@ export class VipService implements OnModuleInit {
 
   /** 给商品详情页用：批量返回某商品在所有 3 档下的会员价（无需登录） */
   async listProductDiscounts(productSource: ProductSource, productKey: string) {
+    assertLocalSource(productSource);
     const [configs, overrides] = await this.prisma.$transaction([
       this.prisma.vipConfig.findMany({ orderBy: { sort: 'asc' } }),
       this.prisma.productDiscount.findMany({
@@ -396,8 +405,9 @@ export class VipService implements OnModuleInit {
   // ============= 管理员：商品折扣覆盖 =============
 
   async listAllDiscounts(filter: { productSource?: ProductSource } = {}) {
+    if (filter.productSource) assertLocalSource(filter.productSource);
     const items = await this.prisma.productDiscount.findMany({
-      where: filter.productSource ? { productSource: filter.productSource } : {},
+      where: { productSource: 'LOCAL' },
       orderBy: [{ productSource: 'asc' }, { productKey: 'asc' }, { tier: 'asc' }],
     });
     return items.map((d) => ({
@@ -419,28 +429,18 @@ export class VipService implements OnModuleInit {
     },
     actor: { id: number; username: string },
   ) {
+    assertLocalSource(body.productSource);
     if (body.discount < DISCOUNT_FLOOR || body.discount > 1) {
       throw new BadRequestException(`折扣必须在 ${DISCOUNT_FLOOR} ~ 1 之间`);
     }
     // 验证 productKey 存在
-    if (body.productSource === 'LOCAL') {
-      const pid = Number(body.productKey);
-      if (!Number.isFinite(pid)) {
-        throw new BadRequestException('本站商品 productKey 必须是数字');
-      }
-      const p = await this.prisma.product.findUnique({ where: { id: pid } });
-      if (!p) throw new NotFoundException('本站商品不存在');
-    } else if (body.productSource === 'FORGE_QUOTA') {
-      const p = await this.prisma.forgeQuotaPackage.findUnique({
-        where: { packageKey: body.productKey },
-      });
-      if (!p) throw new NotFoundException('额度包不存在');
-    } else {
-      const p = await this.prisma.forgeProduct.findUnique({
-        where: { typeKey: body.productKey },
-      });
-      if (!p) throw new NotFoundException('三方商品不存在');
+    const pid = Number(body.productKey);
+    if (!Number.isFinite(pid)) {
+      throw new BadRequestException('本站商品 productKey 必须是数字');
     }
+    const p = await this.prisma.product.findUnique({ where: { id: pid } });
+    if (!p) throw new NotFoundException('本站商品不存在');
+    if (!isLocalDeliveryType(p.deliveryType)) throw new BadRequestException('该商品销售渠道已移除');
     const item = await this.prisma.productDiscount.upsert({
       where: {
         productSource_productKey_tier: {
@@ -470,6 +470,7 @@ export class VipService implements OnModuleInit {
   async removeDiscount(id: number, actor: { id: number; username: string }) {
     const exist = await this.prisma.productDiscount.findUnique({ where: { id } });
     if (!exist) throw new NotFoundException('折扣配置不存在');
+    assertLocalSource(exist.productSource);
     await this.prisma.productDiscount.delete({ where: { id } });
     await this.audit.record({
       action: AuditActions.VIP_DISCOUNT_UPDATE,

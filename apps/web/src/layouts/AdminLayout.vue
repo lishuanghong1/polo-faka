@@ -26,18 +26,9 @@ const groups = [
       { to: '/admin/categories', icon: 'M4 6h16M4 12h16M4 18h16', label: '分类' },
       { to: '/admin/card-keys', icon: 'M15 7a4 4 0 11-8 0 4 4 0 018 0zM10 11l5 5m0 0l3-3m-3 3l-3-3', label: '卡密池' },
       { to: '/admin/redeem-codes', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z', label: '兑换码' },
-      { to: '/admin/cursor-sell', icon: 'M17 20h5v-2a3 3 0 00-5.4-1.8M17 20H7m10 0v-2c0-.7-.1-1.3-.4-1.8M7 20H2v-2a3 3 0 015.4-1.8M7 20v-2c0-.7.1-1.3.4-1.8m0 0a5 5 0 019.2 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z', label: 'Team 渠道' },
     ],
   },
-  {
-    label: 'Cursorforge',
-    items: [
-      { to: '/admin/forge-products', icon: 'M20 7l-8-4-8 4m16 0v10l-8 4m8-14L12 11M4 7v10l8 4m-8-14l8 4m0 0v10', label: '三方商品' },
-      { to: '/admin/forge-redeem-codes', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z', label: '三方兑换码' },
-      { to: '/admin/forge-quota-packages', icon: 'M12 8c-3.9 0-7 1.3-7 3v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2c0-1.7-3.1-3-7-3zM5 15v2c0 1.7 3.1 3 7 3s7-1.3 7-3v-2M12 8c3.9 0 7-1.3 7-3s-3.1-3-7-3-7 1.3-7 3 3.1 3 7 3z', label: '额度包' },
-      { to: '/admin/forge-quota-orders', icon: 'M9 12h6m-6 4h4M5 8h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9a2 2 0 012-2zm3 0V6a2 2 0 012-2h4a2 2 0 012 2v2', label: '额度包订单' },
-    ],
-  },
+
   {
     label: '高阶',
     items: [
@@ -49,7 +40,6 @@ const groups = [
       { to: '/admin/refund-whitelist', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '客户退款名单' },
       { to: '/admin/token-refunds', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.6L19 8.4V19a2 2 0 01-2 2z', label: 'Token 退款记录' },
       { to: '/admin/recycle', icon: 'M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-14.7-3M4 15a8 8 0 0014.7 3', label: '回收' },
-      // Aizhp 渠道入口暂时隐藏（/admin/aizhp 路由保留，可直链访问）
       { to: '/admin/announcements', icon: 'M11 5h2a2 2 0 012 2v12l-3-2-3 2V7a2 2 0 012-2zM5 9h2M5 13h2M5 17h2', label: '公告' },
     ],
   },

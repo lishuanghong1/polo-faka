@@ -12,13 +12,7 @@ function submit() {
   const no = orderNo.value.trim();
   if (!no) return ElMessage.warning('请输入订单号');
   const query = contact.value.trim() ? { contact: contact.value.trim() } : undefined;
-  if (no.startsWith('F')) {
-    router.push({ path: `/forge-order/${no}`, query });
-  } else if (no.startsWith('Q')) {
-    router.push({ path: `/quota-order/${no}`, query });
-  } else {
-    router.push({ path: `/order/${no}`, query });
-  }
+  router.push({ path: `/order/${encodeURIComponent(no)}`, query });
 }
 </script>
 

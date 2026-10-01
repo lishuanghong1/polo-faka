@@ -23,8 +23,6 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PayModule } from './modules/pay/pay.module';
 import { AlipayModule } from './modules/alipay/alipay.module';
 import { EmailCodeModule } from './modules/email-code/email-code.module';
-import { ForgeOpenapiModule } from './modules/forge-openapi/forge-openapi.module';
-import { ForgeRedeemModule } from './modules/forge-redeem/forge-redeem.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RedeemModule } from './modules/redeem/redeem.module';
 import { HealthModule } from './modules/health/health.module';
@@ -32,14 +30,12 @@ import { CaptchaModule } from './modules/captcha/captcha.module';
 import { RechargeModule } from './modules/recharge/recharge.module';
 import { VipModule } from './modules/vip/vip.module';
 import { PointsModule } from './modules/points/points.module';
-import { AizhpOpenModule } from './modules/aizhp-open/aizhp-open.module';
 import { CursorSubModule } from './modules/cursor-sub/cursor-sub.module';
 import { CursorQuotaModule } from './modules/cursor-quota/cursor-quota.module';
 import { CustomerRefundModule } from './modules/customer-refund/customer-refund.module';
 import { DesktopFilesModule } from './modules/desktop-files/desktop-files.module';
 import { TxtDocsModule } from './modules/txt-docs/txt-docs.module';
 import { AccountVaultModule } from './modules/account-vault/account-vault.module';
-import { CursorSellModule } from './modules/cursor-sell/cursor-sell.module';
 
 @Module({
   imports: [
@@ -67,9 +63,7 @@ import { CursorSellModule } from './modules/cursor-sell/cursor-sell.module';
     PoolModule,
     PayModule,
     AlipayModule,
-    ForgeOpenapiModule,
     EmailCodeModule,
-    ForgeRedeemModule,
     RedeemModule,
     AdminModule,
     HealthModule,
@@ -77,14 +71,12 @@ import { CursorSellModule } from './modules/cursor-sell/cursor-sell.module';
     RechargeModule,
     VipModule,
     PointsModule,
-    AizhpOpenModule,
     CursorSubModule,
     CursorQuotaModule,
     CustomerRefundModule,
     DesktopFilesModule,
     TxtDocsModule,
     AccountVaultModule,
-    CursorSellModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

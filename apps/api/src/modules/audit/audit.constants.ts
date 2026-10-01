@@ -11,15 +11,6 @@ export const AuditActions = {
   POOL_ACCOUNT_UPDATE: 'POOL_ACCOUNT_UPDATE',
   POOL_ACCOUNT_DELETE: 'POOL_ACCOUNT_DELETE',
 
-  // Team 售号渠道（cursor.zhangyuwang.cn 成品号购买 API）
-  CURSOR_SELL_WALLET_REDEEM: 'CURSOR_SELL_WALLET_REDEEM',     // 兑换充值卡到售号钱包
-  CURSOR_SELL_PRODUCT_SYNC: 'CURSOR_SELL_PRODUCT_SYNC',       // 同步上游商品
-  CURSOR_SELL_MANUAL_PURCHASE: 'CURSOR_SELL_MANUAL_PURCHASE', // 后台手动采购
-  CURSOR_SELL_PURCHASE_RETRY: 'CURSOR_SELL_PURCHASE_RETRY',   // 重试采购单
-  CURSOR_SELL_PUSH_STOCK: 'CURSOR_SELL_PUSH_STOCK',           // 采购结果入卡密池 / 仓库
-  CURSOR_SELL_LOGIN_APPROVE: 'CURSOR_SELL_LOGIN_APPROVE',     // 授权登录确认（用户 / 后台）
-  CURSOR_SELL_AUTO_LIST: 'CURSOR_SELL_AUTO_LIST',             // 渠道商品上架为本站商品
-  CURSOR_SELL_LISTING_RULES: 'CURSOR_SELL_LISTING_RULES',     // 修改跟价 / 手动上架规则
 
   // 订单
   ORDER_MARK_PAID: 'ORDER_MARK_PAID',
@@ -28,9 +19,6 @@ export const AuditActions = {
   ORDER_REFUND: 'ORDER_REFUND',
   ORDER_CANCEL: 'ORDER_CANCEL',
   ORDER_DELETE: 'ORDER_DELETE',
-  FORGE_ORDER_DELETE: 'FORGE_ORDER_DELETE',
-  FORGE_QUOTA_ORDER_DELETE: 'FORGE_QUOTA_ORDER_DELETE',
-  FORGE_QUOTA_CODE_VOID: 'FORGE_QUOTA_CODE_VOID',
 
   // 支付（高危事件）
   ALIPAY_AMOUNT_MISMATCH: 'ALIPAY_AMOUNT_MISMATCH', // 金额不一致（攻击 / bug 警报）
@@ -40,6 +28,7 @@ export const AuditActions = {
   ALIPAY_MANUAL_REFUND: 'ALIPAY_MANUAL_REFUND',
   ALIPAY_AUTO_CLOSE: 'ALIPAY_AUTO_CLOSE',
   ALIPAY_AUTO_RECOVER: 'ALIPAY_AUTO_RECOVER', // notify 丢失，通过定时查询找回的订单
+  ALIPAY_NOTIFY_REMOVED_CHANNEL: 'ALIPAY_NOTIFY_REMOVED_CHANNEL', // 已移除渠道在途付款人工对账
 
   // 卡密
   CARD_KEY_DELETE: 'CARD_KEY_DELETE',
@@ -93,23 +82,12 @@ export const AuditActionLabels: Record<string, string> = {
   POOL_ACCOUNT_CREATE: '新建号池账号',
   POOL_ACCOUNT_UPDATE: '编辑号池账号',
   POOL_ACCOUNT_DELETE: '删除号池账号',
-  CURSOR_SELL_WALLET_REDEEM: 'Team 渠道充值卡兑换',
-  CURSOR_SELL_PRODUCT_SYNC: 'Team 渠道同步商品',
-  CURSOR_SELL_MANUAL_PURCHASE: 'Team 渠道手动采购',
-  CURSOR_SELL_PURCHASE_RETRY: 'Team 渠道重试采购',
-  CURSOR_SELL_PUSH_STOCK: 'Team 渠道采购入库',
-  CURSOR_SELL_LOGIN_APPROVE: 'Team 授权登录确认',
-  CURSOR_SELL_AUTO_LIST: 'Team 渠道商品上架',
-  CURSOR_SELL_LISTING_RULES: 'Team 渠道上架规则修改',
   ORDER_MARK_PAID: '订单标记已支付',
   ORDER_REDELIVER: '订单补发',
   ORDER_MANUAL_DELIVER: '手动发货',
   ORDER_REFUND: '订单退款',
   ORDER_CANCEL: '订单取消',
   ORDER_DELETE: '删除订单',
-  FORGE_ORDER_DELETE: '删除三方订单',
-  FORGE_QUOTA_ORDER_DELETE: '删除额度包订单',
-  FORGE_QUOTA_CODE_VOID: '作废额度包兑换码',
   ALIPAY_AMOUNT_MISMATCH: '支付宝金额不一致',
   ALIPAY_SIGN_FAIL: '支付宝验签失败',
   ALIPAY_SELLER_MISMATCH: '支付宝商户号不一致',
@@ -117,6 +95,7 @@ export const AuditActionLabels: Record<string, string> = {
   ALIPAY_MANUAL_REFUND: '支付宝退款',
   ALIPAY_AUTO_CLOSE: '关闭支付宝订单',
   ALIPAY_AUTO_RECOVER: 'notify 丢失自动找回',
+  ALIPAY_NOTIFY_REMOVED_CHANNEL: '已移除渠道订单收到付款，需人工对账',
   CARD_KEY_DELETE: '删除卡密',
   CARD_KEY_BULK_REMOVE: '批量删除卡密',
   CARD_KEY_PURGE: '清理卡密',

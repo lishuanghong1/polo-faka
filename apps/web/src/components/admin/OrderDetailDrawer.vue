@@ -18,6 +18,9 @@ const emit = defineEmits<{
 }>();
 
 const order = ref<any>(null);
+const retiredProduct = computed(() =>
+  !!order.value?.product && !['CARD_KEY', 'POOL_QUOTA', 'MANUAL'].includes(order.value.product.deliveryType),
+);
 const loading = ref(false);
 const manualOpen = ref(false);
 const manualContent = ref('');
@@ -55,6 +58,7 @@ const payMethodLabel: Record<string, string> = {
 const vipName: Record<string, string> = { GOLD: '黄金', DIAMOND: '钻石', SUPREME: '超级' };
 
 async function markPaid() {
+  if (retiredProduct.value) return;
   await ElMessageBox.confirm('确认将此订单标记为已支付并尝试发货？', '提示', { type: 'warning' });
   await api.admin.orderMarkPaid(order.value.orderNo);
   ElMessage.success('已标记并发货');
@@ -63,6 +67,7 @@ async function markPaid() {
 }
 
 async function redeliver() {
+  if (retiredProduct.value) return;
   await ElMessageBox.confirm('从库内可用卡密重试发货？', '提示');
   await api.admin.orderRedeliver(order.value.orderNo);
   ElMessage.success('补发已执行');
@@ -291,9 +296,12 @@ function close() {
       </div>
 
       <!-- Footer actions -->
+      <p v-if="retiredProduct" class="px-5 py-3 text-xs text-amber-700 border-t border-ink-100">
+        商品已停用。历史交付内容可继续查看，未完成订单可手动发货或退款处理。
+      </p>
       <div class="px-5 py-3 border-t border-ink-100 flex items-center gap-2 flex-wrap">
         <button
-          v-if="order.status === 'PENDING'"
+          v-if="order.status === 'PENDING' && !retiredProduct"
           class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm"
           @click="markPaid"
         >标记已支付并发货</button>
@@ -304,7 +312,7 @@ function close() {
         >取消订单</button>
 
         <button
-          v-if="['PAID', 'DELIVERED'].includes(order.status) && order.cardKeys?.length < order.quantity"
+          v-if="!retiredProduct && ['PAID', 'DELIVERED'].includes(order.status) && order.cardKeys?.length < order.quantity"
           class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm"
           @click="redeliver"
         >从库内补发</button>

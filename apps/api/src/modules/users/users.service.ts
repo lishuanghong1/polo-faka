@@ -105,7 +105,7 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('用户不存在');
 
-    const [rechargeOrders, balanceLogs, pointLogs, orders, forgeOrders, rechargeAgg] =
+    const [rechargeOrders, balanceLogs, pointLogs, orders, rechargeAgg] =
       await this.prisma.$transaction([
         this.prisma.rechargeOrder.findMany({
           where: { userId: id },
@@ -166,21 +166,6 @@ export class UsersService {
             createdAt: true,
           },
         }),
-        this.prisma.forgeOrder.findMany({
-          where: { userId: id },
-          orderBy: { id: 'desc' },
-          take: 20,
-          select: {
-            orderNo: true,
-            typeName: true,
-            quantity: true,
-            payAmount: true,
-            totalAmount: true,
-            paymentMethod: true,
-            status: true,
-            createdAt: true,
-          },
-        }),
         // 所有确认入账的充值流水（支付宝 + 客服/管理员充值），用于和 totalRecharged 交叉验证
         this.prisma.balanceLog.aggregate({
           where: { userId: id, type: 'RECHARGE' },
@@ -219,12 +204,6 @@ export class UsersService {
         ...o,
         payAmount: Number(o.payAmount),
         kind: 'LOCAL' as const,
-      })),
-      forgeOrders: forgeOrders.map((o) => ({
-        ...o,
-        payAmount: o.payAmount !== null ? Number(o.payAmount) : null,
-        totalAmount: Number(o.totalAmount),
-        kind: 'FORGE' as const,
       })),
     };
   }

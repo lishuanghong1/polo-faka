@@ -404,31 +404,6 @@ function fmt(n: number) {
           </ul>
         </div>
 
-        <!-- 代下订单 -->
-        <div v-if="data.forgeOrders.length">
-          <div class="text-xs text-ink-400 uppercase tracking-wider font-medium mb-2">
-            代下订单（最近 20 笔）
-          </div>
-          <ul class="space-y-1.5">
-            <li
-              v-for="o in data.forgeOrders"
-              :key="o.orderNo"
-              class="p-2.5 bg-ink-50/40 rounded-lg"
-            >
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <code class="text-xs text-ink-700 font-mono break-all">{{ o.orderNo }}</code>
-                <StatusTag :status="o.status" />
-              </div>
-              <div class="text-xs text-ink-500 mt-1">
-                {{ o.typeName }} ×{{ o.quantity }} ·
-                <template v-if="o.payAmount !== null">¥{{ fmt(o.payAmount) }}</template>
-                <template v-else>¥{{ fmt(o.totalAmount) }}</template>
-                · {{ o.paymentMethod }}
-              </div>
-              <div class="text-[11px] text-ink-400 mt-0.5">{{ new Date(o.createdAt).toLocaleString() }}</div>
-            </li>
-          </ul>
-        </div>
       </div>
 
       <!-- Footer -->

@@ -2,16 +2,10 @@ import { Module, forwardRef } from '@nestjs/common';
 import { SiteSettingsController } from './site-settings.controller';
 import { SiteSettingsService } from './site-settings.service';
 import { AlipayModule } from '../alipay/alipay.module';
-import { ForgeOpenapiModule } from '../forge-openapi/forge-openapi.module';
-import { AizhpOpenModule } from '../aizhp-open/aizhp-open.module';
-import { CursorSellModule } from '../cursor-sell/cursor-sell.module';
 
 @Module({
   imports: [
     forwardRef(() => AlipayModule),
-    forwardRef(() => ForgeOpenapiModule),
-    forwardRef(() => AizhpOpenModule),
-    forwardRef(() => CursorSellModule),
   ],
   controllers: [SiteSettingsController],
   providers: [SiteSettingsService],

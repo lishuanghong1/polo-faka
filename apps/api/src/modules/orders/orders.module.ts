@@ -6,8 +6,6 @@ import { AlipayModule } from '../alipay/alipay.module';
 import { VipModule } from '../vip/vip.module';
 import { PoolModule } from '../pool/pool.module';
 import { PointsModule } from '../points/points.module';
-import { AizhpOpenModule } from '../aizhp-open/aizhp-open.module';
-import { CursorSellModule } from '../cursor-sell/cursor-sell.module';
 
 @Module({
   imports: [
@@ -15,8 +13,6 @@ import { CursorSellModule } from '../cursor-sell/cursor-sell.module';
     VipModule,
     PoolModule,
     PointsModule,
-    AizhpOpenModule,
-    CursorSellModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersExpireCron],

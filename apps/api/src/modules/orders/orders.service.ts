@@ -13,10 +13,7 @@ import { REDIS_CLIENT } from '../../redis/redis.module';
 import { VipService } from '../vip/vip.service';
 import { PoolService } from '../pool/pool.service';
 import { PointsService } from '../points/points.service';
-import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
-import { CursorSellFulfilService } from '../cursor-sell/cursor-sell-fulfil.service';
-import { CursorSellCatalogService } from '../cursor-sell/cursor-sell-catalog.service';
-import { CursorSellListingService } from '../cursor-sell/cursor-sell-listing.service';
+import { isLocalDeliveryType } from '../products/local-delivery';
 import { CreateOrderDto, PayMethodDto } from './dto';
 
 function isWarehouseDeliveryRemark(remark?: string | null) {
@@ -31,10 +28,6 @@ export class OrdersService {
     private vip: VipService,
     private pool: PoolService,
     private points: PointsService,
-    private aizhpOpen: AizhpOpenService,
-    private cursorSell: CursorSellFulfilService,
-    private cursorSellCatalog: CursorSellCatalogService,
-    private cursorSellListing: CursorSellListingService,
   ) {}
 
   /** 计算实际单价（考虑批量阶梯价） */
@@ -61,35 +54,10 @@ export class OrdersService {
     if (!sku.visible || sku.product.status !== 'ON_SALE') {
       throw new BadRequestException('商品已下架');
     }
+    this.assertLocalDelivery(sku.product.deliveryType);
     if (sku.product.deliveryType === 'POOL_QUOTA' && !userId) {
       throw new BadRequestException('号池额度包需要登录后购买');
     }
-    if (sku.product.deliveryType === 'CURSOR_SELL') {
-      // 下单前先确认规格绑定了渠道商品，避免付了钱才发现发不出货
-      const attrs = (sku.attrs && typeof sku.attrs === 'object' ? sku.attrs : {}) as Record<string, unknown>;
-      const code = String(attrs.cursorSellCode || '').trim();
-      if (!code) throw new BadRequestException('该规格暂不可售（未绑定渠道商品），请联系客服');
-
-      // 价格保护：缓存陈旧时先刷一次上游价（会顺带重算跟价规格）。
-      // 若规格价格因此变了，说明页面上展示的是旧价，让用户刷新后再下单，而不是悄悄按新价扣钱。
-      const priceShown = Number(sku.price);
-      await this.cursorSellCatalog.ensureFresh();
-      const freshSku = await this.prisma.sku.findUnique({ where: { id: sku.id }, select: { price: true } });
-      if (freshSku && Math.abs(Number(freshSku.price) - priceShown) >= 0.005) {
-        throw new BadRequestException('渠道价格刚刚变动，请刷新页面后重新下单');
-      }
-
-      const channelProduct = await this.prisma.cursorSellProduct.findUnique({ where: { code } });
-      if (!channelProduct || !channelProduct.active) {
-        throw new BadRequestException('该规格对应的渠道商品已下架，请联系客服');
-      }
-      await this.cursorSellListing.assertSellable(priceShown, channelProduct.priceCents, sku.attrs);
-      if (channelProduct.ondemandTeam && dto.quantity > 5) {
-        throw new BadRequestException('现做 Team 商品单次最多购买 5 个');
-      }
-      if (dto.quantity > 50) throw new BadRequestException('单次最多购买 50 个');
-    }
-
     const unitPrice = this.calcUnitPrice(
       Number(sku.price),
       dto.quantity,
@@ -171,9 +139,12 @@ export class OrdersService {
 
   /** Mock 支付：仅供本地开发用，把订单置为已支付并触发出库 */
   async mockPay(orderNo: string) {
-    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo }, include: { product: { select: { deliveryType: true } } },
+    });
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+    this.assertLocalDelivery(order.product.deliveryType);
     await this.markPaidAndDeliver(orderNo);
     return this.detail(orderNo);
   }
@@ -185,9 +156,12 @@ export class OrdersService {
    */
   async payWithBalance(orderNo: string, userId: number) {
     await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { orderNo } });
+      const order = await tx.order.findUnique({
+        where: { orderNo }, include: { product: { select: { deliveryType: true } } },
+      });
       if (!order || order.userId !== userId) throw new NotFoundException('订单不存在');
       if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+      this.assertLocalDelivery(order.product.deliveryType);
 
       const amount = new Prisma.Decimal(Number(order.payAmount));
 
@@ -226,9 +200,12 @@ export class OrdersService {
 
   async payWithPoints(orderNo: string, userId: number) {
     await this.prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { orderNo } });
+      const order = await tx.order.findUnique({
+        where: { orderNo }, include: { product: { select: { deliveryType: true } } },
+      });
       if (!order || order.userId !== userId) throw new NotFoundException('订单不存在');
       if (order.status !== 'PENDING') throw new BadRequestException('订单状态不允许支付');
+      this.assertLocalDelivery(order.product.deliveryType);
       if (order.payMethod !== 'POINTS') throw new BadRequestException('订单不是积分支付');
 
       const pointsUsed = order.pointsUsed || this.points.pointsRequiredForAmount(Number(order.payAmount));
@@ -308,6 +285,9 @@ export class OrdersService {
       });
       if (!order) return;
       if (order.status === 'DELIVERED' || order.status === 'REFUNDED') return;
+      // 旧渠道付款仍由支付回调记账；停止采购，保持 PAID 待人工处理。
+      // 未知交付方式也不能落入本地卡密出库路径。
+      if (!isLocalDeliveryType(order.product.deliveryType)) return;
 
       // 如果还是 PENDING，先置 PAID
       if (order.status === 'PENDING') {
@@ -333,52 +313,6 @@ export class OrdersService {
             data: { sales: { increment: order.quantity } },
           }),
         ]);
-        return;
-      }
-
-      // ── Team 售号渠道：实时向上游采购发货（幂等、失败留 PAID、现做由 cron 轮询） ──
-      if (order.product.deliveryType === 'CURSOR_SELL') {
-        await this.cursorSell.deliverOrder(order);
-        return;
-      }
-
-      // ── AIZHP 渠道发货 ──
-      if (order.product.deliveryType === 'AIZHP') {
-        const account = await this.aizhpOpen.fetchUnusedAccount();
-        if (!account) {
-          // 无可用账号，订单停留 PAID 状态等待人工处理
-          return;
-        }
-        // 从 SKU attrs 读取档位
-        const sku = await this.prisma.sku.findUnique({ where: { id: order.skuId }, select: { attrs: true } });
-        const aizhpPlan = (sku?.attrs as any)?.aizhpPlan || 'pro';
-        // 将获取的账号写入卡密表（复用现有卡密展示逻辑）
-        await this.prisma.$transaction(async (tx) => {
-          await tx.cardKey.create({
-            data: {
-              productId: order.productId,
-              skuId: order.skuId,
-              content: account.email,
-              status: 'SOLD',
-              soldAt: new Date(),
-              orderNo,
-              remark: `[aizhp:${aizhpPlan}] id=${account.id} group=${account.group_name}`,
-            },
-          });
-          await tx.order.update({
-            where: { orderNo },
-            data: { status: 'DELIVERED', deliveredAt: new Date() },
-          });
-          await tx.sku.update({
-            where: { id: order.skuId },
-            data: { sales: { increment: order.quantity } },
-          });
-          await tx.product.update({
-            where: { id: order.productId },
-            data: { sales: { increment: order.quantity } },
-          });
-          await this.points.settleDeliveredLocalOrder(tx, orderNo);
-        });
         return;
       }
 
@@ -487,31 +421,7 @@ export class OrdersService {
         warehouseCardKeyIds.has(cardKey.id) || isWarehouseDeliveryRemark(remark),
     }));
 
-    // AIZHP 订单：查询退款状态
-    let aizhpRefund: { id: number; status: string; plan?: string } | null = null;
-    if ((order.product.deliveryType as string) === 'AIZHP' && order.status === 'DELIVERED' && order.cardKeys.length) {
-      const ck = order.cardKeys[0];
-      const refundMatch = (ck.remark || '').match(/refund=(\d+)/);
-      const planMatch = (ck.remark || '').match(/\[aizhp:([^\]]+)\]/);
-      if (refundMatch) {
-        const refundId = Number(refundMatch[1]);
-        const refundInfo = await this.aizhpOpen.getRefundStatus(refundId);
-        aizhpRefund = refundInfo
-          ? { id: refundInfo.id, status: refundInfo.status, plan: planMatch?.[1] || undefined }
-          : { id: refundId, status: 'unknown', plan: planMatch?.[1] || undefined };
-      }
-    }
-
-    // Team 渠道订单：附带每个成交的结构化信息（凭据 / 开通中 / 授权登录 / 质保）
-    let cursorSell: { sales: Awaited<ReturnType<CursorSellFulfilService['salesForCardKeys']>> } | null = null;
-    if ((order.product.deliveryType as string) === 'CURSOR_SELL' || cardKeyIds.length) {
-      const sales = cardKeyIds.length ? await this.cursorSell.salesForCardKeys(cardKeyIds) : [];
-      if (sales.length || (order.product.deliveryType as string) === 'CURSOR_SELL') {
-        cursorSell = { sales };
-      }
-    }
-
-    return { ...order, cardKeys, redeemCode, aizhpRefund, cursorSell };
+    return { ...order, cardKeys, redeemCode };
   }
 
   /**
@@ -607,11 +517,14 @@ export class OrdersService {
 
   /** 管理员：标记订单为已支付，并尝试发货 */
   async adminMarkPaid(orderNo: string) {
-    const order = await this.prisma.order.findUnique({ where: { orderNo } });
+    const order = await this.prisma.order.findUnique({
+      where: { orderNo }, include: { product: { select: { deliveryType: true } } },
+    });
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'PENDING') {
       throw new BadRequestException('订单状态不允许标记为已支付');
     }
+    this.assertLocalDelivery(order.product.deliveryType);
     await this.markPaidAndDeliver(orderNo);
     return this.detail(orderNo);
   }
@@ -674,7 +587,7 @@ export class OrdersService {
   async adminRefund(orderNo: string, reason?: string) {
     const order = await this.prisma.order.findUnique({
       where: { orderNo },
-      include: { cardKeys: true },
+      include: { cardKeys: true, product: { select: { deliveryType: true } } },
     });
     if (!order) throw new NotFoundException('订单不存在');
     if (!['PAID', 'DELIVERED'].includes(order.status)) {
@@ -682,10 +595,10 @@ export class OrdersService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // 卡密回退：手动发货的（remark="管理员手动发货"）与 Team 渠道实时采购的账号
-      // （已经从上游买断，不能再卖给别人）直接标 REFUNDED，其余回到 AVAILABLE 池
+      // 历史渠道交付和手动交付凭据不能重新进入本地可售库存。
       for (const c of order.cardKeys) {
-        if (c.remark === '管理员手动发货' || (c.remark || '').startsWith('[cursor-sell]')) {
+        if (!isLocalDeliveryType(order.product.deliveryType) || c.remark === '管理员手动发货' ||
+          /^\[(cursor-sell|aizhp)/.test(c.remark || '')) {
           await tx.cardKey.update({
             where: { id: c.id },
             data: { status: 'REFUNDED', orderNo: null },
@@ -762,5 +675,11 @@ export class OrdersService {
   private makeOrderNo() {
     // 时间戳便于人眼定位，但安全凭证靠后面 16 位 URL-safe 随机串
     return `P${dayjs().format('YYYYMMDDHHmmss')}${nanoid(16)}`;
+  }
+
+  private assertLocalDelivery(deliveryType: unknown) {
+    if (!isLocalDeliveryType(deliveryType)) {
+      throw new BadRequestException('该商品渠道已移除，不能继续购买或支付');
+    }
   }
 }

@@ -1,16 +1,8 @@
 <script setup lang="ts">
-/**
- * 统一兑换码入口（前缀自动路由）：
- *   - 普通兑换码：直接发对应卡密商品（一码一商品）
- *   - 余额型兑换码：码内是一笔余额，可在码内挑选商品下单（多商品共享一笔余额）
- * 对终端用户呈现完全一致的文案，不区分内部来源。
- */
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import api, { type CursorSellSale } from '@/api';
-import EmailCodeBox from '@/components/EmailCodeBox.vue';
-import TeamDeliveryPanel from '@/components/TeamDeliveryPanel.vue';
+import api from '@/api';
 import {
   formatCardKeyContent,
   formatCardKeysForCopy,
@@ -18,15 +10,6 @@ import {
   parseWarehouseDeliveryAccount,
   type ParsedDeliveryAccount,
 } from '@/utils/card-key';
-
-type CodeKind = 'card' | 'balance';
-
-const TEAM_MODE_LABEL: Record<string, string> = {
-  account: '兑换后自动发货，页面直接显示账号凭据',
-  login: '授权登录型账号：兑换后按页面指引在 Cursor 里完成登录',
-  card: '兑换后显示卡密及使用说明',
-  extract: '兑换后获得提取码，到渠道提取页领取账号',
-};
 
 const router = useRouter();
 const route = useRoute();
@@ -40,45 +23,8 @@ const checking = ref(false);
 const cardInfo = ref<any>(null);
 const cardResult = ref<any>(null);
 
-// 模式 2：余额型（选商品下单）
-const balanceInfo = ref<Awaited<ReturnType<typeof api.forge.check>> | null>(null);
-const selectedTypeKey = ref<string>('');
-const quantity = ref(1);
-
-const detectedKind = computed<CodeKind | null>(() => {
-  const v = code.value.trim().toUpperCase();
-  if (!v) return null;
-  if (v.startsWith('FK')) return 'balance';
-  return 'card';
-});
-
-const selectedProduct = computed(() =>
-  balanceInfo.value?.products.find((p) => p.typeKey === selectedTypeKey.value) || null,
-);
-
-const lineTotal = computed(() => {
-  if (!selectedProduct.value) return 0;
-  return +(selectedProduct.value.displayPrice * quantity.value).toFixed(2);
-});
-
-// Team 渠道兑换：账号用结构化面板展示，对应的卡密不再走下面的通用列表
-const teamSales = computed<CursorSellSale[]>(() => cardResult.value?.cursorSell?.sales || []);
-const teamCardKeyIds = computed(() => new Set(teamSales.value.map((s) => s.cardKeyId).filter((v) => v != null)));
-const isTeamResult = computed(
-  () => cardResult.value?.product?.deliveryType === 'CURSOR_SELL' || teamSales.value.length > 0,
-);
-const teamMaking = computed(() => teamSales.value.some((s) => s.making));
-
-function onTeamSaleUpdated(s: CursorSellSale) {
-  const list: CursorSellSale[] | undefined = cardResult.value?.cursorSell?.sales;
-  if (!list) return;
-  const idx = list.findIndex((x) => x.id === s.id);
-  if (idx >= 0) list[idx] = s;
-}
-
 const cardResultAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
   return (cardResult.value?.cardKeys || [])
-    .filter((item: any) => !teamCardKeyIds.value.has(item.id))
     .map((item: any) => {
       const account = parseWarehouseDeliveryAccount(item);
       return account ? { ...account, id: item.id, soldAt: item.soldAt } : null;
@@ -88,17 +34,8 @@ const cardResultAccounts = computed<Array<ParsedDeliveryAccount & { id?: number;
 
 const cardResultPlainKeys = computed(() => {
   return (cardResult.value?.cardKeys || []).filter(
-    (item: any) => !teamCardKeyIds.value.has(item.id) && !parseWarehouseDeliveryAccount(item),
+    (item: any) => !parseWarehouseDeliveryAccount(item),
   );
-});
-
-const cardResultPrimaryEmail = computed(() => cardResultAccounts.value[0]?.email || '');
-
-const canPlace = computed(() => {
-  if (!balanceInfo.value || !selectedProduct.value) return false;
-  if (balanceInfo.value.status !== 'ACTIVE') return false;
-  if (balanceInfo.value.remaining + 0.001 < lineTotal.value) return false;
-  return quantity.value >= 1 && quantity.value <= 10;
 });
 
 const statusLabels: Record<string, string> = {
@@ -125,9 +62,6 @@ function goCardHistory(orderNo: string) {
 function reset() {
   cardInfo.value = null;
   cardResult.value = null;
-  balanceInfo.value = null;
-  selectedTypeKey.value = '';
-  quantity.value = 1;
 }
 
 async function checkInfo() {
@@ -135,30 +69,8 @@ async function checkInfo() {
   if (!c) return;
   checking.value = true;
   reset();
-  const loadBalanceCode = async () => {
-    const r = await api.forge.check(c.toUpperCase());
-    balanceInfo.value = r;
-    if (r.products.length) selectedTypeKey.value = r.products[0].typeKey;
-  };
-  const loadCardCode = async () => {
-    cardInfo.value = await api.redeem.info(c.toUpperCase());
-  };
-  // 前缀只作为查询顺序提示。三方兑换码支持后台自定义前缀，不能只靠 FK 判断。
-  const attempts = detectedKind.value === 'balance'
-    ? [loadBalanceCode, loadCardCode]
-    : [loadCardCode, loadBalanceCode];
-  let lastError: any;
   try {
-    for (const attempt of attempts) {
-      try {
-        await attempt();
-        lastError = null;
-        break;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    if (lastError) throw lastError;
+    cardInfo.value = await api.redeem.info(c.toUpperCase());
   } catch (e: any) {
     const msg = e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换码不存在';
     ElMessage.error(msg);
@@ -168,6 +80,7 @@ async function checkInfo() {
 }
 
 async function doRedeemCard() {
+  if (cardInfo.value?.redeemable === false) return;
   if (!code.value.trim()) {
     ElMessage.warning('请填写兑换码');
     return;
@@ -182,28 +95,6 @@ async function doRedeemCard() {
     ElMessage.success('兑换成功');
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '兑换失败');
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function doPlaceBalance() {
-  if (!balanceInfo.value || !selectedProduct.value) return;
-  if (!canPlace.value) {
-    ElMessage.warning('余额不足或参数不合法');
-    return;
-  }
-  loading.value = true;
-  try {
-    const order = await api.forge.order({
-      code: balanceInfo.value.code.toUpperCase(),
-      typeKey: selectedTypeKey.value,
-      quantity: quantity.value,
-      contact: contact.value?.trim() || undefined,
-    });
-    router.push(`/forge-order/${encodeURIComponent(order.orderNo)}`);
-  } catch (e: any) {
-    ElMessage.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || '下单失败');
   } finally {
     loading.value = false;
   }
@@ -245,10 +136,7 @@ function goCardOrder() {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span class="text-lg font-semibold">兑换成功</span>
-        <span
-          v-if="isTeamResult && cardResult.status !== 'DELIVERED'"
-          class="ml-1 text-xs px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200"
-        >{{ teamMaking ? '账号开通中' : '正在采购' }}</span>
+
       </div>
       <div class="space-y-2 text-sm mb-4">
         <div class="flex justify-between text-ink-500">
@@ -263,28 +151,6 @@ function goCardOrder() {
           <span>规格</span>
           <span class="text-ink-800">{{ cardResult.skuName }} × {{ cardResult.quantity }}</span>
         </div>
-      </div>
-
-      <!-- Team 渠道：结构化账号面板（凭据 / 开通中 / 授权登录 / 提取卡） -->
-      <TeamDeliveryPanel
-        v-if="teamSales.length"
-        embedded
-        :order-no="cardResult.orderNo"
-        :contact="cardResult.contact || undefined"
-        :sales="teamSales"
-        :order-status="cardResult.status"
-        @updated="onTeamSaleUpdated"
-      />
-      <div
-        v-if="isTeamResult && cardResult.status !== 'DELIVERED'"
-        class="mt-4 text-xs text-sky-800 bg-sky-50 border border-sky-200 rounded-lg p-3 leading-relaxed"
-      >
-        <template v-if="teamMaking">
-          该账号为现做开通，渠道通常几分钟内完成。可点上方「立即检查」，或点「查看订单」到订单页等待自动刷新。
-        </template>
-        <template v-else-if="!teamSales.length">
-          正在从渠道为您采购账号，通常数秒完成；若渠道暂时缺货，系统会每几分钟自动重试。请点「查看订单」查看进度（订单页会自动刷新），长时间未到账可联系客服。
-        </template>
       </div>
 
       <template v-if="cardResult.cardKeys?.length">
@@ -317,11 +183,6 @@ function goCardOrder() {
           </div>
         </div>
 
-        <div v-if="cardResultPrimaryEmail" class="border-t border-ink-100 pt-4 mt-4">
-          <div class="text-sm font-semibold text-ink-800 mb-2">为该账号接验证码</div>
-          <EmailCodeBox :model-value="cardResultPrimaryEmail" :editable="false" compact />
-        </div>
-
         <div v-if="cardResultPlainKeys.length" class="border-t border-ink-100 pt-4 mt-4">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-ink-800">卡密内容</div>
@@ -338,7 +199,7 @@ function goCardOrder() {
           </div>
         </div>
       </template>
-      <div v-else-if="!isTeamResult" class="border-t border-ink-100 pt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div v-else class="border-t border-ink-100 pt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
         ⚠️ 该商品暂时没有可用卡密，已为您创建订单。客服处理后会自动发货，您可凭订单号查询。
       </div>
       <div class="mt-5 flex gap-2">
@@ -389,20 +250,7 @@ function goCardOrder() {
             · 剩余次数：<span class="text-ink-800">{{ cardInfo.remaining }} / {{ cardInfo.maxUses }}</span>
             <span v-if="cardInfo.expireAt"> · 过期：{{ new Date(cardInfo.expireAt).toLocaleString() }}</span>
           </div>
-          <div
-            v-if="cardInfo.deliveryType === 'CURSOR_SELL'"
-            class="mt-1 text-xs rounded-md px-2.5 py-2 leading-relaxed"
-            :class="cardInfo.cursorSell?.active === false ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-sky-50 text-sky-800 border border-sky-100'"
-          >
-            <template v-if="cardInfo.cursorSell?.active === false">
-              该商品对应的渠道货源暂时下架，兑换可能失败，请稍后再试或联系客服。
-            </template>
-            <template v-else>
-              <b>Team 渠道商品</b>：{{ TEAM_MODE_LABEL[cardInfo.cursorSell?.deliveryMode] || TEAM_MODE_LABEL.account }}
-              <span v-if="cardInfo.cursorSell?.ondemandTeam">；该账号为现做开通，兑换后通常几分钟内就绪</span>
-              <span v-if="cardInfo.cursorSell?.warrantyHours">；质保 {{ cardInfo.cursorSell.warrantyHours }} 小时</span>。
-            </template>
-          </div>
+
         </div>
 
         <!-- 该兑换码的历史订单（再次输入兑换码可继续查看已兑换过的订单） -->
@@ -440,7 +288,7 @@ function goCardOrder() {
               </div>
             </li>
           </ul>
-          <p v-if="cardInfo.remaining > 0" class="mt-2 text-[11px] text-ink-400">
+          <p v-if="cardInfo.remaining > 0 && cardInfo.redeemable !== false" class="mt-2 text-[11px] text-ink-400">
             仍可再兑换 {{ cardInfo.remaining }} 次。
           </p>
         </div>
@@ -457,167 +305,29 @@ function goCardOrder() {
         <button
           v-if="cardInfo.status === 'ACTIVE'"
           class="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium shadow-sm disabled:opacity-50"
-          :disabled="loading || !code.trim()"
+          :disabled="loading || !code.trim() || cardInfo.redeemable === false"
           @click="doRedeemCard"
         >
-          {{ loading ? '兑换中…' : '立即兑换' }}
+          {{ loading ? '兑换中…' : cardInfo.redeemable === false ? '商品已停用' : '立即兑换' }}
         </button>
+        <p v-if="cardInfo.redeemable === false" class="text-xs text-amber-700 text-center">
+          此商品已停售，兑换记录仍可查看；如需处理未使用的兑换码，请联系客服。
+        </p>
         <div
-          v-else-if="cardInfo.orders?.length"
+          v-else-if="cardInfo.status !== 'ACTIVE' && cardInfo.orders?.length"
           class="text-xs text-ink-500 bg-ink-50 border border-ink-100 rounded-lg p-3 text-center"
         >
           该兑换码已 <b>{{ statusLabels[cardInfo.status] }}</b>，点击上方记录可查看已兑换订单。
         </div>
         <div
-          v-else
+          v-else-if="cardInfo.status !== 'ACTIVE'"
           class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 text-center"
         >
           该兑换码当前状态为 <b>{{ statusLabels[cardInfo.status] }}</b>，无法继续兑换。
         </div>
       </template>
 
-      <!-- 模式 B：余额型兑换码 -->
-      <template v-if="balanceInfo">
-        <div class="bg-ink-50 border border-ink-200 rounded-lg p-4">
-          <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <div>
-              <div class="text-xs text-ink-500">兑换码</div>
-              <div class="font-mono text-sm break-all">{{ balanceInfo.code }}</div>
-            </div>
-            <span
-              class="text-xs px-2 py-0.5 rounded border"
-              :class="balanceInfo.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-ink-100 text-ink-500 border-ink-200'"
-            >{{ statusLabels[balanceInfo.status] || balanceInfo.status }}</span>
-          </div>
-          <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="p-3 bg-white rounded-lg border border-ink-100">
-              <div class="text-xs text-ink-500">面额</div>
-              <div class="text-lg font-semibold text-ink-900 mt-1">¥{{ balanceInfo.totalAmount.toFixed(2) }}</div>
-            </div>
-            <div class="p-3 bg-white rounded-lg border border-ink-100">
-              <div class="text-xs text-ink-500">已使用</div>
-              <div class="text-lg font-semibold text-ink-700 mt-1">¥{{ balanceInfo.usedAmount.toFixed(2) }}</div>
-            </div>
-            <div class="p-3 bg-emerald-50 rounded-lg">
-              <div class="text-xs text-emerald-700">剩余</div>
-              <div class="text-lg font-semibold text-emerald-700 mt-1">¥{{ balanceInfo.remaining.toFixed(2) }}</div>
-            </div>
-          </div>
-          <div v-if="balanceInfo.expireAt" class="mt-2 text-xs text-ink-400">
-            有效期至：{{ new Date(balanceInfo.expireAt).toLocaleString() }}
-          </div>
-        </div>
-
-        <!-- 历史订单 -->
-        <div v-if="balanceInfo.orders?.length" class="bg-white border border-ink-100 rounded-lg p-4">
-          <div class="text-sm font-medium text-ink-800 mb-3">历史订单</div>
-          <ul class="space-y-2">
-            <li
-              v-for="o in balanceInfo.orders"
-              :key="o.orderNo"
-              class="flex items-center justify-between gap-3 p-3 bg-ink-50/60 rounded-lg cursor-pointer hover:bg-ink-100 transition"
-              @click="router.push(`/forge-order/${encodeURIComponent(o.orderNo)}`)"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="text-sm text-ink-900 truncate">{{ o.typeName }} × {{ o.quantity }}</div>
-                <div class="text-xs text-ink-500 mt-0.5">
-                  {{ o.orderNo }} · {{ new Date(o.createdAt).toLocaleString() }}
-                </div>
-              </div>
-              <div class="text-right shrink-0">
-                <div class="text-sm font-semibold text-ink-900">¥{{ o.totalAmount.toFixed(2) }}</div>
-              </div>
-            </li>
-          </ul>
-        </div>
-
-        <!-- 选择商品下单 -->
-        <div v-if="balanceInfo.status === 'ACTIVE'" class="bg-white border border-ink-100 rounded-lg p-4">
-          <div class="text-sm font-medium text-ink-800 mb-3">选择商品下单</div>
-          <div v-if="!balanceInfo.products.length" class="text-sm text-ink-400 text-center py-6">
-            暂无可下单商品，请联系客服。
-          </div>
-          <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              v-for="p in balanceInfo.products"
-              :key="p.typeKey"
-              :class="[
-                'text-left p-4 rounded-xl border-2 transition',
-                selectedTypeKey === p.typeKey
-                  ? 'border-brand-500 bg-brand-50/30'
-                  : 'border-ink-100 hover:border-ink-300 bg-white',
-              ]"
-              @click="selectedTypeKey = p.typeKey"
-            >
-              <div class="flex items-center justify-between">
-                <div class="font-medium text-ink-900 text-sm">{{ p.typeName }}</div>
-                <div class="text-rose-600 font-semibold text-sm">¥{{ p.displayPrice.toFixed(2) }}</div>
-              </div>
-              <div class="text-xs text-ink-500 mt-1 flex items-center gap-2 flex-wrap">
-                <span>{{ p.categoryName }}</span>
-                <span v-if="p.warrantyHours">· 质保 {{ p.warrantyHours }}h</span>
-                <span v-if="p.emailCodeEnabled" class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">可接码</span>
-                <span :class="['ml-auto', p.stock <= 5 ? 'text-rose-600' : 'text-ink-400']">库存 {{ p.stock }}</span>
-              </div>
-            </button>
-          </div>
-
-          <div v-if="selectedProduct" class="mt-5 pt-5 border-t border-ink-100">
-            <div class="flex items-center justify-between gap-3 mb-3">
-              <label class="text-sm text-ink-700">数量</label>
-              <div class="flex items-center gap-2">
-                <button
-                  class="w-8 h-8 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 disabled:opacity-50"
-                  :disabled="quantity <= 1"
-                  @click="quantity = Math.max(1, quantity - 1)"
-                >−</button>
-                <input
-                  v-model.number="quantity"
-                  type="number"
-                  min="1"
-                  max="10"
-                  class="w-16 text-center px-2 py-1 border border-ink-200 rounded-md text-sm"
-                />
-                <button
-                  class="w-8 h-8 rounded-md border border-ink-200 text-ink-700 hover:bg-ink-50 disabled:opacity-50"
-                  :disabled="quantity >= 10"
-                  @click="quantity = Math.min(10, quantity + 1)"
-                >+</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between text-sm mb-3">
-              <span class="text-ink-500">小计</span>
-              <span class="text-rose-600 font-semibold text-lg">¥{{ lineTotal.toFixed(2) }}</span>
-            </div>
-            <div v-if="balanceInfo.remaining + 0.001 < lineTotal" class="text-xs text-rose-600 mb-3">
-              ⚠ 兑换码剩余 ¥{{ balanceInfo.remaining.toFixed(2) }}，不够支付本次 ¥{{ lineTotal.toFixed(2) }}。
-            </div>
-            <div class="mb-3">
-              <label class="text-xs text-ink-500 block mb-1">联系方式（可选）</label>
-              <input
-                v-model="contact"
-                placeholder="QQ / 邮箱 / 手机，便于客服联系"
-                class="w-full px-3 py-2 border border-ink-200 rounded-lg text-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-200 outline-none"
-              />
-            </div>
-            <button
-              class="w-full px-4 py-2.5 rounded-lg brand-gradient text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition"
-              :disabled="!canPlace || loading"
-              @click="doPlaceBalance"
-            >
-              {{ loading ? '下单中（请勿刷新）…' : '确认下单' }}
-            </button>
-            <p class="text-xs text-ink-400 mt-2 text-center">
-              下单成功后会自动跳转订单详情页。
-            </p>
-          </div>
-        </div>
-        <div v-else class="bg-amber-50/60 border border-amber-200 text-amber-800 text-sm rounded-lg p-4">
-          该兑换码当前状态为 <b>{{ statusLabels[balanceInfo.status] }}</b>，无法用于下单。
-        </div>
-      </template>
-
-      <div v-if="!cardInfo && !balanceInfo" class="text-xs text-ink-400 text-center pt-2">
+      <div v-if="!cardInfo" class="text-xs text-ink-400 text-center pt-2">
         兑换成功后会立即生成订单并自动发货，建议截图保存兑换结果。
       </div>
     </div>

@@ -2,10 +2,12 @@
  * Polo Faka · 容器启动后的种子脚本。幂等。
  *  - 首次创建默认管理员
  *  - 写入若干默认 SiteSetting
+ *  - 下架已停用渠道商品，保留历史数据
  */
 const { PrismaClient } = require('@prisma/client');
 const argon2 = require('argon2');
 const { randomBytes } = require('crypto');
+const { retireChannels } = require('./retire-channels.cjs');
 
 const prisma = new PrismaClient();
 
@@ -80,6 +82,8 @@ async function ensureSettings() {
     await ensureAdmin();
     await ensureInviteCodes();
     await ensureSettings();
+    const retired = await retireChannels(prisma);
+    console.log(`[seed] retired channel products off shelf: ${retired.productsOffShelf}`);
   } catch (e) {
     console.error('[seed] error:', e.message);
     process.exitCode = 1;

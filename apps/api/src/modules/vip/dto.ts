@@ -19,8 +19,6 @@ export enum VipTierDto {
 
 export enum ProductSourceDto {
   LOCAL = 'LOCAL',
-  FORGE = 'FORGE',
-  FORGE_QUOTA = 'FORGE_QUOTA',
 }
 
 export class UpdateVipConfigDto {

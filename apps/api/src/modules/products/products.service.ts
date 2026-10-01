@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CursorSellListingService } from '../cursor-sell/cursor-sell-listing.service';
+import { isLocalDeliveryType, LOCAL_DELIVERY_TYPES } from './local-delivery';
 
 interface ListQuery {
   categoryId?: number;
@@ -11,15 +11,12 @@ interface ListQuery {
 
 @Injectable()
 export class ProductsService {
-  constructor(
-    private prisma: PrismaService,
-    private cursorSellListing: CursorSellListingService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   async list(q: ListQuery) {
     const page = Math.max(1, Number(q.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 50));
-    const where: any = { status: 'ON_SALE' };
+    const where: any = { status: 'ON_SALE', deliveryType: { in: [...LOCAL_DELIVERY_TYPES] } };
     if (q.categoryId) where.categoryId = Number(q.categoryId);
     if (q.keyword) where.title = { contains: q.keyword };
 
@@ -46,23 +43,16 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
+          p.deliveryType !== 'CARD_KEY' && p.deliveryType !== 'MANUAL'
             ? {}
             : await this.computeStockBySku(p.id);
-        const cursorSellStock =
-          p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
-        // CARD_KEY 看 CardKey AVAILABLE；POOL_QUOTA 看号池账号数；AIZHP 无限（从 API 实时获取）；
-        // CURSOR_SELL 看上游商品缓存的预估库存
+        // 卡密 / 人工交付使用本地库存，额度包使用号池账号数。
         const skus = p.skus.map((s) => ({
           ...s,
           stock:
             p.deliveryType === 'POOL_QUOTA'
               ? poolStock
-              : p.deliveryType === 'AIZHP'
-                ? 9999
-                : p.deliveryType === 'CURSOR_SELL'
-                  ? cursorSellStock[s.id] ?? 0
-                  : stockBySku[s.id] ?? 0,
+              : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -94,21 +84,15 @@ export class ProductsService {
     const list = await Promise.all(
       items.map(async (p) => {
         const stockBySku =
-          p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
+          p.deliveryType !== 'CARD_KEY' && p.deliveryType !== 'MANUAL'
             ? {}
             : await this.computeStockBySku(p.id);
-        const cursorSellStock =
-          p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
         const skus = p.skus.map((s) => ({
           ...s,
           stock:
             p.deliveryType === 'POOL_QUOTA'
               ? poolStock
-              : p.deliveryType === 'AIZHP'
-                ? 9999
-                : p.deliveryType === 'CURSOR_SELL'
-                  ? cursorSellStock[s.id] ?? 0
-                  : stockBySku[s.id] ?? 0,
+              : stockBySku[s.id] ?? 0,
         }));
         const totalStock = skus.reduce((a, b) => a + (b.stock || 0), 0);
         return { ...p, skus, totalStock };
@@ -119,6 +103,10 @@ export class ProductsService {
   }
 
   async detail(id: number) {
+    return this.productDetail(id);
+  }
+
+  private async productDetail(id: number, allowRemoved = false) {
     const p = await this.prisma.product.findUnique({
       where: { id },
       include: {
@@ -127,14 +115,15 @@ export class ProductsService {
       },
     });
     if (!p) throw new NotFoundException('商品不存在');
+    if (!allowRemoved && !isLocalDeliveryType(p.deliveryType)) {
+      throw new NotFoundException('商品已停售');
+    }
     const poolStock =
       p.deliveryType === 'POOL_QUOTA' ? await this.computePoolAvailableAccounts() : 0;
     const stockBySku =
-      p.deliveryType === 'POOL_QUOTA' || p.deliveryType === 'AIZHP' || p.deliveryType === 'CURSOR_SELL'
+      p.deliveryType !== 'CARD_KEY' && p.deliveryType !== 'MANUAL'
         ? {}
         : await this.computeStockBySku(p.id);
-    const cursorSellStock =
-      p.deliveryType === 'CURSOR_SELL' ? await this.computeCursorSellStock(p.skus) : {};
     return {
       ...p,
       skus: p.skus.map((s) => ({
@@ -142,37 +131,9 @@ export class ProductsService {
         stock:
           p.deliveryType === 'POOL_QUOTA'
             ? poolStock
-            : p.deliveryType === 'AIZHP'
-              ? 9999
-              : p.deliveryType === 'CURSOR_SELL'
-                ? cursorSellStock[s.id] ?? 0
-                : stockBySku[s.id] ?? 0,
+            : stockBySku[s.id] ?? 0,
       })),
     };
-  }
-
-  /**
-   * CURSOR_SELL 规格库存 = 绑定的上游商品缓存里的预估库存（cron 每 10 分钟同步）。
-   * 未绑定 / 上游已下架 → 0。
-   */
-  async computeCursorSellStock(
-    skus: Array<{ id: number; attrs: unknown }>,
-  ): Promise<Record<number, number>> {
-    const codeBySku = new Map<number, string>();
-    for (const s of skus) {
-      const attrs = s.attrs && typeof s.attrs === 'object' ? (s.attrs as Record<string, unknown>) : {};
-      const code = String(attrs.cursorSellCode || '').trim();
-      if (code) codeBySku.set(s.id, code);
-    }
-    if (!codeBySku.size) return {};
-    const rows = await this.prisma.cursorSellProduct.findMany({
-      where: { code: { in: Array.from(new Set(codeBySku.values())) } },
-      select: { code: true, stock: true, active: true },
-    });
-    const stockByCode = new Map(rows.map((r) => [r.code, r.active ? r.stock : 0]));
-    const result: Record<number, number> = {};
-    for (const [skuId, code] of codeBySku) result[skuId] = stockByCode.get(code) ?? 0;
-    return result;
   }
 
   /** 按 SKU 统计 AVAILABLE 的卡密数作为真实库存 */
@@ -214,31 +175,33 @@ export class ProductsService {
   }
 
   async create(data: any) {
-    const { skus = [], ...rest } = data;
+    const { skus = [], ...input } = data;
+    this.validateDeliveryConfig(input.deliveryType, skus, input.status);
+    const rest = this.productFields(input);
     const rate = this.normalizePointsAwardRate(rest.pointsAwardRate);
     if (rate !== undefined) rest.pointsAwardRate = rate;
     const created = await this.prisma.product.create({
       data: {
         ...rest,
-        skus: skus.length ? { create: skus } : undefined,
+        skus: skus.length ? { create: skus.map((sku) => this.skuFields(sku)) } : undefined,
       },
       include: { skus: true },
     });
-    // Team 渠道跟价规格：价格以服务端按当前成本重算为准，不信任前端带过来的数字
-    if (created.deliveryType === 'CURSOR_SELL') {
-      await this.cursorSellListing.repriceProduct(created.id);
-      return this.prisma.product.findUnique({ where: { id: created.id }, include: { skus: true } });
-    }
     return created;
   }
 
   async update(id: number, data: any) {
-    const { skus, ...rest } = data;
-    delete rest.category;
-    delete rest.totalStock;
-    delete rest.sales;
-    delete rest.createdAt;
-    delete rest.updatedAt;
+    const { skus, ...input } = data;
+    this.validateDeliveryConfig(input.deliveryType, skus, input.status);
+    const rest = this.productFields(input);
+    const current = await this.prisma.product.findUnique({ where: { id }, select: { deliveryType: true } });
+    if (!current) throw new NotFoundException('商品不存在');
+    if (!isLocalDeliveryType(current.deliveryType)) {
+      if (rest.deliveryType !== undefined) {
+        throw new BadRequestException('历史渠道商品仅支持查看和下架，请新建本地商品');
+      }
+      if (rest.status === 'ON_SALE') throw new BadRequestException('该商品渠道已移除，不能重新上架');
+    }
     const rate = this.normalizePointsAwardRate(rest.pointsAwardRate);
     if (rate !== undefined) rest.pointsAwardRate = rate;
     await this.prisma.product.update({
@@ -262,21 +225,49 @@ export class ProductsService {
         await this.prisma.sku.deleteMany({ where: { id: { in: toRemove } } });
       }
       for (const s of skus) {
-        const { id: skuId, productId: _p, sales: _s, createdAt: _c, updatedAt: _u, ...rest } = s;
+        const skuId = s.id;
+        const fields = this.skuFields(s);
         if (skuId) {
-          await this.prisma.sku.update({ where: { id: skuId }, data: rest });
+          await this.prisma.sku.update({ where: { id: skuId, productId: id }, data: fields });
         } else {
-          await this.prisma.sku.create({ data: { ...rest, productId: id } });
+          await this.prisma.sku.create({ data: { ...fields, productId: id } as any });
         }
       }
     }
-    if (rest.deliveryType === 'CURSOR_SELL') {
-      await this.cursorSellListing.repriceProduct(id);
-    } else if (rest.deliveryType === undefined) {
-      const p = await this.prisma.product.findUnique({ where: { id }, select: { deliveryType: true } });
-      if (p?.deliveryType === 'CURSOR_SELL') await this.cursorSellListing.repriceProduct(id);
+    return this.productDetail(id, true);
+  }
+
+  // 只接收商品与规格的可编辑字段，避免嵌套 Prisma 写入绕过渠道校验。
+  private productFields(input: any): any {
+    const fields = ['categoryId', 'title', 'subtitle', 'description', 'tags', 'cover', 'images',
+      'basePrice', 'sort', 'status', 'deliveryType', 'warranty', 'bulkPricing',
+      'pointsAwardEnabled', 'pointsPayEnabled', 'pointsAwardRate'];
+    return Object.fromEntries(fields.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]));
+  }
+
+  private skuFields(input: any): any {
+    const fields = ['name', 'price', 'originalPrice', 'stock', 'sort', 'visible', 'attrs'];
+    return Object.fromEntries(fields.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]));
+  }
+
+  private validateDeliveryConfig(deliveryType: unknown, skus: unknown, status?: unknown) {
+    if (deliveryType !== undefined && !isLocalDeliveryType(deliveryType)) {
+      throw new BadRequestException('不支持该交付方式，请选择本地交付方式');
     }
-    return this.detail(id);
+    if (status !== undefined && !['ON_SALE', 'OFF_SHELF', 'DRAFT'].includes(status as string)) {
+      throw new BadRequestException('商品状态不合法');
+    }
+    if (skus !== undefined && !Array.isArray(skus)) {
+      throw new BadRequestException('商品规格格式不正确');
+    }
+    if (Array.isArray(skus)) {
+      for (const sku of skus) {
+        if (sku?.attrs && typeof sku.attrs === 'object' &&
+          Object.keys(sku.attrs).some((key) => /^(cursorSell|aizhp)/i.test(key))) {
+          throw new BadRequestException('规格中包含已移除的渠道配置，请删除后再保存');
+        }
+      }
+    }
   }
 
   async remove(id: number) {
@@ -300,7 +291,17 @@ export class ProductsService {
     });
   }
 
-  setStatus(id: number, status: 'ON_SALE' | 'OFF_SHELF' | 'DRAFT') {
+  async setStatus(id: number, status: 'ON_SALE' | 'OFF_SHELF' | 'DRAFT') {
+    if (!['ON_SALE', 'OFF_SHELF', 'DRAFT'].includes(status)) {
+      throw new BadRequestException('商品状态不合法');
+    }
+    if (status === 'ON_SALE') {
+      const product = await this.prisma.product.findUnique({ where: { id }, select: { deliveryType: true } });
+      if (!product) throw new NotFoundException('商品不存在');
+      if (!isLocalDeliveryType(product.deliveryType)) {
+        throw new BadRequestException('该商品渠道已移除，不能重新上架');
+      }
+    }
     return this.prisma.product.update({ where: { id }, data: { status } });
   }
 }

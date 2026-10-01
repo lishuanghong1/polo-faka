@@ -14,8 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { AlipayService } from './alipay.service';
 import { OrdersService } from '../orders/orders.service';
-import { ForgeOrdersService } from '../forge-redeem/forge-orders.service';
-import { ForgeQuotaOrdersService } from '../forge-redeem/forge-quota-orders.service';
+import { isLocalDeliveryType } from '../products/local-delivery';
 import { RechargeService } from '../recharge/recharge.service';
 import { CustomerRefundService } from '../customer-refund/customer-refund.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,16 +25,21 @@ import { AuditActions } from '../audit/audit.constants';
 import { AbuseGuardService } from '../../common/abuse/abuse-guard.service';
 
 /**
- * 我方订单号格式：P/F/R/Q/T 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9-]{12..16})
+ * 我方订单号格式：P/R/T 开头 + YYYYMMDDHHmmss(14) + 随机串([A-Za-z0-9_-]{12..16})
  * 严格白名单字符 + 长度，防止 SQL/XSS payload 进入审计日志。
  * T = Token 退款手续费
  */
-const ORDER_NO_REGEX = /^[PFRQT][A-Za-z0-9-]{14,64}$/;
+const ORDER_NO_REGEX = /^[PRT][A-Za-z0-9_-]{14,64}$/;
+/** 历史三方在途回调仅验签并审计，供人工对账，不恢复支付或交付。 */
+const RETIRED_ORDER_NO_REGEX = /^[FQ][A-Za-z0-9_-]{14,64}$/;
 /** 支付宝 trade_no：纯数字、长度 16-64 */
 const TRADE_NO_REGEX = /^\d{16,64}$/;
 
 function isValidOrderNo(s: unknown): s is string {
   return typeof s === 'string' && ORDER_NO_REGEX.test(s);
+}
+function isRetiredOrderNo(s: unknown): s is string {
+  return typeof s === 'string' && RETIRED_ORDER_NO_REGEX.test(s);
 }
 function isValidTradeNo(s: unknown): s is string {
   return typeof s === 'string' && TRADE_NO_REGEX.test(s);
@@ -64,23 +68,9 @@ function isSafeReturnUrl(u?: string): boolean {
   return /^\/(?!\/)/.test(u);
 }
 
-/**
- * 订单号规则：
- *   - 本地卡密订单：以 'P' 开头
- *   - 代下订单：以 'F' 开头
- *   - 余额充值订单：以 'R' 开头
- *   - 额度包购码订单：以 'Q' 开头
- */
-function isForgeOrder(orderNo: string) {
-  return typeof orderNo === 'string' && orderNo.startsWith('F');
-}
-
+/** 余额充值订单 */
 function isRechargeOrder(orderNo: string) {
   return typeof orderNo === 'string' && orderNo.startsWith('R');
-}
-
-function isQuotaOrder(orderNo: string) {
-  return typeof orderNo === 'string' && orderNo.startsWith('Q');
 }
 
 /** Token 退款手续费订单 */
@@ -109,8 +99,6 @@ export class AlipayController {
   constructor(
     private readonly alipay: AlipayService,
     private readonly orders: OrdersService,
-    private readonly forgeOrders: ForgeOrdersService,
-    private readonly quotaOrders: ForgeQuotaOrdersService,
     private readonly recharge: RechargeService,
     private readonly customerRefund: CustomerRefundService,
     private readonly prisma: PrismaService,
@@ -124,7 +112,7 @@ export class AlipayController {
     return { enabled: await this.alipay.isEnabled() };
   }
 
-  /** 创建支付链接（兼容本地订单 / 三方订单） */
+  /** 创建本站订单、余额充值或退款手续费支付链接 */
   @Public()
   @Get('create/:orderNo')
   async create(
@@ -132,6 +120,7 @@ export class AlipayController {
     @Query('channel') channel: 'PC' | 'WAP' = 'PC',
     @Query('return') returnUrl?: string,
   ) {
+    if (!isValidOrderNo(orderNo)) throw new BadRequestException('不支持的订单号');
     let payAmount: number;
     let subject: string;
     let body: string | undefined;
@@ -148,37 +137,6 @@ export class AlipayController {
       payAmount = Number(r.amount);
       subject = `账户充值 ¥${payAmount.toFixed(2)}`;
       body = `账户充值 ${orderNo}`;
-    } else if (isForgeOrder(orderNo)) {
-      const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
-      if (!order) throw new BadRequestException('订单不存在');
-      if (order.paymentMethod !== 'ALIPAY') {
-        throw new BadRequestException('订单不是支付宝订单');
-      }
-      if (order.status !== 'PENDING') {
-        throw new BadRequestException('订单状态不允许支付');
-      }
-      if (order.expireAt && order.expireAt.getTime() < Date.now()) {
-        throw new BadRequestException('订单已过期');
-      }
-      // 优先用折后实付金额（VIP / 优惠券），缺失时回退原价（兼容老订单）
-      payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
-      subject = order.typeName;
-      body = `${order.typeName} × ${order.quantity}`;
-    } else if (isQuotaOrder(orderNo)) {
-      const order = await this.prisma.forgeQuotaOrder.findUnique({ where: { orderNo } });
-      if (!order) throw new BadRequestException('订单不存在');
-      if (order.paymentMethod !== 'ALIPAY') {
-        throw new BadRequestException('订单不是支付宝订单');
-      }
-      if (order.status !== 'PENDING') {
-        throw new BadRequestException('订单状态不允许支付');
-      }
-      if (order.expireAt && order.expireAt.getTime() < Date.now()) {
-        throw new BadRequestException('订单已过期');
-      }
-      payAmount = order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
-      subject = order.packageName;
-      body = `${order.packageName} × ${order.quantity}`;
     } else if (isTokenRefundOrder(orderNo)) {
       const log = await this.prisma.tokenRefundLog.findUnique({ where: { payOrderNo: orderNo } });
       if (!log) throw new BadRequestException('订单不存在');
@@ -191,11 +149,19 @@ export class AlipayController {
       subject = '账号退款手续费';
       body = `账号退款手续费 ${orderNo}`;
     } else {
-      const order = await this.prisma.order.findUnique({ where: { orderNo } });
+      const order = await this.prisma.order.findUnique({
+        where: { orderNo },
+        include: { product: { select: { deliveryType: true } } },
+      });
       if (!order) throw new BadRequestException('订单不存在');
+      if (!isLocalDeliveryType(order.product.deliveryType)) {
+        throw new BadRequestException('该订单的销售渠道已移除');
+      }
+      if (order.payMethod !== 'ALIPAY') throw new BadRequestException('订单不是支付宝订单');
       if (order.status !== 'PENDING') {
         throw new BadRequestException('订单状态不允许支付');
       }
+      if (order.expireAt.getTime() < Date.now()) throw new BadRequestException('订单已过期');
       payAmount = Number(order.payAmount);
       subject = order.productTitle;
       body = `${order.productTitle} ${order.skuName} × ${order.quantity}`;
@@ -239,7 +205,8 @@ export class AlipayController {
     // ─── L1：入参格式白名单校验（早于 RSA 验签，省 CPU 同时把噪声挡在外面） ───
     // 任何 payload 不符合订单号 / 交易号格式的请求都不可能是合法的支付宝 notify，
     // 直接当作可疑请求记录后丢弃，并对来源 IP 计数（5 次/5 分钟 → 自动拉黑 24h）。
-    if (!isValidOrderNo(rawOrderNo) || (rawTradeNo && !isValidTradeNo(rawTradeNo))) {
+    if ((!isValidOrderNo(rawOrderNo) && !isRetiredOrderNo(rawOrderNo)) ||
+      (rawTradeNo && !isValidTradeNo(rawTradeNo))) {
       // 自动拉黑：相比单纯的 Throttle 60s/30 次，这是更强的"行为黑名单"
       let blocked = false;
       let abuseCount = 0;
@@ -333,6 +300,17 @@ export class AlipayController {
         return res.status(200).send('success');
       }
 
+      if (isRetiredOrderNo(orderNo)) {
+        await this.audit.record({
+          action: AuditActions.ALIPAY_NOTIFY_REMOVED_CHANNEL,
+          target: `retired-order:${orderNo}`,
+          detail: { orderNo, tradeNo, paidAmount: totalAmount, requiresManualReconciliation: true },
+          ip: clientIp,
+        });
+        this.logger.warn(`retired channel payment requires manual reconciliation: ${orderNo}`);
+        return res.status(200).send('success');
+      }
+
       if (isRechargeOrder(orderNo)) {
         // 充值订单：金额校验 + 入账（增余额 + 写流水），均在 service 内同一事务
         try {
@@ -354,63 +332,6 @@ export class AlipayController {
             return res.status(200).send('success');
           }
           this.logger.error(`recharge notify retryable: ${orderNo} ${msg}`);
-          return res.status(200).send('fail');
-        }
-      }
-
-      if (isForgeOrder(orderNo)) {
-        // 代下订单：仅做状态推进，发货异步
-        try {
-          const r = await this.forgeOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
-          if (r === 'recorded') {
-            this.forgeOrders.fulfillAsync(orderNo);
-          }
-          return res.status(200).send('success');
-        } catch (e) {
-          const msg = (e as Error).message;
-          // 金额不一致 → 高危告警 + 不让重推（重推也不会通过）
-          if (msg.includes('金额不一致')) {
-            await this.audit.record({
-              action: AuditActions.ALIPAY_AMOUNT_MISMATCH,
-              target: `forge:${orderNo}`,
-              detail: { tradeNo, paidAmount: totalAmount, msg },
-            });
-            return res.status(200).send('success');
-          }
-          // 订单不存在 / 类型不对 / 状态非法 → 不重推
-          if (msg.includes('订单不存在') || msg.includes('不是支付宝订单') || msg.includes('不允许')) {
-            this.logger.warn(`forge notify hard-fail: ${orderNo} ${msg}`);
-            return res.status(200).send('success');
-          }
-          // 其他（DB 异常 / 网络等）→ 让支付宝重推
-          this.logger.error(`forge notify retryable: ${orderNo} ${msg}`);
-          return res.status(200).send('fail');
-        }
-      }
-
-      if (isQuotaOrder(orderNo)) {
-        // 额度包购码订单：仅做状态推进，购码异步
-        try {
-          const r = await this.quotaOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
-          if (r === 'recorded') {
-            this.quotaOrders.fulfillAsync(orderNo);
-          }
-          return res.status(200).send('success');
-        } catch (e) {
-          const msg = (e as Error).message;
-          if (msg.includes('金额不一致')) {
-            await this.audit.record({
-              action: AuditActions.ALIPAY_AMOUNT_MISMATCH,
-              target: `forge-quota:${orderNo}`,
-              detail: { tradeNo, paidAmount: totalAmount, msg },
-            });
-            return res.status(200).send('success');
-          }
-          if (msg.includes('订单不存在') || msg.includes('不是支付宝订单') || msg.includes('不允许')) {
-            this.logger.warn(`quota notify hard-fail: ${orderNo} ${msg}`);
-            return res.status(200).send('success');
-          }
-          this.logger.error(`quota notify retryable: ${orderNo} ${msg}`);
           return res.status(200).send('fail');
         }
       }
@@ -475,6 +396,9 @@ export class AlipayController {
   @Get('return')
   async ret(@Req() req: Request, @Res() res: Response) {
     const query = req.query as Record<string, any>;
+    if (!isValidOrderNo(query.out_trade_no) || !isValidTradeNo(query.trade_no)) {
+      return res.redirect('/');
+    }
     try {
       const ok = await this.alipay.verifyNotify(query);
       const orderNo = query.out_trade_no;
@@ -489,24 +413,6 @@ export class AlipayController {
             this.logger.warn(`return-ack recharge fallback: ${(e as Error).message}`);
           }
           return res.redirect(`/recharge/${encodeURIComponent(orderNo)}`);
-        }
-        if (isForgeOrder(orderNo)) {
-          try {
-            const r = await this.forgeOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
-            if (r === 'recorded') this.forgeOrders.fulfillAsync(orderNo);
-          } catch (e) {
-            this.logger.warn(`return-ack forge fallback: ${(e as Error).message}`);
-          }
-          return res.redirect(`/forge-order/${encodeURIComponent(orderNo)}`);
-        }
-        if (isQuotaOrder(orderNo)) {
-          try {
-            const r = await this.quotaOrders.markPaid(orderNo, tradeNo, totalAmount, buyerLogonId);
-            if (r === 'recorded') this.quotaOrders.fulfillAsync(orderNo);
-          } catch (e) {
-            this.logger.warn(`return-ack quota fallback: ${(e as Error).message}`);
-          }
-          return res.redirect(`/quota-order/${encodeURIComponent(orderNo)}`);
         }
         if (isTokenRefundOrder(orderNo)) {
           try {
@@ -548,37 +454,22 @@ export class AlipayController {
   @ApiBearerAuth()
   @Get('query/:orderNo')
   async adminQuery(@Param('orderNo') orderNo: string, @Req() req: Request) {
+    if (!isValidOrderNo(orderNo)) throw new BadRequestException('不支持的订单号');
     const r = await this.alipay.tradeQuery(orderNo);
     await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_QUERY, {
-      target: isForgeOrder(orderNo)
-        ? `forge:${orderNo}`
-        : isQuotaOrder(orderNo)
-          ? `forge-quota:${orderNo}`
-          : isTokenRefundOrder(orderNo)
-            ? `token-refund:${orderNo}`
-            : `order:${orderNo}`,
+      target: isRechargeOrder(orderNo)
+        ? `recharge:${orderNo}`
+        : isTokenRefundOrder(orderNo)
+          ? `token-refund:${orderNo}`
+          : `order:${orderNo}`,
       detail: r,
     });
 
     // 自动补救：查到已支付 + 本地仍 PENDING → 推进
     if (r.tradeStatus === 'TRADE_SUCCESS' || r.tradeStatus === 'TRADE_FINISHED') {
       try {
-        if (isForgeOrder(orderNo)) {
-          const x = await this.forgeOrders.markPaid(
-            orderNo,
-            r.tradeNo!,
-            r.totalAmount!,
-            r.buyerLogonId,
-          );
-          if (x === 'recorded') this.forgeOrders.fulfillAsync(orderNo);
-        } else if (isQuotaOrder(orderNo)) {
-          const x = await this.quotaOrders.markPaid(
-            orderNo,
-            r.tradeNo!,
-            r.totalAmount!,
-            r.buyerLogonId,
-          );
-          if (x === 'recorded') this.quotaOrders.fulfillAsync(orderNo);
+        if (isRechargeOrder(orderNo)) {
+          await this.recharge.markPaidAndCredit(orderNo, r.tradeNo!, r.totalAmount!, r.buyerLogonId);
         } else if (isTokenRefundOrder(orderNo)) {
           await this.customerRefund.markFeePaid(orderNo, r.tradeNo!, r.totalAmount!);
         } else {
@@ -610,71 +501,8 @@ export class AlipayController {
   ) {
     const reason = ((req.body?.reason as string) || '管理员退款').slice(0, 256);
 
-    if (isForgeOrder(orderNo)) {
-      const order = await this.prisma.forgeOrder.findUnique({ where: { orderNo } });
-      if (!order) throw new BadRequestException('订单不存在');
-      if (order.paymentMethod !== 'ALIPAY') {
-        throw new BadRequestException('非支付宝订单');
-      }
-      if (!['PAID', 'DELIVERED', 'FAILED'].includes(order.status)) {
-        throw new BadRequestException(`订单状态 ${order.status} 不可退款`);
-      }
-      // 退款金额按用户实付（payAmount，含 VIP 折扣），缺失回退 totalAmount
-      const amount =
-        order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
-      const r = await this.alipay.tradeRefund({
-        orderNo,
-        refundAmount: amount,
-        refundReason: reason,
-      });
-      if (!r.ok) throw new BadRequestException(`退款失败：${r.reason}`);
-      await this.prisma.forgeOrder.update({
-        where: { orderNo },
-        data: {
-          status: 'REFUNDED',
-          refundAmount: amount as any,
-          refundedAt: new Date(),
-          refundReason: reason,
-        },
-      });
-      await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_REFUND, {
-        target: `forge:${orderNo}`,
-        detail: { amount, reason, refundFee: r.refundFee },
-      });
-      return { ok: true, amount, refundFee: r.refundFee };
-    }
-
-    if (isQuotaOrder(orderNo)) {
-      const order = await this.prisma.forgeQuotaOrder.findUnique({ where: { orderNo } });
-      if (!order) throw new BadRequestException('订单不存在');
-      if (order.paymentMethod !== 'ALIPAY') {
-        throw new BadRequestException('非支付宝订单');
-      }
-      if (!['PAID', 'DELIVERED', 'FAILED'].includes(order.status)) {
-        throw new BadRequestException(`订单状态 ${order.status} 不可退款`);
-      }
-      const amount =
-        order.payAmount !== null ? Number(order.payAmount) : Number(order.totalAmount);
-      const r = await this.alipay.tradeRefund({
-        orderNo,
-        refundAmount: amount,
-        refundReason: reason,
-      });
-      if (!r.ok) throw new BadRequestException(`退款失败：${r.reason}`);
-      await this.prisma.forgeQuotaOrder.update({
-        where: { orderNo },
-        data: {
-          status: 'REFUNDED',
-          refundAmount: amount as any,
-          refundedAt: new Date(),
-          refundReason: reason,
-        },
-      });
-      await this.audit.fromReq(req, AuditActions.ALIPAY_MANUAL_REFUND, {
-        target: `forge-quota:${orderNo}`,
-        detail: { amount, reason, refundFee: r.refundFee },
-      });
-      return { ok: true, amount, refundFee: r.refundFee };
+    if (!isValidOrderNo(orderNo) || !orderNo.startsWith('P')) {
+      throw new BadRequestException('不支持的订单号');
     }
 
     const order = await this.prisma.order.findUnique({ where: { orderNo } });

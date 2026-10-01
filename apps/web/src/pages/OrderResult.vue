@@ -14,11 +14,8 @@ import {
 } from '@/utils/card-key';
 import { statusOf, shouldKeepPolling } from '@/utils/order-status';
 import OrderStatusBadge from '@/components/OrderStatusBadge.vue';
-import EmailCodeBox from '@/components/EmailCodeBox.vue';
 import BrandButton from '@/components/BrandButton.vue';
 import Skeleton from '@/components/Skeleton.vue';
-import TeamDeliveryPanel from '@/components/TeamDeliveryPanel.vue';
-import type { CursorSellSale } from '@/api';
 import { formatDateTime, formatMoneyRaw, copyText } from '@/utils/format';
 
 const route = useRoute();
@@ -52,38 +49,11 @@ const needContactSupport = computed(() => {
 
 const statusInfo = computed(() => statusOf(order.value?.status));
 const isPoolQuotaOrder = computed(() => order.value?.product?.deliveryType === 'POOL_QUOTA');
-const isAizhpOrder = computed(() => order.value?.product?.deliveryType === 'AIZHP');
-const aizhpRefund = computed(() => order.value?.aizhpRefund || null);
-const aizhpRefundLabel = computed(() => {
-  const s = aizhpRefund.value?.status;
-  const map: Record<string, { text: string; cls: string }> = {
-    refunded: { text: '已退款', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
-    external_pending: { text: '退款处理中', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
-    sent: { text: '退款处理中', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
-    failed: { text: '退款失败', cls: 'text-rose-700 bg-rose-50 border-rose-200' },
-    rejected: { text: '退款被拒绝', cls: 'text-rose-700 bg-rose-50 border-rose-200' },
-  };
-  return map[s || ''] || { text: s || '未知', cls: 'text-ink-600 bg-ink-50 border-ink-200' };
-});
-
-// Team 售号渠道：结构化成交信息（凭据 / 开通中 / 授权登录）；这些卡密改由 TeamDeliveryPanel 展示
-const teamSales = computed<CursorSellSale[]>(() => order.value?.cursorSell?.sales || []);
-const teamCardKeyIds = computed(() => new Set(teamSales.value.map((s) => s.cardKeyId).filter((v) => v != null)));
-const isTeamOrder = computed(() => order.value?.product?.deliveryType === 'CURSOR_SELL' || teamSales.value.length > 0);
-const teamMaking = computed(() => teamSales.value.some((s) => s.making));
-
-function onTeamSaleUpdated(s: CursorSellSale) {
-  if (!order.value?.cursorSell) return;
-  const list: CursorSellSale[] = order.value.cursorSell.sales;
-  const idx = list.findIndex((x) => x.id === s.id);
-  if (idx >= 0) list[idx] = s;
-  // 开通完成后主动拉一次订单，让状态 / 卡密同步
-  if (!s.making) load(order.value?.contact || contactInput.value.trim() || undefined);
-}
-
+const retiredProduct = computed(() =>
+  !!order.value?.product && !['CARD_KEY', 'POOL_QUOTA', 'MANUAL'].includes(order.value.product.deliveryType),
+);
 const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; soldAt?: string }>>(() => {
   return (order.value?.cardKeys || [])
-    .filter((item: any) => !teamCardKeyIds.value.has(item.id))
     .map((item: any) => {
       const account = parseWarehouseDeliveryAccount(item);
       return account ? { ...account, id: item.id, soldAt: item.soldAt } : null;
@@ -93,11 +63,9 @@ const deliveryAccounts = computed<Array<ParsedDeliveryAccount & { id?: number; s
 
 const plainCardKeys = computed(() => {
   return (order.value?.cardKeys || []).filter(
-    (item: any) => !teamCardKeyIds.value.has(item.id) && !parseWarehouseDeliveryAccount(item),
+    (item: any) => !parseWarehouseDeliveryAccount(item),
   );
 });
-
-const primaryDeliveryEmail = computed(() => deliveryAccounts.value[0]?.email || '');
 
 const poolQuotaPercent = computed(() => {
   if (!poolGrant.value?.quotaTotal) return 0;
@@ -165,7 +133,7 @@ async function submitContact() {
 
 const paying = ref(false);
 async function goPay() {
-  if (!order.value || paying.value) return;
+  if (!order.value || paying.value || retiredProduct.value) return;
   // 先在点击同步上下文开空白页签，避免 await 后被拦截
   const payWindow = window.open('', '_blank');
   paying.value = true;
@@ -189,14 +157,14 @@ function stopPolling() {
 
 async function poll() {
   if (!order.value) return;
-  if (!shouldKeepPolling(order.value.status)) { stopPolling(); return; }
+  if (retiredProduct.value || !shouldKeepPolling(order.value.status)) { stopPolling(); return; }
   if (Date.now() - pollStart > POLL_MAX_MS) { stopPolling(); autoPaused.value = true; return; }
   await load(order.value?.contact || contactInput.value.trim() || undefined);
 }
 
 async function manualRefresh() {
   await load(order.value?.contact || contactInput.value.trim() || undefined);
-  if (order.value && shouldKeepPolling(order.value.status)) {
+  if (order.value && !retiredProduct.value && shouldKeepPolling(order.value.status)) {
     autoPaused.value = false;
     pollStart = Date.now();
     stopPolling();
@@ -261,7 +229,7 @@ onMounted(async () => {
     await load();
   }
   pollStart = Date.now();
-  timer = window.setInterval(poll, 3000);
+  if (!retiredProduct.value) timer = window.setInterval(poll, 3000);
 });
 onBeforeUnmount(stopPolling);
 
@@ -354,7 +322,7 @@ const statusHeroClass = computed(() => {
               </span>
             </div>
           </div>
-          <div v-if="order.status === 'PENDING'" class="shrink-0">
+          <div v-if="order.status === 'PENDING' && !retiredProduct" class="shrink-0">
             <BrandButton
               variant="primary"
               size="md"
@@ -369,10 +337,12 @@ const statusHeroClass = computed(() => {
         <!-- PAID 中：发货进度 -->
         <div v-if="order.status === 'PAID'" class="mt-4 flex items-center gap-2.5 text-sm text-sky-800">
           <div class="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin shrink-0" />
-          <span v-if="teamMaking">付款已到账，渠道正在为您开通 Team 账号，通常几分钟内完成，页面会自动刷新</span>
-          <span v-else-if="isTeamOrder">付款已到账，正在从渠道为您采购账号…通常数秒完成</span>
-          <span v-else>付款已到账，正在为您出库…通常 3-10 秒完成</span>
+
+          <span>{{ retiredProduct ? '该商品已停售，请联系客服处理已付款订单' : '付款已到账，正在为您出库…通常 3-10 秒完成' }}</span>
         </div>
+        <p v-if="retiredProduct && order.status === 'PENDING'" class="mt-4 text-sm text-amber-700">
+          该商品已停售，此订单无法继续付款。
+        </p>
       </div>
 
       <!-- 自动刷新已暂停 → 手动刷新 -->
@@ -547,16 +517,6 @@ const statusHeroClass = computed(() => {
         </div>
       </div>
 
-      <!-- ────── Team 渠道交付（凭据 / 开通中 / 授权登录 / 提取卡） ────── -->
-      <TeamDeliveryPanel
-        v-if="teamSales.length"
-        :order-no="order.orderNo"
-        :contact="order.contact || contactInput.trim() || undefined"
-        :sales="teamSales"
-        :order-status="order.status"
-        @updated="onTeamSaleUpdated"
-      />
-
       <!-- ────── 账号交付 ────── -->
       <div v-if="deliveryAccounts.length" class="card p-5 md:p-6 mb-4">
         <div class="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -610,15 +570,6 @@ const statusHeroClass = computed(() => {
             </div>
           </li>
         </ul>
-      </div>
-
-      <!-- ────── 接验证码 ────── -->
-      <div v-if="primaryDeliveryEmail && order.status === 'DELIVERED'" class="card p-5 md:p-6 mb-4">
-        <h3 class="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-2">
-          <span class="w-1 h-4 bg-brand-600 rounded-full" />
-          为该账号接验证码
-        </h3>
-        <EmailCodeBox :model-value="primaryDeliveryEmail" :editable="false" compact />
       </div>
 
       <!-- ────── 卡密交付 ────── -->
@@ -675,35 +626,6 @@ const statusHeroClass = computed(() => {
         </ul>
       </div>
 
-      <!-- ────── AIZHP 退款状态 ────── -->
-      <div v-if="aizhpRefund" class="card p-5 md:p-6 mb-4">
-        <h3 class="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-2">
-          <span class="w-1 h-4 bg-rose-500 rounded-full" />
-          退款状态
-        </h3>
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-3">
-            <span
-              class="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg border"
-              :class="aizhpRefundLabel.cls"
-            >
-              {{ aizhpRefundLabel.text }}
-            </span>
-            <span v-if="aizhpRefund.plan" class="text-xs text-ink-500">档位：{{ aizhpRefund.plan }}</span>
-          </div>
-          <span class="text-xs text-ink-400 font-mono">#{{ aizhpRefund.id }}</span>
-        </div>
-        <p v-if="aizhpRefundLabel.text === '已退款'" class="mt-3 text-xs text-emerald-700 leading-relaxed">
-          账号已成功退款，该账号已失效。
-        </p>
-        <p v-else-if="['external_pending', 'sent'].includes(aizhpRefund.status)" class="mt-3 text-xs text-amber-700 leading-relaxed">
-          退款申请已提交，正在处理中，请耐心等待。
-        </p>
-        <p v-else-if="['failed', 'rejected'].includes(aizhpRefund.status)" class="mt-3 text-xs text-rose-700 leading-relaxed">
-          退款处理失败，请联系客服协助处理。
-        </p>
-      </div>
-
       <!-- ────── 缺货 → 联系客服 ────── -->
       <div
         v-if="!plainCardKeys.length && !deliveryAccounts.length && needContactSupport"
@@ -716,11 +638,11 @@ const statusHeroClass = computed(() => {
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="font-semibold text-amber-900">{{ isTeamOrder ? '渠道暂未出货，系统正在自动重试' : '暂无现货，请联系客服发货' }}</div>
+            <div class="font-semibold text-amber-900">{{ retiredProduct ? '该商品已停售，请联系客服处理订单' : '暂无现货，请联系客服发货' }}</div>
             <p class="text-sm text-amber-800 mt-1 leading-relaxed">
               您已付款成功，订单号 <code class="font-mono bg-white/80 px-1.5 py-0.5 rounded text-amber-900 text-xs">{{ order.orderNo }}</code>。
-              <template v-if="isTeamOrder">渠道可能暂时缺货，系统会每几分钟自动重试并在成功后显示账号；如长时间未发货，请联系客服。</template>
-              <template v-else>客服会尽快人工发货。</template>
+
+              <span>{{ retiredProduct ? '客服会协助处理交付或退款。' : '客服会尽快人工发货。' }}</span>
             </p>
           </div>
         </div>

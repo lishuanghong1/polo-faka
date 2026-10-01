@@ -109,21 +109,6 @@ export class AbuseAdminController {
           },
         })
       : [];
-    const forgeOrders = actorIds.length
-      ? await this.prisma.forgeOrder.findMany({
-          where: { userId: { in: actorIds }, createdAt: { gte: since } },
-          orderBy: { createdAt: 'desc' },
-          take: 20,
-          select: {
-            orderNo: true,
-            status: true,
-            totalAmount: true,
-            payAmount: true,
-            createdAt: true,
-            typeName: true,
-          },
-        })
-      : [];
 
     return {
       ip,
@@ -148,7 +133,7 @@ export class AbuseAdminController {
         .map(([t, count]) => ({ t, count }))
         .sort((a, b) => (a.t < b.t ? -1 : 1)),
       linkedUsers: users,
-      linkedOrders: { local: localOrders, forge: forgeOrders },
+      linkedOrders: { local: localOrders },
       recentLogs: logs.slice(0, 30).map((l) => ({
         id: l.id,
         action: l.action,

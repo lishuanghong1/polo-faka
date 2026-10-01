@@ -2,8 +2,8 @@
 import { computed } from 'vue';
 
 interface UnifiedProduct {
-  source: 'local' | 'forge' | 'quota';
-  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL / AIZHP */
+  source: 'local';
+  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL */
   deliveryType?: string;
   key: string;
   typeName: string;
@@ -13,7 +13,6 @@ interface UnifiedProduct {
   warrantyHours?: number | null;
   categoryKey: string;
   categoryName: string;
-  emailCodeEnabled?: boolean;
   fromPrice?: boolean;
   subtitle?: string | null;
   coverImage?: string | null;
@@ -22,20 +21,18 @@ interface UnifiedProduct {
 const props = defineProps<{ product: UnifiedProduct }>();
 defineEmits<{ (e: 'click'): void }>();
 
-// 人工代发商品不按库存售卖，首页不展示「缺货」等库存字样；无限库存（AIZHP）同样不展示
+// 人工代发商品不按库存售卖，首页不展示「缺货」等库存字样
 const showStock = computed(
   () => props.product.stock < 9999 && props.product.deliveryType !== 'MANUAL',
 );
 
 const stockClass = computed(() => {
   const p = props.product;
-  if (p.stock >= 9999) return []; // AIZHP 无限库存，不显示
+  if (p.stock >= 9999) return []; // 虚拟库存不显示
   return [
     'text-xs inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
     p.stock <= 0
-      ? p.source === 'local'
-        ? 'text-amber-700 bg-amber-50'
-        : 'text-rose-600 bg-rose-50'
+      ? 'text-amber-700 bg-amber-50'
       : p.stock <= 5
         ? 'text-amber-700 bg-amber-50'
         : 'text-ink-500 bg-ink-50',
@@ -46,9 +43,7 @@ const stockTitle = computed(() => {
   const p = props.product;
   if (p.stock >= 9999) return '';
   return p.stock <= 0
-    ? p.source === 'local'
-      ? '可下单付款，由客服人工发货'
-      : '暂时缺货，请稍后再来'
+    ? '可下单付款，由客服人工发货'
     : `当前库存 ${p.stock} 件`;
 });
 
@@ -56,9 +51,7 @@ const stockText = computed(() => {
   const p = props.product;
   if (p.stock >= 9999) return '';
   return p.stock <= 0
-    ? p.source === 'local'
-      ? '缺货 · 可代发'
-      : '暂时缺货'
+    ? '缺货 · 可代发'
     : `库存 ${p.stock}`;
 });
 
@@ -99,18 +92,8 @@ function onImgError(e: Event) {
             {{ product.typeName }}
           </div>
           <div v-if="product.subtitle" class="text-xs text-ink-500 mt-0.5 line-clamp-2">{{ product.subtitle }}</div>
-          <div
-            v-else-if="product.source === 'forge'"
-            class="text-[11px] text-ink-400 font-mono mt-0.5 truncate"
-          >{{ product.typeKey }}</div>
+
         </div>
-      </div>
-      <div class="flex flex-col items-end gap-1 shrink-0">
-        <span
-          v-if="product.emailCodeEnabled"
-          class="px-1.5 py-0.5 text-[10px] bg-brand-50 text-brand-700 rounded"
-          title="支持在线接验证码"
-        >可接码</span>
       </div>
     </div>
 
@@ -125,8 +108,7 @@ function onImgError(e: Event) {
         <div :class="stockClass" :title="stockTitle">
           <span
             v-if="product.stock <= 0"
-            class="w-1.5 h-1.5 rounded-full"
-            :class="product.source === 'local' ? 'bg-amber-500' : 'bg-rose-500'"
+            class="w-1.5 h-1.5 rounded-full bg-amber-500"
           ></span>
           {{ stockText }}
         </div>

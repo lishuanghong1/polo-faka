@@ -40,7 +40,7 @@ export class EmailCodeController {
   }
 
   /**
-   * 接收前端轮询请求；本接口直通三方 /openapi/v1/email-code。
+   * 保留历史客户端响应协议，停用接码时返回终止轮询标志。
    * 限流：单 IP 每 10 秒最多 5 次（兼顾客户端 3s 轮询）。
    */
   @Public()

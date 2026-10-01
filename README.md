@@ -88,6 +88,10 @@ pnpm dev:web    # http://localhost:5173
 - ✓ 全局响应包装 `{ success, data, error }`
 - ✓ Swagger 文档（`/api/docs`）
 
+本站供货保留本地卡密、号池额度及人工交付。Team 售号、Aizhp、Cursorforge
+（含三方额度包和接码）已移除；历史商品禁止继续销售，历史订单与凭据不删除。
+项目结构及升级说明见 [渠道移除说明](docs/channel-removal.md)。
+
 ## 关键设计
 
 ### 卡密自动出库（防超卖）

@@ -49,95 +49,6 @@ export type TxtUploadResult = {
   }>;
 };
 
-/** Team 售号渠道：上游商品缓存 */
-export type CursorSellProduct = {
-  code: string;
-  title: string;
-  tier: string;
-  priceCents: number;
-  price: number;
-  warrantyHours: number | null;
-  deliveryFields: string[];
-  /** account 凭据直发 / login 授权登录 / card 池卡密 / extract 次数票 */
-  deliveryMode: 'account' | 'login' | 'card' | 'extract';
-  stock: number;
-  extractOnly: boolean;
-  ondemandTeam: boolean;
-  active: boolean;
-  lastSyncAt: string | null;
-  /** 绑定了该渠道商品的本站规格（后台列表接口附带） */
-  local?: CursorSellLocalBinding[];
-};
-
-export type CursorSellLocalBinding = {
-  productId: number;
-  productTitle: string;
-  productStatus: string;
-  skuId: number;
-  skuName: string;
-  price: number;
-  /** 是否跟随渠道价 */
-  follow: boolean;
-  autoListed: boolean;
-};
-
-/** Team 售号渠道：跟价 / 手动上架规则（autoList 已废弃，始终为 false） */
-export type CursorSellListingRules = {
-  autoList: boolean;
-  categoryId: number | null;
-  markupYuan: number;
-  markupPercent: number;
-  followOffShelf: boolean;
-  minMarginYuan: number;
-};
-
-/** Team 售号渠道：一次 buy-account 调用 */
-export type CursorSellPurchase = {
-  id: number;
-  idempotencyKey: string;
-  source: 'ORDER' | 'MANUAL';
-  orderNo: string | null;
-  productCode: string;
-  productTitle: string;
-  qty: number;
-  extractSplit: boolean;
-  status: 'PENDING' | 'DONE' | 'MAKING' | 'FAILED';
-  kind: string | null;
-  costCents: number | null;
-  cost: number | null;
-  errorCode: string | null;
-  failReason: string | null;
-  attempts: number;
-  lastAttemptAt: string | null;
-  operatorId: number | null;
-  saleCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-/** Team 售号渠道：上游每个成交 / 提取卡 */
-export type CursorSellSale = {
-  id: number;
-  purchaseId: number;
-  orderNo: string | null;
-  cardKeyId: number | null;
-  saleId: number | null;
-  extractCardId: number | null;
-  kind: 'account' | 'login' | 'card' | 'extract' | string;
-  productCode: string;
-  tier: string | null;
-  email: string | null;
-  making: boolean;
-  loginApprove: boolean;
-  loginApprovedAt: string | null;
-  warrantyUntil: string | null;
-  soldAt: string | null;
-  credentials: Record<string, string>;
-  usage: unknown;
-  usageAt: string | null;
-  createdAt: string;
-};
-
 export type AdminUserDetail = {
   user: {
     id: number;
@@ -210,17 +121,7 @@ export type AdminUserDetail = {
     createdAt: string;
     kind: 'LOCAL';
   }>;
-  forgeOrders: Array<{
-    orderNo: string;
-    typeName: string;
-    quantity: number;
-    payAmount: number | null;
-    totalAmount: number;
-    paymentMethod: string;
-    status: string;
-    createdAt: string;
-    kind: 'FORGE';
-  }>;
+
 };
 
 export const api = {
@@ -240,11 +141,6 @@ export const api = {
     http.get(`/orders/query/${orderNo}`, contact ? { params: { contact } } : undefined),
   mockPay: (orderNo: string) => http.post(`/orders/${orderNo}/mock-pay`),
   myOrders: (params: any) => http.get('/orders/mine', { params }),
-  myForgeOrders: (params: any) =>
-    http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
-      '/forge-redeem/orders/mine',
-      { params },
-    ),
 
   // ??
   register: (body: {
@@ -479,119 +375,6 @@ export const api = {
     recycleRefresh: (id: number) => http.post(`/recycle/${id}/refresh`),
     recycleRemove: (id: number) => http.delete(`/recycle/${id}`),
 
-    // Aizhp Open ??
-    aizhpPing: () => http.get('/aizhp-open/ping'),
-    aizhpAccounts: (params?: { filter?: string; page?: number; pageSize?: number }) =>
-      http.get('/aizhp-open/accounts', { params }),
-    aizhpQuotas: () => http.get('/aizhp-open/quotas'),
-    aizhpRefund: (body: { email: string; plan: string; refund_method?: string }) =>
-      http.post('/aizhp-open/refund', body),
-    aizhpRefunds: (params?: { page?: number; pageSize?: number }) =>
-      http.get('/aizhp-open/refunds', { params }),
-    aizhpRefundDetail: (id: number) => http.get(`/aizhp-open/refunds/${id}`),
-
-    // ── Team 售号渠道（cursor.zhangyuwang.cn 成品号购买 API） ──
-    cursorSell: {
-      overview: () =>
-        http.get<{
-          enabled: boolean;
-          hasApiKey: boolean;
-          balanceCents: number | null;
-          balance: number | null;
-          walletError: string | null;
-          lowBalanceCents: number;
-          pending: number;
-          making: number;
-          failed: number;
-          todayPurchases: number;
-          todayCostCents: number;
-          productCount: number;
-          activeProductCount: number;
-          lastSyncAt: string | null;
-        }>('/admin/cursor-sell/overview', { silent: true } as any),
-      walletRedeem: (code: string) =>
-        http.post<{ amountCents: number; balanceCents: number; amount: number; balance: number }>(
-          '/admin/cursor-sell/wallet/redeem',
-          { code },
-          { silent: true } as any,
-        ),
-      products: (activeOnly = false) =>
-        http.get<CursorSellProduct[]>('/admin/cursor-sell/products', { params: activeOnly ? { activeOnly: 1 } : {} }),
-      syncProducts: () =>
-        http.post<{
-          upserted: number;
-          deactivated: number;
-          syncedAt: string;
-          listing: { listed: number; repriced: number; offShelf: number; restored: number };
-        }>('/admin/cursor-sell/products/sync', undefined, { silent: true, timeout: 90_000 } as any),
-      listingRules: () => http.get<CursorSellListingRules>('/admin/cursor-sell/listing-rules'),
-      saveListingRules: (body: Partial<CursorSellListingRules>) =>
-        http.put<CursorSellListingRules>('/admin/cursor-sell/listing-rules', body, { silent: true } as any),
-      listProduct: (code: string, body: { categoryId?: number; markupYuan?: number; markupPercent?: number } = {}) =>
-        http.post<{ productId: number; skuId: number; created: boolean; price: number }>(
-          `/admin/cursor-sell/products/${encodeURIComponent(code)}/list`,
-          body,
-          { silent: true } as any,
-        ),
-      listBatch: (body: { codes: string[]; categoryId?: number; markupYuan?: number; markupPercent?: number }) =>
-        http.post<{
-          total: number;
-          created: number;
-          existed: number;
-          failed: number;
-          results: Array<{ code: string; ok: boolean; created?: boolean; productId?: number; error?: string }>;
-        }>('/admin/cursor-sell/products/list-batch', body, { silent: true, timeout: 120_000 } as any),
-      purchases: (params: { page?: number; pageSize?: number; status?: string; source?: string; keyword?: string }) =>
-        http.get<{ total: number; page: number; pageSize: number; items: CursorSellPurchase[] }>(
-          '/admin/cursor-sell/purchases',
-          { params },
-        ),
-      purchase: (id: number) =>
-        http.get<CursorSellPurchase & { sales: CursorSellSale[]; rawResponse: unknown }>(
-          `/admin/cursor-sell/purchases/${id}`,
-        ),
-      manualPurchase: (body: {
-        code: string;
-        qty: number;
-        extractSplit?: boolean;
-        destination?: 'NONE' | 'CARD_POOL' | 'WAREHOUSE';
-        skuId?: number;
-      }) =>
-        http.post<CursorSellPurchase & { sales: CursorSellSale[] }>(
-          '/admin/cursor-sell/purchases/manual',
-          body,
-          { silent: true, timeout: 90_000 } as any,
-        ),
-      retryPurchase: (id: number) =>
-        http.post<CursorSellPurchase>(`/admin/cursor-sell/purchases/${id}/retry`, undefined, {
-          silent: true,
-          timeout: 90_000,
-        } as any),
-      pushPurchase: (id: number, body: { destination: 'CARD_POOL' | 'WAREHOUSE'; skuId?: number }) =>
-        http.post<{ pushed: number }>(`/admin/cursor-sell/purchases/${id}/push`, body, { silent: true } as any),
-      sale: (id: number) => http.get<CursorSellSale>(`/admin/cursor-sell/sales/${id}`),
-      refreshSale: (id: number) =>
-        http.post<CursorSellSale>(`/admin/cursor-sell/sales/${id}/refresh`, undefined, { silent: true } as any),
-      pushSale: (id: number, body: { destination: 'CARD_POOL' | 'WAREHOUSE'; skuId?: number }) =>
-        http.post(`/admin/cursor-sell/sales/${id}/push`, body, { silent: true } as any),
-      saleUsage: (id: number) =>
-        http.get<Record<string, unknown>>(`/admin/cursor-sell/sales/${id}/usage`, { silent: true } as any),
-      saleTutorial: (id: number) =>
-        http.get<unknown>(`/admin/cursor-sell/sales/${id}/login-tutorial`, { silent: true } as any),
-      saleLoginApprove: (id: number, loginUrl: string) =>
-        http.post<{ approved: boolean }>(
-          `/admin/cursor-sell/sales/${id}/login-approve`,
-          { loginUrl },
-          { silent: true } as any,
-        ),
-      upstreamOrders: () => http.get<any[]>('/admin/cursor-sell/upstream/orders', { silent: true } as any),
-      extractCards: (paymentOrderNo?: string) =>
-        http.get<Array<{ id: number; code: string; masked: string; totalCredits: number; remainingCredits: number }>>(
-          '/admin/cursor-sell/upstream/extract-cards',
-          { params: paymentOrderNo ? { paymentOrderNo } : {}, silent: true } as any,
-        ),
-    },
-
     settings: () => http.get('/site-settings/all'),
     settingsSet: (body: any) => http.post('/site-settings', body),
 
@@ -631,7 +414,7 @@ export const api = {
           balance: string | number;
           role: string;
         }>;
-        linkedOrders: { local: any[]; forge: any[] };
+        linkedOrders: { local: any[] };
         recentLogs: Array<{
           id: number;
           action: string;
@@ -992,309 +775,12 @@ export const api = {
     use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
   },
 
-  /** Team 售号渠道：订单页上的成交操作（订单号 + 联系方式鉴权） */
-  cursorSell: {
-    loginApprove: (saleId: number, body: { orderNo: string; contact?: string; loginUrl: string }) =>
-      http.post<{ approved: boolean }>(`/cursor-sell/sales/${saleId}/login-approve`, body, {
-        silent: true,
-        timeout: 60_000,
-      } as any),
-    usage: (saleId: number, params: { orderNo: string; contact?: string }) =>
-      http.get<Record<string, unknown>>(`/cursor-sell/sales/${saleId}/usage`, {
-        params,
-        silent: true,
-      } as any),
-    loginTutorial: (saleId: number, params: { orderNo: string; contact?: string }) =>
-      http.get<unknown>(`/cursor-sell/sales/${saleId}/login-tutorial`, { params, silent: true } as any),
-    refresh: (saleId: number, body: { orderNo: string; contact?: string }) =>
-      http.post<CursorSellSale>(`/cursor-sell/sales/${saleId}/refresh`, body, { silent: true } as any),
-  },
-
   pay: {
     alipayEnabled: () => http.get<{ enabled: boolean }>('/pay/alipay/enabled'),
     alipayCreate: (orderNo: string, channel: 'PC' | 'WAP' = 'PC') =>
       http.get<{ orderNo: string; payUrl: string }>(`/pay/alipay/create/${orderNo}`, {
         params: { channel },
       }),
-  },
-
-  forge: {
-    // ?? ? ??
-    listProducts: () =>
-      http.get<Array<{
-        typeKey: string;
-        categoryKey: string;
-        categoryName: string;
-        typeName: string;
-        displayPrice: number;
-        agentPrice: number;
-        stock: number;
-        warrantyHours: number | null;
-        emailCodeEnabled: boolean;
-        pointsAwardEnabled: boolean;
-        pointsPayEnabled: boolean;
-        pointsAwardRate: number | null;
-        subtitle?: string | null;
-        coverImage?: string | null;
-        description?: string | null;
-        highlights?: string[] | null;
-        notice?: string | null;
-      }>>('/forge-redeem/products'),
-    getProduct: (typeKey: string) =>
-      http.get<any>(`/forge-redeem/products/${encodeURIComponent(typeKey)}`),
-
-    // ?? ? ????
-    check: (code: string) =>
-      http.post<{
-        code: string;
-        status: 'ACTIVE' | 'DISABLED' | 'EXHAUSTED' | 'EXPIRED';
-        totalAmount: number;
-        usedAmount: number;
-        remaining: number;
-        expireAt: string | null;
-        note?: string;
-        orders: Array<{
-          orderNo: string;
-          typeName: string;
-          typeKey: string;
-          quantity: number;
-          totalAmount: number;
-          status: 'PENDING' | 'PAID' | 'DELIVERED' | 'FAILED' | 'EXPIRED' | 'CANCELLED';
-          createdAt: string;
-          deliveredAt?: string;
-        }>;
-        products: any[];
-      }>('/forge-redeem/check', { code }, { silent: true } as any),
-
-    // ?? ? ??????????
-    order: (body: { code: string; typeKey: string; quantity: number; contact?: string }) =>
-      http.post<any>('/forge-redeem/order', body, { silent: true } as any),
-
-    // ?? ? ??????????
-    alipayOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
-      http.post<any>('/forge-redeem/alipay-order', body, { silent: true } as any),
-
-    // ?? ? ????????
-    balanceOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
-      http.post<any>('/forge-redeem/balance-order', body, { silent: true } as any),
-
-    // ?? ? ????????
-    pointsOrder: (body: { typeKey: string; quantity: number; contact?: string }) =>
-      http.post<any>('/forge-redeem/points-order', body, { silent: true } as any),
-
-    // ?? ? ?????? contact ????
-    orderDetail: (orderNo: string, contact?: string) =>
-      http.get<any>(
-        `/forge-redeem/order/${encodeURIComponent(orderNo)}`,
-        contact ? { params: { contact } } : undefined,
-      ),
-
-    // ?? ?????? Key ????????????????????????
-    quota: {
-      // ?? ? ??????/ ??
-      listPackages: () =>
-        http.get<Array<{
-          packageKey: string;
-          name: string;
-          quotaUsd: number;
-          lineKey: string;
-          displayPrice: number;
-          retailPrice: number;
-          pointsAwardEnabled: boolean;
-          pointsPayEnabled: boolean;
-          pointsAwardRate: number | null;
-          subtitle?: string | null;
-          coverImage?: string | null;
-          description?: string | null;
-          highlights?: string[] | null;
-          notice?: string | null;
-        }>>('/forge-quota/packages'),
-      getPackage: (packageKey: string) =>
-        http.get<any>(`/forge-quota/packages/${encodeURIComponent(packageKey)}`),
-
-      // ?? ? ????????????
-      order: (body: { code: string; packageKey: string; quantity: number; contact?: string }) =>
-        http.post<any>('/forge-quota/order', body, { silent: true } as any),
-      // ?? ? ??????????
-      alipayOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
-        http.post<any>('/forge-quota/alipay-order', body, { silent: true } as any),
-      // ?? ? ????????
-      balanceOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
-        http.post<any>('/forge-quota/balance-order', body, { silent: true } as any),
-      // ?? ? ????????
-      pointsOrder: (body: { packageKey: string; quantity: number; contact?: string }) =>
-        http.post<any>('/forge-quota/points-order', body, { silent: true } as any),
-
-      // ?? ? ?????? contact ????
-      orderDetail: (orderNo: string, contact?: string) =>
-        http.get<any>(
-          `/forge-quota/order/${encodeURIComponent(orderNo)}`,
-          contact ? { params: { contact } } : undefined,
-        ),
-      // ?? ? ???????????????
-      refreshCodes: (orderNo: string, contact?: string) =>
-        http.post<any>(
-          `/forge-quota/order/${encodeURIComponent(orderNo)}/refresh-codes`,
-          contact ? { contact } : {},
-          { silent: true } as any,
-        ),
-      // ?? ? ????????
-      myOrders: (params: any) =>
-        http.get<{ total: number; page: number; pageSize: number; items: any[] }>(
-          '/forge-quota/orders/mine',
-          { params },
-        ),
-
-      // Admin
-      admin: {
-        syncPackages: () =>
-          http.post<{ upserted: number; syncedAt: string }>('/admin/forge/quota/packages/sync'),
-        listPackages: () =>
-          http.get<Array<{
-            packageKey: string;
-            name: string;
-            quotaUsd: number;
-            lineKey: string;
-            agentPrice: number;
-            retailPrice: number;
-            displayPrice: number;
-            enabled: boolean;
-            sort: number;
-            pointsAwardEnabled: boolean;
-            pointsPayEnabled: boolean;
-            pointsAwardRate: number | null;
-            customName?: string | null;
-            subtitle?: string | null;
-            coverImage?: string | null;
-            description?: string | null;
-            highlights?: string | null;
-            notice?: string | null;
-            lastSyncAt?: string | null;
-          }>>('/admin/forge/quota/packages'),
-        updatePackage: (
-          packageKey: string,
-          body: {
-            displayPrice?: number;
-            enabled?: boolean;
-            sort?: number;
-            pointsAwardEnabled?: boolean;
-            pointsPayEnabled?: boolean;
-            pointsAwardRate?: number | null;
-            customName?: string | null;
-            subtitle?: string | null;
-            coverImage?: string | null;
-            description?: string | null;
-            highlights?: string | null;
-            notice?: string | null;
-          },
-        ) => http.put(`/admin/forge/quota/packages/${encodeURIComponent(packageKey)}`, body),
-
-        listOrders: (params: any) => http.get('/admin/forge/quota/orders', { params }),
-        orderDetail: (orderNo: string) =>
-          http.get(`/admin/forge/quota/orders/${encodeURIComponent(orderNo)}`),
-        retryFulfill: (orderNo: string) =>
-          http.post(`/admin/forge/quota/orders/${encodeURIComponent(orderNo)}/retry`),
-        refreshCodes: (orderNo: string) =>
-          http.post(`/admin/forge/quota/orders/${encodeURIComponent(orderNo)}/refresh-codes`),
-        deleteOrder: (orderNo: string) =>
-          http.delete(`/admin/forge/quota/orders/${encodeURIComponent(orderNo)}`),
-
-        // ????????/ ???????
-        queryCode: (code: string) =>
-          http.get<{
-            code: string;
-            status: 'unused' | 'used' | 'voided';
-            status_text?: string;
-            package_key: string;
-            quota_usd: number;
-            line_key: string;
-            order_no: string;
-            batch_no: string;
-            redeem_url: string;
-            used_at: string | null;
-            voided_at: string | null;
-            void_reason: string | null;
-            created_at: string;
-          }>(`/admin/forge/quota/codes/${encodeURIComponent(code)}`, { silent: true } as any),
-        voidCodes: (codes: string[], reason?: string) =>
-          http.post<{
-            voided: string[];
-            voidedCount: number;
-            skipped: Array<{ code: string; reason: string }>;
-            refunded: Array<{ order_no: string; codes_count: number; unit_price: number; amount: number }>;
-            refundSkipped: any[];
-            refundTotal: number;
-            balanceAfter: number | null;
-            message: string;
-          }>('/admin/forge/quota/codes/void', { codes, reason }),
-      },
-    },
-
-    // Admin
-    admin: {
-      syncProducts: () => http.post<{ upserted: number; syncedAt: string }>('/admin/forge/products/sync'),
-      listProducts: () =>
-        http.get<Array<{
-          typeKey: string;
-          categoryKey: string;
-          categoryName: string;
-          typeName: string;
-          price: number;
-          agentPrice: number;
-          displayPrice: number;
-          stock: number;
-          warrantyHours: number | null;
-          emailCodeEnabled: boolean;
-          enabled: boolean;
-          pointsAwardEnabled: boolean;
-          pointsPayEnabled: boolean;
-          pointsAwardRate: number | null;
-          sort: number;
-          customName?: string | null;
-          customCategoryName?: string | null;
-          subtitle?: string | null;
-          coverImage?: string | null;
-          description?: string | null;
-          highlights?: string | null;
-          notice?: string | null;
-          lastSyncAt?: string | null;
-        }>>('/admin/forge/products'),
-      updateProduct: (
-        typeKey: string,
-        body: {
-          displayPrice?: number;
-          enabled?: boolean;
-          sort?: number;
-          pointsAwardEnabled?: boolean;
-          pointsPayEnabled?: boolean;
-          pointsAwardRate?: number | null;
-          customName?: string | null;
-          customCategoryName?: string | null;
-          subtitle?: string | null;
-          coverImage?: string | null;
-          description?: string | null;
-          highlights?: string | null;
-          notice?: string | null;
-        },
-      ) => http.put(`/admin/forge/products/${encodeURIComponent(typeKey)}`, body),
-
-      generateCodes: (body: any) => http.post('/admin/forge/redeem-codes/generate', body),
-      listCodes: (params: any) => http.get('/admin/forge/redeem-codes', { params }),
-      batches: () => http.get('/admin/forge/redeem-codes/batches'),
-      getBatch: (tag: string) =>
-        http.get(`/admin/forge/redeem-codes/batch/${encodeURIComponent(tag)}`),
-      toggleStatus: (id: number, status: 'ACTIVE' | 'DISABLED') =>
-        http.put(`/admin/forge/redeem-codes/${id}/status`, { status }),
-      removeCode: (id: number) => http.delete(`/admin/forge/redeem-codes/${id}`),
-
-      listOrders: (params: any) => http.get('/admin/forge/orders', { params }),
-      orderDetail: (orderNo: string) =>
-        http.get(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
-      retryFulfill: (orderNo: string) =>
-        http.post(`/admin/forge/orders/${encodeURIComponent(orderNo)}/retry`),
-      deleteOrder: (orderNo: string) =>
-        http.delete(`/admin/forge/orders/${encodeURIComponent(orderNo)}`),
-    },
   },
 
   vip: {
@@ -1311,7 +797,7 @@ export const api = {
         sort: number;
       }>>('/vip/configs'),
     /** ????????3 ?????? */
-    productDiscounts: (productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA', productKey: string) =>
+    productDiscounts: (productSource: 'LOCAL', productKey: string) =>
       http.get<Array<{
         tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
         name: string;
@@ -1321,7 +807,7 @@ export const api = {
         isOverride: boolean;
       }>>('/vip/product-discounts', { params: { productSource, productKey } }),
     /** ??/????????????????*/
-    preview: (body: { productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA'; productKey: string; originalAmount: number }) =>
+    preview: (body: { productSource: 'LOCAL'; productKey: string; originalAmount: number }) =>
       http.post<{
         tier: 'NONE' | 'GOLD' | 'DIAMOND' | 'SUPREME';
         discount: number;
@@ -1365,10 +851,10 @@ export const api = {
       },
     ) => http.put(`/vip/admin/configs/${tier}`, body),
     /** ???????????*/
-    adminDiscounts: (productSource?: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA') =>
+    adminDiscounts: (productSource?: 'LOCAL') =>
       http.get<Array<{
         id: number;
-        productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA';
+        productSource: 'LOCAL';
         productKey: string;
         tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
         discount: number;
@@ -1376,7 +862,7 @@ export const api = {
       }>>('/vip/admin/discounts', { params: productSource ? { productSource } : {} }),
     /** ??????/?????? */
     adminUpsertDiscount: (body: {
-      productSource: 'LOCAL' | 'FORGE' | 'FORGE_QUOTA';
+      productSource: 'LOCAL';
       productKey: string;
       tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
       discount: number;
@@ -1414,56 +900,6 @@ export const api = {
     ) => http.post<{ customDiscount: number | null }>(`/vip/admin/users/${id}/discount`, body),
   },
 
-  emailCode: {
-    enabled: () => http.get<{ enabled: boolean }>('/email-code/enabled'),
-    fetch: (body: {
-      email: string;
-      time_range?: number;
-      clear_cache?: boolean;
-      mark_read?: boolean;
-      mail_id?: string;
-    }) =>
-      http.post<{
-        ok?: boolean;
-        code: string;
-        found?: boolean;
-        verification_code?: string | null;
-        status?: string;
-        message?: string;
-        hint?: string;
-        terminal?: boolean;
-        mail_id?: string;
-        mail_time?: number;
-        from_cache?: boolean;
-        email?: string;
-        channel?: string;
-        type_key?: string;
-        type_name?: string;
-        expire_at?: string;
-        order_no?: string;
-        request_id?: string;
-      }>('/email-code/fetch', body, { silent: true } as any),
-  },
-
-  aizhpCode: {
-    enabled: () => http.get<{ enabled: boolean }>('/aizhp-open/enabled'),
-    fetch: (body: { email: string; since?: number }) =>
-      http.post<{
-        ok: boolean;
-        found: boolean;
-        verification_code?: string;
-        message?: string;
-        terminal?: boolean;
-      }>('/aizhp-open/code', body, { silent: true } as any),
-    userRefund: (body: { email: string }) =>
-      http.post<{
-        success: boolean;
-        refund_id?: number;
-        message?: string;
-        plan?: string;
-        remaining_quota?: string;
-      }>('/aizhp-open/user-refund', body),
-  },
 };
 
 export default api;

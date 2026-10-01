@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isLocalDeliveryType } from '../products/local-delivery';
 
 @Injectable()
 export class CardKeysService {
@@ -25,6 +26,13 @@ export class CardKeysService {
 
   /** 批量录入：content 行分隔，自动去重；单次最多 5000 行防数据库压力 */
   async bulkImport(productId: number, skuId: number, raw: string, remark?: string) {
+    const sku = await this.prisma.sku.findUnique({
+      where: { id: skuId }, include: { product: { select: { deliveryType: true } } },
+    });
+    if (!sku || sku.productId !== productId) throw new NotFoundException('商品规格不存在');
+    if (!isLocalDeliveryType(sku.product.deliveryType)) {
+      throw new BadRequestException('该商品渠道已移除，不能导入可售卡密');
+    }
     if (typeof raw !== 'string') {
       throw new Error('content 必须是字符串');
     }

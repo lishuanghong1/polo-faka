@@ -21,26 +21,25 @@ function copyContact(text: string, label: string) {
 }
 
 interface UnifiedProduct {
-  source: 'local' | 'forge' | 'quota';
-  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL / AIZHP */
+  source: 'local';
+  /** 发货方式（本地商品）：CARD_KEY / POOL_QUOTA / MANUAL */
   deliveryType?: string;
   /** 卡片 key */
   key: string;
   /** 显示名 */
   typeName: string;
-  /** 主标识：本地 id 字符串 / 三方 typeKey */
+  /** 主标识：本地商品 id 字符串 */
   typeKey: string;
   displayPrice: number;
   stock: number;
   warrantyHours?: number | null;
   categoryKey: string;
   categoryName: string;
-  emailCodeEnabled?: boolean;
   /** 本地商品才有，多 SKU 时是最低价 */
   fromPrice?: boolean;
-  /** 三方商品才有，自定义副标题 */
+  /** 自定义副标题 */
   subtitle?: string | null;
-  /** 三方商品才有，自定义封面 */
+  /** 自定义封面 */
   coverImage?: string | null;
 }
 
@@ -116,47 +115,8 @@ function normalizeLocal(p: any): UnifiedProduct {
     warrantyHours: p.warrantyHours ?? null,
     categoryKey: normCategoryKey(categoryName),
     categoryName,
-    emailCodeEnabled: false,
     subtitle: p.subtitle ?? null,
     coverImage: cover,
-  };
-}
-
-function normalizeForge(p: any): UnifiedProduct {
-  const categoryName = p.categoryName || '其它';
-  return {
-    source: 'forge',
-    key: `forge:${p.typeKey}`,
-    typeKey: p.typeKey,
-    // typeName 已经在后端做过 customName 覆盖
-    typeName: p.typeName,
-    displayPrice: Number(p.displayPrice),
-    stock: Number(p.stock || 0),
-    warrantyHours: p.warrantyHours ?? null,
-    categoryKey: normCategoryKey(categoryName),
-    categoryName,
-    emailCodeEnabled: !!p.emailCodeEnabled,
-    subtitle: p.subtitle ?? null,
-    coverImage: p.coverImage ?? null,
-  };
-}
-
-function normalizeQuota(p: any): UnifiedProduct {
-  const categoryName = '中转额度包';
-  return {
-    source: 'quota',
-    key: `quota:${p.packageKey}`,
-    typeKey: p.packageKey,
-    // name 已经在后端做过 customName 覆盖
-    typeName: p.name,
-    displayPrice: Number(p.displayPrice),
-    stock: 9999, // 虚拟商品无库存概念，卡片不显示库存
-    warrantyHours: null,
-    categoryKey: normCategoryKey(categoryName),
-    categoryName,
-    emailCodeEnabled: false,
-    subtitle: p.subtitle || `面值 $${p.quotaUsd} · 兑换码发货，官网核销即到账`,
-    coverImage: p.coverImage ?? null,
   };
 }
 
@@ -165,51 +125,20 @@ async function load(showRefreshing = false) {
   else loading.value = true;
   lastError.value = '';
 
-  // 并发拉三边，任意一边失败都不影响其它
-  const [localRes, forgeRes, quotaRes] = await Promise.allSettled([
-    api.products({ pageSize: 100 }),
-    api.forge.listProducts(),
-    api.forge.quota.listPackages(),
-  ]);
-
-  const merged: UnifiedProduct[] = [];
-
-  if (localRes.status === 'fulfilled') {
-    const items = (localRes.value as any).items || [];
-    for (const it of items) merged.push(normalizeLocal(it));
-  }
-
-  if (forgeRes.status === 'fulfilled') {
-    for (const it of forgeRes.value as any[]) merged.push(normalizeForge(it));
-  }
-
-  if (quotaRes.status === 'fulfilled') {
-    for (const it of quotaRes.value as any[]) merged.push(normalizeQuota(it));
-  }
-
-  // 全部失败才报错
-  if (
-    localRes.status === 'rejected' &&
-    forgeRes.status === 'rejected' &&
-    quotaRes.status === 'rejected'
-  ) {
-    const e: any = forgeRes.reason || localRes.reason;
+  try {
+    const result: any = await api.products({ pageSize: 100 });
+    products.value = (result.items || []).map(normalizeLocal);
+  } catch (e: any) {
+    products.value = [];
     lastError.value = e?.response?.data?.error?.message || e?.message || '加载商品失败';
   }
 
-  products.value = merged;
   loading.value = false;
   refreshing.value = false;
 }
 
 function gotoDetail(p: UnifiedProduct) {
-  if (p.source === 'local') {
-    router.push(`/product/${encodeURIComponent(p.typeKey)}`);
-  } else if (p.source === 'quota') {
-    router.push(`/quota-package/${encodeURIComponent(p.typeKey)}`);
-  } else {
-    router.push(`/forge-product/${encodeURIComponent(p.typeKey)}`);
-  }
+  router.push(`/product/${encodeURIComponent(p.typeKey)}`);
 }
 
 async function refresh() {
@@ -226,25 +155,13 @@ onMounted(() => load(false));
     <AnnouncementBanner />
   </section>
 
-  <!-- 入口卡片：接验证码 / 兑换码 / 账户充值 / PoloAi工具 -->
+  <!-- 入口卡片：兑换码 / 账户充值 / PoloAi工具 -->
   <section class="max-w-7xl mx-auto px-4 mt-4">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-      <button
-        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
-        @click="router.push('/email-code')"
-      >
-        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8l9 6 9-6M3 8v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8M3 8l9-6 9 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </div>
-        <div class="min-w-0">
-          <div class="font-semibold text-ink-900 text-sm md:text-base">在线接验证码</div>
-          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">输入账号邮箱即时收验证码</div>
-        </div>
-      </button>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
 
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
-        @click="router.push('/forge-redeem')"
+        @click="router.push('/redeem')"
       >
         <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
           <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4M20 7v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7M20 7l-2-2H6L4 7M9 11l3 3 5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>

@@ -1,9 +1,6 @@
-import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Inject, forwardRef, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AlipayService } from '../alipay/alipay.service';
-import { ForgeOpenapiService } from '../forge-openapi/forge-openapi.service';
-import { AizhpOpenService } from '../aizhp-open/aizhp-open.service';
-import { CursorSellService } from '../cursor-sell/cursor-sell.service';
 import { encryptString, decryptString, isEncrypted } from '../../common/crypto.util';
 
 /**
@@ -14,11 +11,19 @@ import { encryptString, decryptString, isEncrypted } from '../../common/crypto.u
 const SECRET_KEYS = new Set<string>([
   'alipay_private_key',
   'alipay_public_key',
-  'email_code_agent_secret',
-  'aizhp_open_api_key',
   'cursor_refund_owner_token',
-  'cursor_sell_api_key',
 ]);
+
+/** 历史渠道配置只保留在数据库中，禁止读取、公开和重新启用。 */
+function isRemovedChannelKey(key: string) {
+  return ['forge_', 'email_code_', 'aizhp_', 'cursor_sell_'].some((prefix) => key.startsWith(prefix));
+}
+
+function assertActiveSetting(key: string) {
+  if (isRemovedChannelKey(key)) {
+    throw new BadRequestException('该渠道已移除，不能修改其配置');
+  }
+}
 
 /** 已设置的占位符：编辑表单显示此字符串，提交回来时表示"保持不变" */
 const SECRET_PLACEHOLDER = '__keep__';
@@ -30,9 +35,6 @@ export class SiteSettingsService {
   constructor(
     private prisma: PrismaService,
     @Optional() @Inject(forwardRef(() => AlipayService)) private alipay?: AlipayService,
-    @Optional() @Inject(forwardRef(() => ForgeOpenapiService)) private forge?: ForgeOpenapiService,
-    @Optional() @Inject(forwardRef(() => AizhpOpenService)) private aizhpOpen?: AizhpOpenService,
-    @Optional() @Inject(forwardRef(() => CursorSellService)) private cursorSell?: CursorSellService,
   ) {}
 
   async getPublic() {
@@ -40,7 +42,7 @@ export class SiteSettingsService {
     const obj: Record<string, string> = {};
     for (const r of rows) {
       // 公开接口不能下发任何 SECRET（即便设错了 isPublic 也得拦住）
-      if (SECRET_KEYS.has(r.key)) continue;
+      if (SECRET_KEYS.has(r.key) || isRemovedChannelKey(r.key)) continue;
       obj[r.key] = r.value;
     }
     return obj;
@@ -52,7 +54,7 @@ export class SiteSettingsService {
    */
   async getAll() {
     const rows = await this.prisma.siteSetting.findMany();
-    return rows.map((r) => {
+    return rows.filter((r) => !isRemovedChannelKey(r.key)).map((r) => {
       if (SECRET_KEYS.has(r.key)) {
         const has = !!r.value;
         return {
@@ -70,6 +72,7 @@ export class SiteSettingsService {
    * 业务方读取一个设置项的明文值；自动解密。
    */
   async readSecret(key: string): Promise<string> {
+    assertActiveSetting(key);
     const row = await this.prisma.siteSetting.findUnique({ where: { key } });
     if (!row?.value) return '';
     if (SECRET_KEYS.has(key) && isEncrypted(row.value)) {
@@ -83,6 +86,7 @@ export class SiteSettingsService {
   }
 
   async set(key: string, value: string, isPublic = false) {
+    assertActiveSetting(key);
     let storeValue = value;
     if (SECRET_KEYS.has(key) && value) {
       // SECRET 永远以加密形式入库；公开标记一律强制为 false
@@ -97,6 +101,8 @@ export class SiteSettingsService {
   }
 
   async setMany(map: Record<string, { value: string; isPublic?: boolean }>) {
+    // 先校验整批，避免新旧配置混合提交造成部分写入。
+    Object.keys(map).forEach(assertActiveSetting);
     const ops: any[] = [];
     for (const [k, v] of Object.entries(map)) {
       const isSecret = SECRET_KEYS.has(k);
@@ -122,15 +128,6 @@ export class SiteSettingsService {
     const keys = Object.keys(map);
     if (keys.some((k) => k.startsWith('alipay_'))) {
       this.alipay?.invalidate();
-    }
-    if (keys.some((k) => k.startsWith('email_code_'))) {
-      this.forge?.invalidate();
-    }
-    if (keys.some((k) => k.startsWith('aizhp_open_'))) {
-      this.aizhpOpen?.invalidate();
-    }
-    if (keys.some((k) => k.startsWith('cursor_sell_'))) {
-      this.cursorSell?.invalidate();
     }
     return { updated: ops.length };
   }

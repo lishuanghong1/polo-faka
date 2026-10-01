@@ -270,7 +270,7 @@ onMounted(refresh);
       <div class="font-medium text-ink-900 mb-1">提示</div>
       <ul class="space-y-0.5 pl-4 list-disc">
         <li>等级升级触发条件：用户充值成功后，累计充值额 ≥ 此处「门槛」即升级，<strong>永久有效</strong>，不会因为不再充值掉回去。</li>
-        <li>折扣作用于商品下单（本站 + 三方），余额支付也享受；<strong>充值订单不打折</strong>（防套利）；<strong>兑换码订单不打折</strong>（兑换码本身就是折扣形式）。</li>
+        <li>折扣作用于商品下单，余额支付也享受；<strong>充值订单不打折</strong>（防套利）；<strong>兑换码订单不打折</strong>（兑换码本身就是折扣形式）。</li>
         <li>商品可单独配置覆盖等级默认折扣，请到「商品折扣」页配置。</li>
         <li>折扣范围 0.5 ~ 1（防呆下限 50 折），低于 0.5 会被后端拒绝。</li>
       </ul>

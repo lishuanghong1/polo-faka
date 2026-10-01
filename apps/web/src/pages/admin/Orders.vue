@@ -7,12 +7,11 @@ import DataTable from '@/components/admin/DataTable.vue';
 import StatusTag from '@/components/admin/StatusTag.vue';
 import AdminSearchInput from '@/components/admin/AdminSearchInput.vue';
 import OrderDetailDrawer from '@/components/admin/OrderDetailDrawer.vue';
-import ForgeOrderDetailDrawer from '@/components/admin/ForgeOrderDetailDrawer.vue';
 
 const route = useRoute();
 type UnifiedOrder = {
   id: string;
-  source: 'LOCAL' | 'FORGE';
+  source: 'LOCAL';
   orderNo: string;
   productTitle: string;
   skuName: string;
@@ -33,21 +32,12 @@ const loading = ref(false);
 const currentLocalOrderNo = ref<string | null>(
   typeof route.query.orderNo === 'string' ? route.query.orderNo : null,
 );
-const currentForgeOrderNo = ref<string | null>(null);
 const pageSize = 50;
 
 async function load() {
   loading.value = true;
   try {
-    const [local, forge] = await Promise.all([
-      api.admin.orders({ ...filter.value, page: page.value, pageSize }),
-      api.forge.admin.listOrders({
-        page: page.value,
-        pageSize,
-        status: filter.value.status || undefined,
-        keyword: filter.value.keyword || undefined,
-      }),
-    ]);
+    const local = await api.admin.orders({ ...filter.value, page: page.value, pageSize });
 
     const localItems: UnifiedOrder[] = (local.items || []).map((o: any) => ({
       id: `local-${o.id || o.orderNo}`,
@@ -62,24 +52,8 @@ async function load() {
       createdAt: o.createdAt,
       buyerLogonId: o.buyerLogonId,
     }));
-    const forgeItems: UnifiedOrder[] = (forge.items || []).map((o: any) => ({
-      id: `forge-${o.orderNo}`,
-      source: 'FORGE',
-      orderNo: o.orderNo,
-      productTitle: o.typeName,
-      skuName: o.typeKey || '',
-      quantity: o.quantity,
-      amount: Number(o.payAmount ?? o.totalAmount ?? 0),
-      payMethod: o.paymentMethod,
-      status: o.status,
-      createdAt: o.createdAt,
-      buyerLogonId: o.buyerLogonId,
-      failReason: o.failReason,
-    }));
-    list.value = [...localItems, ...forgeItems]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, pageSize);
-    total.value = Number(local.total || 0) + Number(forge.total || 0);
+    list.value = localItems;
+    total.value = Number(local.total || 0);
   } finally {
     loading.value = false;
   }
@@ -109,20 +83,18 @@ const payMethodLabel: Record<string, string> = {
 
 const sourceLabel: Record<UnifiedOrder['source'], string> = {
   LOCAL: '本地',
-  FORGE: '三方',
 };
 
 const sourceClass: Record<UnifiedOrder['source'], string> = {
   LOCAL: 'bg-brand-50 text-brand-700 border-brand-200',
-  FORGE: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 const shownTotal = computed(() => list.value.length);
 
 function openDetail(o: UnifiedOrder) {
-  if (o.source === 'FORGE') currentForgeOrderNo.value = o.orderNo;
-  else currentLocalOrderNo.value = o.orderNo;
+  currentLocalOrderNo.value = o.orderNo;
 }
+
 </script>
 
 <template>
@@ -198,9 +170,5 @@ function openDetail(o: UnifiedOrder) {
     @close="currentLocalOrderNo = null"
     @changed="load()"
   />
-  <ForgeOrderDetailDrawer
-    :order-no="currentForgeOrderNo"
-    @close="currentForgeOrderNo = null"
-    @changed="load()"
-  />
+
 </template>

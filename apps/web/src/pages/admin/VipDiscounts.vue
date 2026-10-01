@@ -6,7 +6,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader.vue';
 import BrandButton from '@/components/BrandButton.vue';
 import EmptyState from '@/components/EmptyState.vue';
 
-type ProductSource = 'LOCAL' | 'FORGE' | 'FORGE_QUOTA';
+type ProductSource = 'LOCAL';
 
 interface DiscountRow {
   id: number;
@@ -22,18 +22,6 @@ interface LocalProductOpt {
   title: string;
 }
 
-interface ForgeProductOpt {
-  typeKey: string;
-  typeName: string;
-  categoryName: string;
-}
-
-interface QuotaPackageOpt {
-  packageKey: string;
-  name: string;
-  quotaUsd: number;
-}
-
 interface VipCfg {
   tier: 'GOLD' | 'DIAMOND' | 'SUPREME';
   name: string;
@@ -45,8 +33,6 @@ interface VipCfg {
 const loading = ref(false);
 const items = ref<DiscountRow[]>([]);
 const localProducts = ref<LocalProductOpt[]>([]);
-const forgeProducts = ref<ForgeProductOpt[]>([]);
-const quotaPackages = ref<QuotaPackageOpt[]>([]);
 const vipConfigs = ref<VipCfg[]>([]);
 const filterSource = ref<'' | ProductSource>('');
 
@@ -81,24 +67,10 @@ async function refresh() {
 
 async function loadProducts() {
   try {
-    const [local, forge, quota] = await Promise.all([
-      api.products({ pageSize: 999 }) as Promise<any>,
-      api.forge.admin.listProducts(),
-      api.forge.quota.admin.listPackages().catch(() => []),
-    ]);
+    const local: any = await api.products({ pageSize: 999 });
     localProducts.value = (local?.items || []).map((p: any) => ({
       id: p.id,
       title: p.title,
-    }));
-    forgeProducts.value = (forge || []).map((p: any) => ({
-      typeKey: p.typeKey,
-      typeName: p.customName || p.typeName,
-      categoryName: p.customCategoryName || p.categoryName,
-    }));
-    quotaPackages.value = (quota || []).map((p: any) => ({
-      packageKey: p.packageKey,
-      name: p.customName || p.name,
-      quotaUsd: Number(p.quotaUsd),
     }));
   } catch (e) {
     // 列表失败不影响整体
@@ -167,17 +139,9 @@ async function remove(row: DiscountRow) {
 }
 
 // 工具：商品名展示
-function productLabel(source: ProductSource, key: string): string {
-  if (source === 'LOCAL') {
-    const p = localProducts.value.find((x) => String(x.id) === key);
-    return p ? p.title : `本站#${key}`;
-  }
-  if (source === 'FORGE_QUOTA') {
-    const p = quotaPackages.value.find((x) => x.packageKey === key);
-    return p ? p.name : key;
-  }
-  const p = forgeProducts.value.find((x) => x.typeKey === key);
-  return p ? p.typeName : key;
+function productLabel(_source: ProductSource, key: string): string {
+  const p = localProducts.value.find((x) => String(x.id) === key);
+  return p ? p.title : `本站#${key}`;
 }
 
 function tierMeta(tier: string) {
@@ -225,8 +189,6 @@ onMounted(async () => {
         >
           <option value="">全部来源</option>
           <option value="LOCAL">本站商品</option>
-          <option value="FORGE">三方商品</option>
-          <option value="FORGE_QUOTA">额度包</option>
         </select>
         <BrandButton variant="primary" size="sm" @click="openAdd">
           + 新增配置
@@ -252,14 +214,9 @@ onMounted(async () => {
         <div class="flex items-center justify-between mb-3 gap-3">
           <div class="flex items-center gap-2 min-w-0">
             <span
-              :class="g.source === 'LOCAL'
-                ? 'bg-brand-50 text-brand-700 border-brand-200'
-                : g.source === 'FORGE_QUOTA'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 border-amber-200'"
-              class="text-[10px] font-semibold px-1.5 py-0.5 border rounded-md shrink-0"
+              class="bg-brand-50 text-brand-700 border-brand-200 text-[10px] font-semibold px-1.5 py-0.5 border rounded-md shrink-0"
             >
-              {{ g.source === 'LOCAL' ? '本站' : g.source === 'FORGE_QUOTA' ? '额度包' : '三方' }}
+              本站
             </span>
             <span class="text-sm font-medium text-ink-900 truncate">{{ g.label }}</span>
             <span class="text-[11px] text-ink-400 font-mono shrink-0">{{ g.key }}</span>
@@ -334,26 +291,7 @@ onMounted(async () => {
             >
               本站商品
             </button>
-            <button
-              type="button"
-              class="flex-1 py-2 rounded-lg text-sm border transition"
-              :class="form.productSource === 'FORGE'
-                ? 'bg-brand-50 border-brand-400 text-brand-700 font-medium'
-                : 'border-ink-200 text-ink-600 hover:border-ink-300'"
-              @click="form.productSource = 'FORGE'; form.productKey = ''"
-            >
-              三方商品
-            </button>
-            <button
-              type="button"
-              class="flex-1 py-2 rounded-lg text-sm border transition"
-              :class="form.productSource === 'FORGE_QUOTA'
-                ? 'bg-brand-50 border-brand-400 text-brand-700 font-medium'
-                : 'border-ink-200 text-ink-600 hover:border-ink-300'"
-              @click="form.productSource = 'FORGE_QUOTA'; form.productKey = ''"
-            >
-              额度包
-            </button>
+
           </div>
         </div>
 
@@ -369,16 +307,7 @@ onMounted(async () => {
                 {{ p.title }} (#{{ p.id }})
               </option>
             </template>
-            <template v-else-if="form.productSource === 'FORGE_QUOTA'">
-              <option v-for="p in quotaPackages" :key="p.packageKey" :value="p.packageKey">
-                {{ p.name }} · ${{ p.quotaUsd }}
-              </option>
-            </template>
-            <template v-else>
-              <option v-for="p in forgeProducts" :key="p.typeKey" :value="p.typeKey">
-                {{ p.typeName }} · {{ p.categoryName }}
-              </option>
-            </template>
+
           </select>
         </div>
 
