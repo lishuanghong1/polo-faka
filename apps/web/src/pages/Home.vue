@@ -155,9 +155,9 @@ onMounted(() => load(false));
     <AnnouncementBanner />
   </section>
 
-  <!-- 入口卡片：兑换码 / 账户充值 / PoloAi工具 -->
+  <!-- 入口卡片：兑换码 / 账户充值 / Cursor 额度查询 / PoloAi工具 -->
   <section class="max-w-7xl mx-auto px-4 mt-4">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
 
       <button
         class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
@@ -182,6 +182,19 @@ onMounted(() => load(false));
         <div class="min-w-0">
           <div class="font-semibold text-ink-900 text-sm md:text-base">账户充值</div>
           <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">余额可用于下单，支持自定义金额</div>
+        </div>
+      </button>
+
+      <button
+        class="card p-4 md:p-5 text-left hover:shadow-md transition flex items-center gap-3 md:gap-4 bg-white border border-ink-100"
+        @click="router.push('/usage-check')"
+      >
+        <div class="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5m0 14h16M8 15v-4m5 4V7m5 8v-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="min-w-0">
+          <div class="font-semibold text-ink-900 text-sm md:text-base">Cursor 额度查询</div>
+          <div class="text-xs text-ink-500 mt-0.5 md:mt-1 truncate">粘贴 Token 查看额度与用量明细</div>
         </div>
       </button>
 

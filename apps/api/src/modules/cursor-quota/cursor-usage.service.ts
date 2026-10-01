@@ -90,6 +90,10 @@ export interface QuotaReport {
   apiPercentUsed: number;
   autoPercentUsed: number;
   totalPercentUsed: number;
+  /** Official plan values; null means the upstream omitted that field. */
+  planUsedCents: number | null;
+  planRemainingCents: number | null;
+  officialTotalPercentUsed: number | null;
   includedBreakdown: {
     api: { costCents: number; costUsd: string; percentUsed: number; tokens: number };
     auto: { costCents: number; costUsd: string; percentUsed: number; tokens: number };
@@ -276,6 +280,9 @@ export class CursorUsageService {
     if (response.status === 401 || response.status === 403) {
       throw new QuotaCheckError('Token 已失效或无权查询', 401);
     }
+    if (response.status === 429 || response.status >= 500) {
+      throw new QuotaCheckError('Cursor 服务繁忙，请稍后重试', 503);
+    }
     if (!response.ok) {
       throw new QuotaCheckError(`Cursor 服务暂时不可用（HTTP ${response.status}）`, 502);
     }
@@ -431,6 +438,11 @@ export class CursorUsageService {
       apiPercentUsed: toFiniteNumber(plan.apiPercentUsed) ?? 0,
       autoPercentUsed: toFiniteNumber(plan.autoPercentUsed) ?? 0,
       totalPercentUsed: includedQuotaPercent(plan),
+      // Keep the existing amount-based percentage for account-pool consumers.
+      // Cursor's independent usage pools can produce a different official percentage.
+      planUsedCents: toFiniteNumber(plan.used),
+      planRemainingCents: toFiniteNumber(plan.remaining),
+      officialTotalPercentUsed: toFiniteNumber(plan.totalPercentUsed),
       includedBreakdown: {
         api: {
           costCents: includedApiCostCents,
@@ -474,8 +486,8 @@ export class CursorUsageService {
       const [me, eventResult, aggregated] = await Promise.all([
         this.fetchJson(CURSOR_ME_URL, token, controller.signal).catch(() => ({})),
         this.fetchEvents(token, billingCycle, controller.signal),
-        this.fetchAggregated(token, billingCycle, controller.signal).catch((error) => {
-          this.logger.warn(`fetch aggregated usage failed: ${error?.message || error}`);
+        this.fetchAggregated(token, billingCycle, controller.signal).catch(() => {
+          this.logger.warn('Cursor aggregated usage unavailable; falling back to event totals');
           return null;
         }),
       ]);
@@ -493,7 +505,7 @@ export class CursorUsageService {
     } catch (error: any) {
       if (error instanceof QuotaCheckError) throw error;
       if (error?.name === 'AbortError') throw new QuotaCheckError('查询超时，请稍后重试', 504);
-      this.logger.warn(`queryReport failed: ${error?.message}`);
+      this.logger.warn('Cursor usage service connection failed');
       throw new QuotaCheckError('无法连接 Cursor 服务，请稍后重试', 502);
     } finally {
       clearTimeout(timer);

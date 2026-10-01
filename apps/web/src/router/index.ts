@@ -9,6 +9,7 @@ const ROUTE_TITLES: Record<string, string> = {
   product: '商品详情',
   order: '订单详情',
   query: '订单查询',
+  'usage-check': 'Cursor 额度查询',
   login: '登录',
   register: '注册',
   me: '个人中心',
@@ -69,6 +70,7 @@ const routes: RouteRecordRaw[] = [
           ]
         : []),
       { path: 'query', name: 'query', component: () => import('@/pages/Query.vue') },
+      { path: 'usage-check', name: 'usage-check', component: () => import('@/pages/UsageCheck.vue') },
       { path: 'login', name: 'login', component: () => import('@/pages/Login.vue') },
       { path: 'register', name: 'register', component: () => import('@/pages/Register.vue') },
       {
