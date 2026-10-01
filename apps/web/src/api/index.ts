@@ -1,4 +1,7 @@
+import type { AxiosRequestConfig } from 'axios';
 import http from './http';
+
+type RedeemRequestConfig = AxiosRequestConfig & { silent?: boolean };
 
 /**
  * 退款链在服务端同步串行执行（团队邀请→接受→踢出→轮询到 free，每个号约 30–40s，
@@ -770,9 +773,10 @@ export const api = {
   },
 
   redeem: {
-    info: (code: string) =>
-      http.get(`/redeem/${encodeURIComponent(code)}`, { silent: true } as any),
-    use: (body: { code: string; contact?: string }) => http.post('/redeem', body),
+    info: (code: string, config?: RedeemRequestConfig) =>
+      http.get(`/redeem/${encodeURIComponent(code)}`, { silent: true, ...config }),
+    use: (body: { code: string; contact?: string }, config?: RedeemRequestConfig) =>
+      http.post('/redeem', body, config),
   },
 
   pay: {
