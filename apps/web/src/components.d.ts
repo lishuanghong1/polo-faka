@@ -24,6 +24,8 @@ declare module 'vue' {
     EmptyState: typeof import('./components/EmptyState.vue')['default']
     OrderDetailDrawer: typeof import('./components/admin/OrderDetailDrawer.vue')['default']
     OrderStatusBadge: typeof import('./components/OrderStatusBadge.vue')['default']
+    PoloAiClientDemo: typeof import('./components/PoloAiClientDemo.vue')['default']
+    PoloAiIcon: typeof import('./components/PoloAiIcon.vue')['default']
     ProductCard: typeof import('./components/ProductCard.vue')['default']
     RichContent: typeof import('./components/RichContent.vue')['default']
     RichTextEditor: typeof import('./components/RichTextEditor.vue')['default']

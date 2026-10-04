@@ -20,6 +20,8 @@ const ROUTE_TITLES: Record<string, string> = {
   'customer-refund': '账号退款',
   'cursor-login-tool': 'Token 一键登录',
   'desktop-tool': '桌面工具',
+  'poloai': 'PoloAi 客户端官网',
+  'poloai-docs': 'PoloAi 使用文档',
   'mock-pay': '模拟支付',
   'admin-home': '后台概览',
   'admin-products': '商品管理',
@@ -53,6 +55,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
       { path: '', name: 'home', component: () => import('@/pages/Home.vue') },
+      {
+        path: 'poloai',
+        name: 'poloai',
+        component: () => import('@/pages/PoloAi.vue'),
+      },
+      {
+        path: 'poloai/docs/:slug?',
+        name: 'poloai-docs',
+        component: () => import('@/pages/PoloAiDocs.vue'),
+      },
       {
         path: 'product/:id',
         name: 'product',
@@ -146,7 +158,11 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior() {
+  scrollBehavior(to, _from, savedPosition) {
+    if (to.name === 'poloai' || to.name === 'poloai-docs') {
+      if (savedPosition) return savedPosition;
+      if (to.hash) return { el: to.hash, top: 100 };
+    }
     return { top: 0 };
   },
 });

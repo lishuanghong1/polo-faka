@@ -1,0 +1,470 @@
+{
+  "title": "PoloAi 使用文档",
+  "description": "PoloAi 的安装、连接、账号和用量管理使用文档。",
+  "articles": [
+    {
+      "slug": "preparation",
+      "title": "PoloAi准备工作",
+      "summary": "使用前请先下载并安装 Cursor 与 PoloAi 两个客户端，按图完成后再启动工作环境。",
+      "updatedAt": "2026-09-15T07:49:57.073Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>开始使用 PoloAi 前，必须先安装 Cursor 与 PoloAi 两个客户端。未按本页完成安装导致无法连接或无法使用的，请先完成本页步骤后再操作。</p></blockquote><p></p><p>按顺序下载并安装即可。<strong>Cursor</strong> 用于写代码和对话；<strong>PoloAi</strong> 用于登录、启动工作环境并连接 Cursor。</p><p></p><h2 id=\"section-1\">1. 下载 Cursor 客户端</h2><p>打开 Cursor 官网，Windows 用户直接点击<strong>「Download for Windows」</strong>；也可在页面底部按 <code>macOS</code> / <code>Windows</code> / <code>Linux</code> 选择对应版本（见下图红色标注）。</p><p></p><p><strong>下载地址：</strong><a href=\"https://cursor.com/cn/download\" rel=\"noopener noreferrer\" target=\"_blank\">https://cursor.com/cn/download</a></p><p></p><figure><img alt=\"Cursor 官网下载页，红色标注指向 Download for Windows\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/2f217b5e-c330-4cb3-b1f4-ae5b5336995d.png\"/></figure><p></p><h2 id=\"section-2\">2. 下载 PoloAi 客户端</h2><p>打开 PoloAi 官网，点击<strong>「下载 Windows 客户端」</strong>（Mac 用户选 macOS）；也可点顶部导航的<strong>「下载客户端」</strong>（见下图红色标注）。</p><p></p><p><strong>下载地址：</strong><a href=\"/poloai\">/poloai</a></p><p></p><figure><img alt=\"PoloAi 官网下载页，红色标注指向下载按钮\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/f4db6c64-735b-486a-a09e-3153237b6228.png\"/></figure><p></p><h2 id=\"section-3\">3. 装好之后</h2><p>两个客户端都安装完成后，打开 PoloAi，用微信扫码登录，再点击<strong>「启动工作环境」</strong>。详细步骤见<code>在 Cursor 内使用</code>。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 下载 Cursor 客户端",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 下载 PoloAi 客户端",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 装好之后",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "what-is-poloai",
+      "title": "PoloAi是什么",
+      "summary": "PoloAi 帮你在 Cursor 里稳定用全模型：非切号、免魔法、一点启动；充多少用多少，用不完可提现。不改 Cursor。",
+      "updatedAt": "2026-09-07T02:11:30.523Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>PoloAi 不是切号工具，也不替代 Cursor 官方客户端。本机照常打开 Cursor（Free 账号也可以），再用 PoloAi 启动工作环境。</p></blockquote><p></p><p>PoloAi 是给 Cursor 用户用的模型连接与用量管理工具：本机正常开 Cursor，打开 PoloAi 点一下启动，就可以在 Cursor 里用全模型。账户充值后，Windows 和 Mac 都能用。</p><p></p><h2 id=\"section-1\">1. 它不是什么</h2><p>不下发 Token，不用来回换号。<strong>不改 Cursor</strong> 的配置和界面。不替代你自己的 Cursor 账号，只负责连接、记录和结算。</p><p></p><h2 id=\"section-2\">2. 它能帮你做什么</h2><p><strong>非切号</strong>：不用靠换号维持使用。</p><p><strong>免魔法</strong>：不用特殊网络环境，也能用 Cursor 全模型。</p><p><strong>一点启动</strong>：本机就算 Free 账号也没关系，打开 PoloAi 后点击<strong>「启动工作环境」</strong> 即可。</p><p><strong>充多少用多少</strong>：充值比例为<strong>¥1 = $1</strong>。用不完可提现，不用先囤一个月。</p><p><strong>计费可查</strong>：按官方明细结算。<strong>Composer 2.5</strong> / <strong>Grok 4.5</strong> 为 <strong>0.1 倍率</strong>。</p><p></p><h2 id=\"section-3\">3. 怎么开始</h2><p>先按<code>准备工作</code> 装好 Cursor 和 PoloAi 两个客户端。打开 PoloAi，微信扫码登录，点击顶部<code>连接</code>，确认选中<code>PoloAi</code>，再点击<strong>「启动工作环境」</strong>。右侧<code>本地代理</code> 和<code>Cursor</code> 都显示绿色<strong>「运行中」</strong>，即可回到 Cursor 对话。详细步骤见<code>在Cursor内使用</code>。</p><p></p><figure><img alt=\"PoloAi 连接页：选择 PoloAi 并启动工作环境\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/37973aa1-eafc-4524-9e32-ae5065c48d61.png\"/></figure><p></p><h2 id=\"section-4\">4. 适合谁</h2><p>适合不想再维护切号流程、想少折腾网络环境、希望按量花、用不完能提现的人。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 它不是什么",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 它能帮你做什么",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 怎么开始",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 适合谁",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "vs-api-relay",
+      "title": "PoloAi和常见API中转有什么不同",
+      "summary": "官方直连，不是 API 中转，也不需要魔法。国内可直接使用全模型，项目上下文和缓存都按官方 Cursor 来。",
+      "updatedAt": "2026-09-15T08:09:15.360Z",
+      "html": "\n<blockquote><p><strong>请先看这一句。</strong>PoloAi 不是接口中转站。您使用的仍是官方 Cursor：官方直连，不是 API，也不需要魔法，国内可直接使用全模型。项目上下文由 Cursor 自动整理，用量缓存由官方记录。</p></blockquote><p></p><p>「常见 API 中转」指的是这类产品的普遍做法，不是针对某一家。</p><p></p><h2 id=\"section-1\">我们的核心优点</h2><p><strong>1. 官方直连</strong>：走官方 Cursor 服务，不是把官方能力拆成一套第三方接口再转给您。</p><p><strong>2. 不是 API 中转</strong>：您还在官方 Cursor 里写项目。补全、Composer、规则、技能，都还是原来的用法。</p><p><strong>3. 不需要魔法</strong>：可以直接使用全模型，不用梯子，也不用自己去配境外接口。</p><p></p><h2 id=\"section-2\">1. 您实际在用什么</h2><p>产品形态不同，后面的上下文和缓存才会不一样。</p><table><tbody><tr><th><p>对比项</p></th><th><p>常见 API 中转</p></th><th><p>PoloAi</p></th></tr><tr><td><p>您拿到的是什么</p></td><td><p>一个接口地址和一把 Key，按用量充值</p></td><td><p><strong>PoloAi 客户端。微信登录后，在官方 Cursor 里正常使用</strong></p></td></tr><tr><td><p>您在哪里工作</p></td><td><p>ChatBox、网页对话，或把 Key 填进自己的程序</p></td><td><p><strong>官方 Cursor 桌面端。补全、Composer、改项目，都还是熟悉的界面</strong></p></td></tr><tr><td><p>请求怎么发出去</p></td><td><p>按 OpenAI 格式自己拼接对话记录</p></td><td><p><strong>由官方 Cursor 整理后发出，我们只负责让这条官方链路可用</strong></p></td></tr><tr><td><p>要不要魔法</p></td><td><p>多数要自己解决境外网络，才能稳定连上接口</p></td><td><p><strong>不需要魔法。国内网络可直接使用全模型</strong></p></td></tr><tr><td><p>背后接的是谁</p></td><td><p>各家接口或混合渠道，型号和能力经常对不上宣传</p></td><td><p><strong>官方 Cursor 服务。用量可以和官方记录核对</strong></p></td></tr></tbody></table><p></p><h2 id=\"section-3\">2. 上下文会不会丢</h2><p>接口中转只能带走「这一次请求里写进去的对话」。PoloAi 带走的是官方 Cursor 为您整理好的整包：当前对话、项目代码、规则、技能和工具结果。</p><table><tbody><tr><th><p>对比项</p></th><th><p>常见 API 中转</p></th><th><p>PoloAi</p></th></tr><tr><td><p>上下文由谁整理</p></td><td><p>您或第三方软件每次重新粘贴、拼接。超长就会被截断</p></td><td><p><strong>官方 Cursor 自动整理。我们不会改您发出去的内容</strong></p></td></tr><tr><td><p>能带上多大</p></td><td><p>通常只有当前对话框里的文字，再长容易被网关裁掉</p></td><td><p><strong>按官方 Cursor 的方式带项目。该看的代码、对话和规则，都会一起带上</strong></p></td></tr><tr><td><p>项目代码库</p></td><td><p>通常没有。需要您自己复制文件，或另做检索</p></td><td><p><strong>会带上。您不用把整个项目粘贴进对话框</strong></p></td></tr><tr><td><p>项目规则 Rules</p></td><td><p>不会自动带上，除非写进提示词</p></td><td><p><strong>会带上，和您在官方 Cursor 里一样</strong></p></td></tr><tr><td><p>技能 Skills</p></td><td><p>没有 Cursor 的技能体系</p></td><td><p><strong>会带上，继续用您在 Cursor 里配置的技能</strong></p></td></tr><tr><td><p>改文件、终端、工具</p></td><td><p>只有该软件自己实现的工具，没有 Cursor 原生 Agent</p></td><td><p><strong>完整保留。Composer 可以连续改文件、跑命令</strong></p></td></tr><tr><td><p>多轮接着聊</p></td><td><p>靠软件重放历史。一切断，前面的项目细节就没了</p></td><td><p><strong>还在 Cursor 自己的会话里，上一轮的项目上下文还在</strong></p></td></tr><tr><td><p>会不会丢上下文</p></td><td><p>比较常见：窗口写大了、中途被裁、代码库根本没带上</p></td><td><p><strong>按官方 Cursor 的方式工作，不会因为换了服务就丢掉项目上下文</strong></p></td></tr></tbody></table><p></p><h2 id=\"section-4\">3. 缓存会不会丢</h2><p>这里说的缓存，是官方对「已经看过的长前文」打折计算，不是把上一次的答案原样再发一遍。命中后，同样长的项目上下文会更省；没有命中，就要按全文重新计。</p><table><tbody><tr><th><p>对比项</p></th><th><p>常见 API 中转</p></th><th><p>PoloAi</p></th></tr><tr><td><p>缓存怎样才会生效</p></td><td><p>必须一直走同一家上游、同一把 Key，前文还得完全一致</p></td><td><p><strong>走官方 Cursor 的用量机制，缓存由官方记录</strong></p></td></tr><tr><td><p>实际常见情况</p></td><td><p>渠道来回切、Key 轮换之后，缓存经常整段都打不中</p></td><td><p><strong>您仍在官方 Cursor 里对话，缓存按官方方式计算，不依赖第三方接口拼历史</strong></p></td></tr><tr><td><p>缓存在什么时候生效</p></td><td><p>主要指望多次请求之间还能对上同一把 Key</p></td><td><p><strong>同一轮完整对话过程中会持续命中。长上下文先写入，后续步骤直接读取</strong></p></td></tr><tr><td><p>对您意味着什么</p></td><td><p>长项目、长规则每次都可能按全价再走一遍</p></td><td><p><strong>长项目不会因为「换了一家接口中转」就每次都按全文重算</strong></p></td></tr></tbody></table><p></p><h2 id=\"section-5\">4. 日常能力还在不在</h2><p>如果您关心的是「还能不能当 Cursor 来用」，请看这一张。</p><table><tbody><tr><th><p>您常用的能力</p></th><th><p>常见 API 中转</p></th><th><p>PoloAi</p></th></tr><tr><td><p>行内补全 Tab</p></td><td><p>通常没有，或另接别的模型</p></td><td><p><strong>有，和官方 Cursor 一样</strong></p></td></tr><tr><td><p>Composer / Agent 改项目</p></td><td><p>没有官方这套连续改文件的能力</p></td><td><p><strong>有，继续用官方 Agent</strong></p></td></tr><tr><td><p>代码库索引</p></td><td><p>没有</p></td><td><p><strong>有，继续用官方的项目索引</strong></p></td></tr><tr><td><p>@文件 / @文件夹 / @Git</p></td><td><p>需要自己复制进提示词</p></td><td><p><strong>官方用法不变</strong></p></td></tr><tr><td><p>Max Mode / 思考强度</p></td><td><p>看渠道是否真的支持，经常和宣传不一致</p></td><td><p><strong>使用官方模型档位，例如超高、思考</strong></p></td></tr><tr><td><p>MCP、浏览器、终端</p></td><td><p>取决于您用的第三方软件</p></td><td><p><strong>官方 Cursor 里这些能力都还在</strong></p></td></tr><tr><td><p>对话记录</p></td><td><p>存在各个软件自己的记录里，换工具就断</p></td><td><p><strong>留在 Cursor 本地会话中</strong></p></td></tr><tr><td><p>接到自己的程序</p></td><td><p>这是接口中转的主业</p></td><td><p><strong>也可以。我们另外提供接口 Key，给需要自动化的场景</strong></p></td></tr></tbody></table><p></p><h2 id=\"section-6\">5. 稳不稳、能不能对上账</h2><table><tbody><tr><th><p>对比项</p></th><th><p>常见 API 中转</p></th><th><p>PoloAi</p></th></tr><tr><td><p>请求能否完成</p></td><td><p>各站差异很大，超时、空回复、模型对不上都常见</p></td><td><p><strong>走官方 Cursor 链路，按官方方式完成一轮对话</strong></p></td></tr><tr><td><p>是不是您选的那个模型</p></td><td><p>有的会换渠道、降规格，名称和实际能力不一致</p></td><td><p><strong>使用官方 Cursor 的模型名称，例如 Composer、Grok</strong></p></td></tr><tr><td><p>长对话是否连贯</p></td><td><p>渠道一变，缓存和前文都容易断</p></td><td><p><strong>同一轮对话内保持连续，长上下文的缓存可以稳定命中</strong></p></td></tr><tr><td><p>用量能否核对</p></td><td><p>通常只能看中转站自己的统计</p></td><td><p><strong>可以和官方用量记录核对</strong></p></td></tr><tr><td><p>您如何付费</p></td><td><p>按 token 或按次，价目经常和官方脱节</p></td><td><p><strong>订阅权益或钱包按量。缓存按官方方式计算，长项目不必每次都按全文计</strong></p></td></tr></tbody></table><p></p><h2 id=\"section-7\">6. 哪种更适合您</h2><p><strong>更适合选接口中转的情况</strong>：您要把模型接到自己的程序、机器人或批量任务里，并不需要 Cursor 的项目能力。这时更看重价格和接口是否好接。上下文和缓存本来就不是这类产品的重点。</p><p><strong>更适合选 PoloAi 的情况</strong>：您要在 Cursor 里写项目：改仓库、带规则、用技能、接着上一轮继续聊。官方直连，不用魔法，国内可用全模型。上下文不用靠复制粘贴，缓存按官方方式计算。</p><p></p><blockquote><p><strong>一句话。</strong>官方直连，不是 API，不需要魔法，国内可直接使用全模型。您仍然在官方 Cursor 里工作，项目上下文由 Cursor 带齐，缓存由官方记录——这是接口中转做不到的。</p></blockquote>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "我们的核心优点",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "1. 您实际在用什么",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "2. 上下文会不会丢",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "3. 缓存会不会丢",
+          "level": 2
+        },
+        {
+          "id": "section-5",
+          "title": "4. 日常能力还在不在",
+          "level": 2
+        },
+        {
+          "id": "section-6",
+          "title": "5. 稳不稳、能不能对上账",
+          "level": 2
+        },
+        {
+          "id": "section-7",
+          "title": "6. 哪种更适合您",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "billing-rules",
+      "title": "PoloAi计费规则说明",
+      "summary": "临时扣费是预估，官方对账后按账单×倍率多退少补。会话结束后仍可能出账；未结清时余额归零可能出现负余额。50 元充值门槛对应官方取消试用号的同类风险：低额度容易超额。",
+      "updatedAt": "2026-08-28T01:19:05.062Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>最终实扣以用量明细里官方结清后的金额为准。请求时的扣费只是预估，对账完成后会自动多退少补。</p></blockquote><p></p><p>PoloAi 按用量计费。口径是：<strong>官方对账账单 × 当前账户倍率组</strong>。<code>定价</code> 页蓝色数字是当前账户实际生效价。</p><p></p><h2 id=\"section-1\">1. 临时扣费</h2><p>客户端一发起请求，就会先做临时扣费。临时扣费按当前账户生效价估算（已含倍率），误差一般较小，但不是最终账单。</p><p></p><p>平台与 Cursor 官方完成对账后，系统自动做差额处理，多退少补。最终实际消耗，以官方对账账单再按倍率结算后的金额为准。</p><p></p><h2 id=\"section-2\">2. 怎么看用量上的数字</h2><p>打开 PoloAi，点击顶部<code>用量</code>。费用列里通常有三层信息（见下图彩色箭头）：</p><p>· 上面的数字：当前展示的扣费（账户生效价）</p><p>· 灰色划线：对照原价</p><p>· 下面一行：结清状态</p><p></p><figure><img alt=\"用量页费用列：生效扣费、灰色对照原价、结清状态（待确认 / 官方已结清已补扣）\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/addc0761-9006-44ed-96b3-f2b473639d91.jpg\"/></figure><p></p><p>状态为<code>待确认</code> 时，官方账单还没同步完，此时只是临时计费。状态为<code>官方已结清</code> 时，对账已完成；若有差额，会注明<strong>已补扣</strong> 或退还金额。</p><p></p><h2 id=\"section-3\">3. 会话结束后仍出现扣费</h2><p>会话正常结束，官方账单本身仍可能有结算延迟。即使用原生官方账号，也可能出现「聊完过一会儿才出账」。</p><p></p><p>部分场景下官方账单拉取失败、扣费延后。这时前端只展示临时计费记录，账单要隔一段时间才能同步完。</p><p></p><p>请留意用量记录里每条请求的结清状态。若官方尚未结清，但账户余额已经归零，后续账单同步完成后，账户<strong>有可能出现负余额</strong>。不要卡着 0 继续打，请预留一点余额。</p><p></p><h2 id=\"section-4\">4. 为什么最低充 50 元</h2><p>Cursor 官方以前也有试用账号。试用就是低额度，账单又做不到实时阻断，容易在账单到达前超额消耗。官方因此取消了试用账号。</p><p></p><p>我们把充值门槛设到<strong>50 元</strong>，就是同一类风险：额度太低时，延迟账单容易透支。门槛设高一点，是为了规避这个问题，不是额外收费。充值比例仍是<strong>¥1 = $1</strong>。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 临时扣费",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 怎么看用量上的数字",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 会话结束后仍出现扣费",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 为什么最低充 50 元",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "use-in-cursor",
+      "title": "如何通过PoloAi在Cursor内使用",
+      "summary": "完成准备工作后，在连接页选择 PoloAi 并启动工作环境，即可在 Cursor 中使用。",
+      "updatedAt": "2026-08-13T12:54:52.155Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>请先完成<code>准备工作</code>并安装两个客户端。未启动工作环境时，Cursor 内无法通过 PoloAi 正常对话。</p></blockquote><p></p><p>按下面步骤在 Cursor 里使用 PoloAi。</p><p></p><h2 id=\"section-1\">1. 启动工作环境</h2><p>打开 PoloAi，点击顶部<code>连接</code>，确认选中<code>PoloAi</code>标签（不要选 OpenAI），再点击<strong>「启动工作环境」</strong>。右侧<code>本地代理</code>、<code>Cursor</code>都显示绿色<strong>「运行中」</strong>，下方日志出现成功记录，即表示已就绪（见下图红色标注）。</p><p></p><figure><img alt=\"PoloAi 连接页：点击连接，选择 PoloAi，再启动工作环境\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/37973aa1-eafc-4524-9e32-ae5065c48d61.png\"/></figure><p></p><h2 id=\"section-2\">2. 启动成功后</h2><p>回到 Cursor 即可正常对话。用量、余额可在 PoloAi 的<code>用量</code>页查看；余额不足时点<strong>「去充值」</strong>。</p><p></p><h2 id=\"section-3\">3. 常见提示</h2><p>若点了启动但状态不是「运行中」，可先点<strong>「停止工作环境」</strong>，再重新启动一次。首次启动或首次对话可能会稍慢。使用前请确认 Cursor 已打开。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 启动工作环境",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 启动成功后",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 常见提示",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "use-in-codex",
+      "title": "如何通过PoloAi在Codex内使用",
+      "summary": "先在 PoloAi 的 OpenAI 页创建 API Key，再到 CC Switch 填写中转地址并保存。",
+      "updatedAt": "2026-08-13T12:54:52.842Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>本页通过 OpenAI 兼容接口，在 Codex（配合 CC Switch）使用 PoloAi。<strong>API Key 请妥善保存，不要发给他人。</strong></p></blockquote><p></p><p>整体分两步：先在 PoloAi 拿到中转地址和 API Key，再填到 CC Switch。</p><p></p><h2 id=\"section-1\">1. 在 PoloAi 获取 API Key</h2><p>打开 PoloAi，点击顶部<code>连接</code>，切换到<code>OpenAI</code>。复制中转地址，点击<strong>「创建 APIKey」</strong>；已有密钥可直接点右侧复制（见下图红色标注）。</p><p></p><p><strong>中转地址：</strong><a href=\"https://openai.bitheart.top/v1\" rel=\"noopener noreferrer\" target=\"_blank\">https://openai.bitheart.top/v1</a></p><p></p><figure><img alt=\"PoloAi 连接页 OpenAI：创建并复制 APIKey\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/8821da13-0e28-48d3-aa16-502de8956fd2.png\"/></figure><p></p><h2 id=\"section-2\">2. 在 CC Switch 中选择供应商</h2><p>打开 CC Switch，顶部选中 OpenAI 图标，选择<code>poloai</code>供应商并编辑；如果没有，请新建一个（见下图红色标注）。</p><p></p><figure><img alt=\"CC Switch：顶部选择 OpenAI，再选择 poloai 供应商\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/c81965df-6aa9-4625-9ccf-5cd4f5c218d4.png\"/></figure><p></p><h2 id=\"section-3\">3. 填写并保存</h2><p>在编辑页按下面填写：<code>API Key</code> 粘贴刚才复制的密钥；<code>API 请求地址</code> 填 <code>https://openai.bitheart.top/v1</code>；上游格式选择<strong>「Responses（原生）」</strong>。点击<strong>「获取模型列表」</strong>，确认模型出现后，再点右下角<strong>「保存」</strong>。修改模型列表后，需要重启 Codex 才会生效（见下图红色标注）。</p><p></p><figure><img alt=\"CC Switch 编辑供应商：填写 API Key、请求地址、上游格式并保存\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/52e4e665-c035-4da6-9aa9-0de81a442477.png\"/></figure><p></p><h2 id=\"section-4\">4. 配置完成后</h2><p>回到 Codex 即可选择 PoloAi 提供的模型。用量与扣费仍以 PoloAi 账户余额为准，可在<code>用量</code>页查看。上游格式请保持<strong>「Responses（原生）」</strong>。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 在 PoloAi 获取 API Key",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 在 CC Switch 中选择供应商",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 填写并保存",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 配置完成后",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "recharge",
+      "title": "PoloAi如何充值",
+      "summary": "进入账号钱包，可用微信扫码充值，也可用兑换码兑换余额。",
+      "updatedAt": "2026-08-13T12:54:53.275Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>余额用于按量计费对话。未覆盖权益包的模型会按定价从余额扣费；余额不足时对话可能中断。</p></blockquote><p></p><h2 id=\"section-1\">1. 进入钱包</h2><p>打开 PoloAi，点击顶部<code>账号</code>，切换到<code>钱包</code>（见下图红色标注）。</p><p></p><figure><img alt=\"账号钱包页：微信扫码充值与兑换码入口\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/a0925a2c-5ebd-448f-abdf-ce5a048e6db2.png\"/></figure><p></p><h2 id=\"section-2\">2. 微信扫码充值</h2><p>选择金额，或直接输入自定义金额，点击<strong>「微信扫码充值」</strong>，按提示完成支付。充值比例为<strong>¥1 = $1</strong>（例如支付 ¥50，到账 $50）。</p><p></p><h2 id=\"section-3\">3. 兑换码兑换</h2><p>在<code>兑换码</code>输入框填入兑换码，点击<strong>「兑换」</strong>。兑换码按 1:1 转为美元余额，且仅可使用一次。充值成功后，可在下方<code>流水</code>看到到账记录。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 进入钱包",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 微信扫码充值",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 兑换码兑换",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "withdraw",
+      "title": "PoloAi如何提现",
+      "summary": "在账号提现页上传支付宝收款码，填写金额提交，后台人工审核后打款。",
+      "updatedAt": "2026-08-13T12:54:53.642Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>提现需后台人工审核。邀请奖励余额不可提现，只能用于平台消费。</p></blockquote><p></p><h2 id=\"section-1\">1. 发起提现</h2><p>打开 PoloAi，进入<code>账号 → 提现</code>，上传支付宝收款码（目前仅支持支付宝），填写提现金额（最低 $1），点击<strong>「提交提现申请」</strong>（见下图红色标注）。</p><p></p><figure><img alt=\"账号提现页：上传收款码并提交申请\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/65ec2afe-f949-4a98-a7b0-e12956aeeb06.png\"/></figure><p></p><h2 id=\"section-2\">2. 规则说明</h2><p>提现比例为<strong>¥1 = $1</strong>（例如提现 $10，到账约 10 元人民币）。收款账户需与本人身份信息一致。提交后可在<code>提现记录</code>查看进度。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 发起提现",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 规则说明",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "pricing",
+      "title": "PoloAi如何查询模型价格",
+      "summary": "在定价页查看当前账户实际生效的官方/第三方模型输入与输出单价。",
+      "updatedAt": "2026-08-13T12:54:54.384Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>最终扣费以定价页蓝色价格为准。</p></blockquote><p></p><h2 id=\"section-1\">1. 查看价格</h2><p>打开 PoloAi，点击顶部<code>定价</code>，在<code>官方模型</code> / <code>第三方模型</code>之间切换，可用搜索框筛选。表格中的<code>输入 / 百万</code>、<code>输出 / 百万</code>即为单价（每百万 tokens）。</p><p></p><h2 id=\"section-2\">2. 怎么读价格</h2><p><strong>蓝色数字</strong>是当前账户实际生效价格；灰色数字多为参考原价。约 750 个汉字 ≈ 1000 tokens。若已购买权益包，被覆盖的模型不单独计费。</p><p></p><h2 id=\"section-3\">3. 第三方模型价格示例</h2><p></p><figure><img alt=\"定价页：第三方模型价格\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/e8d982c6-f55b-4bca-b3ab-4769695766f4.png\"/></figure><p></p><h2 id=\"section-4\">4. 官方模型价格示例</h2><p></p><figure><img alt=\"定价页：官方模型价格\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/60428264-5334-48ff-b203-9f88ea858700.png\"/></figure>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 查看价格",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 怎么读价格",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 第三方模型价格示例",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 官方模型价格示例",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "usage",
+      "title": "PoloAi如何查询用量",
+      "summary": "在用量页查看总花费、今日花费、Token 统计，以及按时间筛选的明细记录。",
+      "updatedAt": "2026-08-13T12:54:54.744Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>费用以结算后的实扣金额为准；若有官方结算补扣，明细里会标注。</p></blockquote><p></p><h2 id=\"section-1\">1. 查看用量</h2><p>打开 PoloAi，点击顶部<code>用量</code>（见下图红色标注）。默认在<code>我的用量</code>，也可切换<code>用量排行榜</code>。</p><p></p><figure><img alt=\"用量页：汇总、趋势图与明细\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/a06c8a72-4104-4eee-961c-22f73b06928d.png\"/></figure><p></p><h2 id=\"section-2\">2. 页面说明</h2><p>顶部汇总包含总花费、今日花费、总 Token、缓存命中率。累计花费图可查看趋势；下方明细表可按 1 天 / 3 天 / 7 天 / 30 天或自定义时间筛选。每条记录会显示类型、模型、Token 和费用。刚对话完若没看到最新记录，稍等片刻再刷新。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 查看用量",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 页面说明",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "invite",
+      "title": "PoloAi如何邀请好友赚取佣金",
+      "summary": "分享专属邀请链接，好友扫码登录后自动绑定；首充返 10%，续充返 5%。",
+      "updatedAt": "2026-08-13T12:54:53.945Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>邀请奖励只能用于平台消费，不能提现。</p></blockquote><p></p><h2 id=\"section-1\">1. 怎么邀请</h2><p>打开 PoloAi，进入<code>账号 → 邀请好友</code>，复制专属邀请链接发给好友（见下图红色标注）。好友打开链接并用微信扫码登录后，邀请关系会自动绑定，无需再填邀请码。</p><p></p><figure><img alt=\"邀请好友页：复制邀请链接与奖励规则\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/01c74fca-346c-47c6-8771-29d9aa34497a.png\"/></figure><p></p><h2 id=\"section-2\">2. 奖励规则</h2><p><strong>首充返利 10%</strong>：被邀请人首次充值，你实时获得该笔金额的 10%，即刻到账。<strong>续充返利 5%</strong>：被邀请人后续每次充值，你永久获得该笔金额的 5%。奖励长期有效，但只能用于平台消费，不能提现。</p><p></p><h2 id=\"section-3\">3. 查看效果</h2><p>页面下方可查看已邀请好友数量，以及好友列表与奖励信息。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 怎么邀请",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 奖励规则",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 查看效果",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "contact",
+      "title": "如何通过PoloAi联系我们",
+      "summary": "微信/企业微信扫码加客服，或加入 QQ 群 386427683 联系我们。",
+      "updatedAt": "2026-08-21T09:03:14.811Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>企业微信二维码通常有有效期。若提示已过期，请刷新本页重新获取，或改用下方 QQ 群联系。</p></blockquote><p></p><h2 id=\"section-1\">1. 微信 / 企业微信客服</h2><p>使用微信或企业微信扫描下方二维码，加入 PoloAi Service 售后交流。</p><p></p><figure><img alt=\"PoloAi Service 微信/企业微信二维码\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/cd51d9b7-67e8-4432-9f2d-f1b47e3dc37d.png\"/></figure><p></p><h2 id=\"section-2\">2. QQ 交流群</h2><p>群名：PoloAi总群。群号：<strong>386427683</strong>。可在 QQ 中搜索群号加入，或直接扫描下方二维码进群。</p><p></p><figure><img alt=\"PoloAi总群 QQ 二维码，群号 386427683\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/a27de387-f48d-4163-a3e2-4c1056657721.png\"/></figure>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 微信 / 企业微信客服",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. QQ 交流群",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "unlimited-notes",
+      "title": "「全模型无限额度」限时活动说明",
+      "summary": "这是当时的限时活动，不是长期默认套餐。没买过或已到期的，按钱包用量计费；当时买过的，请看订阅里的到期时间。",
+      "updatedAt": "2026-09-16T10:14:47.716Z",
+      "html": "\n<blockquote><p><strong>请先看这一句。</strong>「全模型无限额度」是当时的限时活动，不是长期默认套餐。现在默认按钱包用量计费。商城里有没有权益包、叫什么名字，以客户端当前上架为准。</p></blockquote><p></p><p>如果您当时买过，下面说明只适用于<strong>还在有效期内</strong>的那一份。没有买过，或已经到期，都不是无限额度。</p><p></p><h2 id=\"section-1\">1. 这不是一直都有的套餐</h2><p>当时商城短期上架过<strong>「全模型无限额度」</strong>小时卡。活动结束后，不会一直挂在商城里，也不能理解成「账号默认全模型无限」。</p><p>现在如果商城还有其他权益包，请以商品页写明的模型和时效为准。那些权益和当时的「全模型无限额度」<strong>不是一回事</strong>。</p><p></p><p>下面这张图是当时活动的购买入口，仅作对照，不代表现在仍可按此购买。</p><p></p><figure><img alt=\"当时活动-商城权益包购买入口.jpg\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/36e67621-dadd-422e-8f32-4a4ab4b5ca5a.jpg\"/></figure><p></p><h2 id=\"section-2\">2. 如果您当时买过，怎么确认还在不在</h2><p>打开 PoloAi，进入<code>账号 → 订阅</code>。只有仍显示<strong>「全模型无限额度 · 生效中」</strong>，并标有到期时间，才表示当时买的那份还没到期（见下图红色标注）。</p><p>订阅里没有这条记录，就按普通用量从钱包扣费。</p><p></p><figure><img alt=\"订阅-权益生效.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/197f3f0e-2587-4427-94e6-7b0fcadf8bb0.png\"/></figure><p></p><h2 id=\"section-3\">3. 还在生效时怎么计费</h2><p>仅在该权益仍显示生效中时，相关模型<strong>不会从余额扣费</strong>。可在顶部<code>用量</code>查看记录；费用旁若显示<strong>「官方已结清 · 无需补退」</strong>，即表示这次不扣余额（见下图红色标注）。</p><p></p><figure><img alt=\"用量-已结清.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/b3a2a755-e723-4b47-8813-b56f8b288161.png\"/></figure><p></p><h2 id=\"section-4\">4. 到期后会怎样</h2><p>到期后不再按无限额度计算。若仍在使用相关模型，会扣到账户余额。请<strong>提前看订阅里的到期时间</strong>，不要按「一直都有」来用。</p><p>不想留太多余额时，也可<strong>提前提现</strong>，采用「即用即充」。</p><p></p><p><strong>提现入口：</strong>打开 PoloAi，进入<code>账号 → 提现</code>，上传支付宝收款码，填写金额后点击<strong>「提交提现申请」</strong>（见下图红色标注）。</p><p></p><figure><img alt=\"提现入口.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/903ace48-538f-4496-9741-f88d09a5ca10.png\"/></figure><p></p><p>需要补余额时，可在<code>账号 → 钱包</code>用微信扫码充值（见下图红色标注）。</p><p></p><figure><img alt=\"钱包充值.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/a0925a2c-5ebd-448f-abdf-ce5a048e6db2.png\"/></figure><p></p><h2 id=\"section-5\">5. 当时的邀请福利</h2><p>活动期间曾经有过：邀请<strong>2 位好友</strong>注册，把截图发给客服，可获赠<strong>1 小时权益包</strong>。这是当时活动的福利，现在还送不送，以公告或客服答复为准。</p><p></p><figure><img alt=\"邀请好友.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/01c74fca-346c-47c6-8771-29d9aa34497a.png\"/></figure><p></p><p>需要核实当时订单或到期时间，可扫码联系客服。</p><p></p><figure><img alt=\"联系客服.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/cd51d9b7-67e8-4432-9f2d-f1b47e3dc37d.png\"/></figure>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 这不是一直都有的套餐",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 如果您当时买过，怎么确认还在不在",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 还在生效时怎么计费",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 到期后会怎样",
+          "level": 2
+        },
+        {
+          "id": "section-5",
+          "title": "5. 当时的邀请福利",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "cursor-required-settings",
+      "title": "Cursor务必打开的配置",
+      "summary": "找不到配置就截图发给 Cursor 帮您设。Explore Subagent Model 一定要设；建议同时在 Rules 里写明子代理只用约定模型。",
+      "updatedAt": "2026-09-16T10:42:38.567Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>未按本页完成配置，Explore 子代理使用的模型与 Agent 分析深度可能不符合预期。</p></blockquote><p></p><blockquote><p><strong>非常重要。</strong>如果找不到配置选项，请截图发给 Cursor，让它帮您配置即可。</p></blockquote><p></p><h2 id=\"section-1\">1. 设置 Explore Subagent Model</h2><p>这一项<strong>一定要设</strong>。打开 Cursor 设置，左侧进入<code>Models</code>，找到 Task Models 下的<code>Explore Subagent Model</code>，选择<strong>「Cursor Grok 4.5 High Fast」</strong>（见下图红色标注）。该项决定 Explore 子代理做初步调研时使用的模型。</p><p></p><figure><img alt=\"Cursor 设置 → Models → Explore Subagent Model 选择 Cursor Grok 4.5 High Fast\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/96f37809-7898-4b5f-a772-abadde4a2fbe.jpg\"/></figure><p></p><p><strong>请注意：</strong>设置了子代理，不代表官方一定会用您设的那个模型。官方这里的含义是「探索子代理」。不过很多朋友反馈：这里设好了，实际就够用。</p><p>更稳妥的做法是：<strong>Cursor 子代理设置 + Rules 一起用</strong>。可在 Rules 里加这一句：</p><blockquote><p>子代理模型规则：严格按照我约定好的设置执行，多次连不上禁止调用其他模型。</p></blockquote><p></p><h2 id=\"section-2\">2. 设置 Default Approach 为 Deep</h2><p>仍在 Cursor 设置中，左侧进入<code>Agents</code>，找到<code>Default Approach</code>，选择<strong>「Deep」</strong>（见下图红色标注）。Deep 会做更充分、成本更高的分析。</p><p></p><figure><img alt=\"Cursor 设置 → Agents → Default Approach 选择 Deep\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/21a6fe8d-be4d-4bff-a386-dd07c9e43194.jpg\"/></figure><p></p><h2 id=\"section-3\">3. 设置完成后</h2><p>两项都改好后，回到 PoloAi 启动工作环境。详细步骤见<code>在 Cursor 内使用</code>。</p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 设置 Explore Subagent Model",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 设置 Default Approach 为 Deep",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 设置完成后",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "how-to-use-bot",
+      "title": "如何使用 PoloAi Bot 群文件更新最新bot脚本",
+      "summary": "购买账号、下载工具、Token 上号并开启 Stream。仅适配 Cursor 3.18.9。群文件更新最新bot脚本",
+      "updatedAt": "2026-09-07T02:09:59.789Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>本工具仅适配 Cursor 3.18.9（Windows / macOS，不支持 Linux）。请先在商城购买账号，再按本页完成上号与开启。若用过其他 Stream / Bot 脚本，请先用原工具还原，再使用本工具。</p></blockquote><p></p><p>按顺序操作即可。先购买账号，再下载 <strong>PoloAi Bot</strong>，完成 Token 上号后开启 Stream。开启成功后，Bot 相关功能才会生效。</p><p></p><h2 id=\"section-1\">1. 购买账号</h2><p>打开 PoloAi，点击<strong>「商城」</strong>，在账号商品中购买账号（见下图）。<br/>或直接链动小铺购买：<strong>https://wzyp.cn/item/ydglt5</strong></p><figure><img alt=\"image.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/700f5072-c378-4d69-a559-0c71fec8f204.png\"/></figure><p></p><figure><img alt=\"PoloAi 商城：账号商品购买入口\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/1f2e3485-666b-4b68-9198-0d0903558260.png\"/></figure><p></p><h2 id=\"section-2\">2. 下载并打开工具</h2><p>在群文件中下载 <code>PoloAi Bot.exe</code>（Mac 用户使用 <code>.app</code>）。双击打开；Windows 第一次会弹出系统权限确认，点<strong>「是」</strong>即可。不需要先安装 Python，也不需要启动脚本。</p><p></p><figure><img alt=\"image.png\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/7ab8dc34-b42c-4c02-81cd-8a449ee96b5d.png\"/></figure><h2 id=\"section-3\">3. Token 上号</h2><p>打开工具后，进入<strong>「Token 上号」</strong>。把 Session Token（一般是 <code>user_xxx::jwt</code>）粘贴进去，点击<strong>「写入 Cursor 并上号」</strong>。工具会关闭并重启 Cursor，请先保存文件（见下图）。</p><p></p><figure><img alt=\"PoloAi Bot：Token 上号页\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/e58d4270-6b1f-4249-8e74-a3e9f03d345b.png\"/></figure><p></p><h2 id=\"section-4\">4. 开启 Stream</h2><p>进入<strong>「开启 Bot」</strong>。点击刷新，确认当前账号与 Bot 额度。确认无误后，点击<strong>「开启 Stream」</strong>。建议同时点击<strong>「关闭自动更新」</strong>，避免 Cursor 自行升级到其他版本（见下图）。</p><p></p><figure><img alt=\"PoloAi Bot：开启 Stream 与额度展示\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/cab9d8c0-e0d4-42cc-9604-41ab3f2537f7.png\"/></figure><p></p><h2 id=\"section-5\">5. 底部按钮</h2><p>页面最下方的<strong>「设置路径」</strong>、<strong>「下载适配版」</strong>、<strong>「打开脚本目录」</strong>平时不用。若本机 Cursor 不是 3.18.9，再点<strong>「下载适配版」</strong>安装官方适配版本。</p><p></p><h2 id=\"section-6\">6. 常见提示</h2><p><strong>「还原原版」</strong>只撤本工具打过的补丁，其他脚本需用原工具还原。必须使用 Cursor 3.18.9；建议关闭自动更新，防止升级后失效。</p><h2 id=\"section-7\">7. 专属企业微信售后PoloAi交流群</h2><p></p><figure><img alt=\"98c88774080ceb4fc576c1881ab4a85f.jpg\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/b50dd3de-8a60-4f02-8c0c-e88df368784d.jpg\"/></figure>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 购买账号",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 下载并打开工具",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. Token 上号",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 开启 Stream",
+          "level": 2
+        },
+        {
+          "id": "section-5",
+          "title": "5. 底部按钮",
+          "level": 2
+        },
+        {
+          "id": "section-6",
+          "title": "6. 常见提示",
+          "level": 2
+        },
+        {
+          "id": "section-7",
+          "title": "7. 专属企业微信售后PoloAi交流群",
+          "level": 2
+        }
+      ]
+    },
+    {
+      "slug": "team5x-card-login",
+      "title": "如何使用 Team 卡密登录",
+      "summary": "用兑换码在兑换站提取账号，再通过 Cursor 复制授权链接登录。不提供 Token，不要填邮箱密码。",
+      "updatedAt": "2026-09-06T04:35:25.339Z",
+      "html": "\n<blockquote><p><strong>使用前，请严格看完说明。</strong>本页只讲 Team 卡密兑换登录。不提供 Token，也不要在网页里填邮箱密码。请先安装并打开 Cursor 客户端。</p></blockquote><p></p><p>按顺序操作：打开兑换站 → 输入卡密并提取账号 → 在 Cursor 退出当前账号 → 点登录并复制授权链接 → 贴回兑换站确认。</p><p></p><h2 id=\"section-1\">1. 打开兑换站</h2><p>浏览器打开 <code>https://cursorhub.bitheart.top/dh/</code>。把卖家发你的兑换码贴进去（一般是 <code>XB-</code> 开头），点<strong>「用兑换码登录」</strong>。</p><p></p><h2 id=\"section-2\">2. 提取账号</h2><p>登录后点<strong>「提取一个账号」</strong>。成功后，下方<code>我的账号</code> 会出现邮箱。次数用完后提取按钮会变灰，这是正常的。接着点这条账号或<strong>「授权登录」</strong>（见下图）。</p><p></p><figure><img alt=\"兑换站：提取完成后点授权登录\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/6ca05e10-b885-40bb-8d77-5b2e3e5cbeaa.png\"/></figure><p></p><p>如果弹出「正在开通」转很久，先关掉弹层，再点下面已经出现的邮箱即可。</p><p></p><h2 id=\"section-3\">3. 在 Cursor 里退出当前账号</h2><p>打开电脑上的 Cursor。左下角点设置齿轮，进入 <code>General</code>，拉到最下面点 <code>Log Out</code> 退出当前登录（见下图红色标注）。已经是未登录状态可跳过这一步。</p><p></p><figure><img alt=\"Cursor 设置 General 页点 Log Out\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/b4514b97-3d09-492a-84e0-5933bd981cbe.png\"/></figure><p></p><h2 id=\"section-4\">4. 点 Log In，不要走密码页</h2><p>退出后会出现 Cursor 登录页。只点蓝色 <strong>Log In</strong>，不要点 Sign Up，也不要在网页里输入邮箱密码（见下图）。</p><p></p><figure><img alt=\"Cursor 登录页点 Log In\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/dabba0cd-3986-4bb7-91e9-770a3cdaad94.png\"/></figure><p></p><h2 id=\"section-5\">5. 复制整段授权链接</h2><p>Cursor 会弹出内置浏览器。地址栏是 <code>https://cursor.com/loginDeepControl?...</code>。把地址栏<strong>整段链接</strong>复制下来，challenge、uuid 都要带上（见下图）。</p><p></p><figure><img alt=\"复制地址栏整段 loginDeepControl 链接\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/0d300d4b-3688-4d0b-9ac4-397a2ba1afa6.png\"/></figure><p></p><h2 id=\"section-6\">6. 贴回兑换站并确认登录</h2><p>回到兑换站的「授权登录」窗口，把链接贴到「授权链接」，点<strong>「确认登录」</strong>（见下图红色标注）。成功后回 Cursor 客户端即可使用。</p><p></p><figure><img alt=\"兑换站贴入链接后点确认登录\" loading=\"lazy\" referrerpolicy=\"no-referrer\" src=\"https://api.bitheart.top/api/v1/uploads/04e5cd7b-8774-4980-afec-d750b7e2bd62.png\"/></figure><p></p><h2 id=\"section-7\">7. 常见提示</h2><p>不要在 authenticator.cursor.sh 密码页登录，那不是这套授权。链接只当场有效，过期就重新在 Cursor 点一次登录再复制。一张码提取次数用完后，旧账号仍可再次打开授权登录。保障期以页面「保障至」为准。</p><p></p><h2 id=\"section-8\">8. 配套 Bot实时更新（Bot）</h2><p>卡密登录成功后，如需使用配套 Beauty（PoloAi Bot），按这篇操作。仅适配 Cursor 3.18.9。</p><p></p><p><strong>教程地址：</strong><a href=\"/poloai/docs/how-to-use-bot\">/poloai/docs/how-to-use-bot</a></p>\n",
+      "headings": [
+        {
+          "id": "section-1",
+          "title": "1. 打开兑换站",
+          "level": 2
+        },
+        {
+          "id": "section-2",
+          "title": "2. 提取账号",
+          "level": 2
+        },
+        {
+          "id": "section-3",
+          "title": "3. 在 Cursor 里退出当前账号",
+          "level": 2
+        },
+        {
+          "id": "section-4",
+          "title": "4. 点 Log In，不要走密码页",
+          "level": 2
+        },
+        {
+          "id": "section-5",
+          "title": "5. 复制整段授权链接",
+          "level": 2
+        },
+        {
+          "id": "section-6",
+          "title": "6. 贴回兑换站并确认登录",
+          "level": 2
+        },
+        {
+          "id": "section-7",
+          "title": "7. 常见提示",
+          "level": 2
+        },
+        {
+          "id": "section-8",
+          "title": "8. 配套 Bot实时更新（Bot）",
+          "level": 2
+        }
+      ]
+    }
+  ]
+}
